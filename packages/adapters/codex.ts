@@ -3,7 +3,7 @@ import { lstat, readFile, realpath } from 'node:fs/promises';
 import { Ajv } from 'ajv';
 import type { AdapterMetadata, Context, Source, Status } from '../core/types.js';
 import { readUserTree } from '../core/discovery.js';
-import { bytes, finding, locate } from '../core/utils.js';
+import { bytes, finding, locate, plainObject } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, effectiveValue, finish, flatten, hooks, mcp, settings, skills, truncated } from './common.js';
 
 export const codexMetadata: AdapterMetadata = {
@@ -12,6 +12,9 @@ export const codexMetadata: AdapterMetadata = {
   limitations: ['Static single-directory session with explicit profile files. Other CLI overrides and managed/cloud requirements are not inferred.', 'Base/project scalar and MCP values and winning files have real-client configuration API tests. Profiles, instruction bodies and line numbers use source/schema fixtures.', 'Global instructions are separate from the project byte budget in 0.167.2; project empty overrides shadow the ordinary file.', 'Hook definition trust is reported as conditional. Bundled/plugin components and starlark exec-policy evaluation are not inspected.'],
 };
 let validator: ReturnType<Ajv['compile']> | undefined;
+function inlineHooks(value: unknown): unknown {
+  return plainObject(value) ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'state')) : value;
+}
 async function discover(ctx: Context): Promise<Source[]> {
   if (ctx.options.user !== false) {
     for (const n of ['config.toml', 'AGENTS.override.md', 'AGENTS.md', 'hooks.json']) await ctx.read(path.join(ctx.codexHome, n), 'codex', n.endsWith('.toml') ? 'settings' : n === 'hooks.json' ? 'hooks' : 'instructions', 'user');
@@ -63,7 +66,9 @@ export const codex = adapter(codexMetadata, discover, async ctx => {
       }
     }
     if (!s.invalid && active !== 'ignored' && !validate(data)) for (const error of validate.errors ?? []) {
-      const key = error.instancePath.replace(/^\//, '').replace(/\//g, '.') || String(error.params.additionalProperty ?? '');
+      const parts = error.instancePath.split('/').slice(1).map(part => part.replace(/~1/g, '/').replace(/~0/g, '~'));
+      if (error.keyword === 'additionalProperties') parts.push(String(error.params.additionalProperty));
+      const key = parts.join('.');
       e.findings.push(finding('config.schema', 'error', locate(s, key), `Codex configuration fails schema validation (${error.keyword}).`, 'The version-pinned official schema rejects this setting or value type.', 'Check this key against docs/research/codex.md and the official configuration reference.', 'codex'));
       s.invalid = true;
     }
@@ -71,7 +76,6 @@ export const codex = adapter(codexMetadata, discover, async ctx => {
     delete data.profiles;
     settings(e, s, active, false, data);
     mcp(e, s, data.mcp_servers, 'mcp_servers', active, true);
-    if (effectiveValue(e, 'features.hooks', true) !== false) hooks(e, s, data.hooks, active);
     if (data.instructions !== undefined) e.findings.push(finding('config.reserved-field', 'warn', locate(s, 'instructions'), 'Codex instructions is reserved and does not replace AGENTS.md.', 'The configuration reference marks instructions as reserved for future use.', 'Use AGENTS.md or model_instructions_file as documented.', 'codex'));
     if (data.experimental_instructions_file !== undefined) e.findings.push(finding('config.deprecated-field', 'warn', locate(s, 'experimental_instructions_file'), 'experimental_instructions_file is deprecated.', 'The setting was renamed.', 'Rename it to model_instructions_file.', 'codex'));
   };
@@ -95,12 +99,15 @@ export const codex = adapter(codexMetadata, discover, async ctx => {
   const status: Status = trust === 'trusted' ? 'active' : trust === 'untrusted' ? 'ignored' : 'conditional';
   const layers = [...userLayers, ...dirs.map(d => ctx.sources.find(s => s.path === path.join(d, '.codex/config.toml'))).filter((s): s is Source => !!s)];
   for (const s of layers.slice(userLayers.length)) applyLayer(s, status);
+  const hooksEnabled = effectiveValue(e, 'features.hooks', true) !== false;
+  if (hooksEnabled) for (const s of layers) hooks(e, s, inlineHooks(s.data.hooks), userLayers.includes(s) ? 'active' : status);
   for (const s of ctx.sources.filter(s => s.kind === 'hooks' && s.owners.includes('codex'))) {
     if (s.scope !== 'user' && s.scope !== 'system' && !dirs.some(d => s.path === path.join(d, '.codex/hooks.json'))) continue;
-    const st = s.scope === 'user' || s.scope === 'system' ? 'active' : status;
-    decision(e, s, st, 'Hooks discovered alongside an active config layer.');
-    if (effectiveValue(e, 'features.hooks', true) !== false) hooks(e, s, s.data.hooks, st);
-    const inline = layers.find(x => path.dirname(x.path) === path.dirname(s.path) && x.data.hooks);
+    const layerStatus = s.scope === 'user' || s.scope === 'system' ? 'active' : status;
+    const st = hooksEnabled ? layerStatus : 'ignored';
+    decision(e, s, st, hooksEnabled ? 'Hooks discovered alongside an active config layer.' : 'Codex hooks are disabled by features.hooks.');
+    if (hooksEnabled) hooks(e, s, s.data.hooks, st);
+    const inline = layers.find(layer => path.dirname(layer.path) === path.dirname(s.path) && e.extensions.some(extension => extension.kind === 'hook' && extension.location.path === layer.path));
     if (inline) e.findings.push(finding('hook.dual-source', 'warn', locate(s), 'Both hooks.json and inline hooks are present in one layer.', 'Codex merges both and warns at startup.', 'Prefer one representation per layer.', 'codex', [locate(inline, 'hooks')]));
   }
   if (ctx.options.user !== false) {

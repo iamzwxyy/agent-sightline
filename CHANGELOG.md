@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.5 — 2026-11-13
+
+* Scope parser, field, glob and MCP-shape diagnostics to the selected client owners. Retain source previews and loading decisions across discovered clients.
+* Read Codex hooks.state as persisted review settings and apply the final merged features.hooks value to inline and standalone hooks. Identify dual-source definitions from actual inline handlers.
+* Extend real Codex configuration comparisons with review-state values and user/project hook-feature precedence in both directions.
+* Open related finding locations in their owning client's source view with exact line highlighting. Filesystem findings retain copyable locations, and source inspection follows available source decisions.
+* Decode quoted TOML key paths for source-line provenance and replace filesystem paths inside portable hook-review keys.
+* Use Copy source path for local and portable source locations.
+
 ## 0.2.4 — 2026-11-13
 
 * Capture logical/canonical repository and home paths, plus filesystem-verified aliases found in structured configuration, for portable report export.

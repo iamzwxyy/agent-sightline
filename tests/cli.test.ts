@@ -114,6 +114,23 @@ test('CI threshold uses unfiltered findings; errors return 2 and write no partia
   for (const args of [['--client', 'wrong'], ['--unknown'], ['explain'], ['explain', '../outside'], ['report', '--format', 'wrong', '--output', 'bad.html'], ['scan', '--probe']]) assert.equal(run(args, w.repo).status, 2, args.join(' '));
   assert.ok(!(await readdir(w.repo)).some(x => x === 'bad.html' || x.endsWith('.tmp')));
 });
+
+test('CI syntax failures follow the selected client while shared source errors keep their owners', async t => {
+  const w = await workspace({ 'AGENTS.md': 'Repository instructions.', '.claude/settings.local.json': '{ broken JSON' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const codex = run(['ci', '--client', 'codex', '--no-user', '--trust', 'trusted'], w.repo);
+  assert.equal(codex.status, 0, codex.stderr);
+  assert.ok(!JSON.parse(codex.stdout).findings.some((finding: any) => finding.ruleId.startsWith('parse.')));
+  const claude = run(['ci', '--client', 'claude', '--no-user'], w.repo);
+  assert.equal(claude.status, 1, claude.stderr);
+  assert.ok(JSON.parse(claude.stdout).findings.some((finding: any) => finding.ruleId === 'parse.json'));
+  await writeFile(path.join(w.repo, '.mcp.json'), '{ broken MCP JSON');
+  for (const client of ['claude', 'copilot']) {
+    const result = run(['ci', '--client', client, '--no-user'], w.repo);
+    assert.equal(result.status, 1, result.stderr);
+    assert.ok(JSON.parse(result.stdout).findings.some((finding: any) => finding.ruleId === 'parse.json' && finding.location.path.endsWith('.mcp.json')));
+  }
+});
 test('CI reports malformed extensions as findings and retains valid sibling definitions', async t => {
   const w = await workspace({
     '.mcp.json': JSON.stringify({ mcpServers: { invalid: { command: 'node', env: { PATH: 42 } }, valid: { command: process.execPath } } }),

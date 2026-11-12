@@ -32,6 +32,7 @@ export async function collectPathMappings(ctx: Context, configuration: unknown[]
       let filename = value;
       if (value.startsWith('--') && value.includes('=')) filename = value.slice(value.indexOf('=') + 1);
       if (value.startsWith('projects.') && value.endsWith('.trust_level')) filename = value.slice('projects.'.length, -'.trust_level'.length);
+      if (value.startsWith('hooks.state.')) filename = value.slice('hooks.state.'.length, value.lastIndexOf('.'));
       if (path.isAbsolute(filename)) candidates.add(path.normalize(filename));
     }
     if (value && typeof value === 'object') for (const [key, child] of Object.entries(value)) {

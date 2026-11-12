@@ -262,6 +262,7 @@ dialog::backdrop { background: #252f2338; backdrop-filter: blur(3px); }
 .dialog-content .fix-suggestion { background: #f3f6ed; border: 1px solid #e5ebda; border-radius: 6px; padding: 13px 15px; color: #626b59; }
 .dialog-content .related-list { list-style: none; padding: 0; }
 .dialog-content .related-list li { margin: 9px 0; font-size: 12px; color: #626b59; }
+.related-list .source-link { display: block; padding: 4px 0; text-align: left; font: 12px/1.8 var(--mono); color: var(--green); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
 .dialog-content pre { font: 13px/1.8 var(--mono); color: #626b59; background: #f8faf4; border: 1px solid var(--line); border-radius: 6px; padding: 14px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .copy-text { display: block; width: 100%; max-height: 45vh; resize: vertical; font: 13px/1.8 var(--mono); color: #626b59; background: #f8faf4; border: 1px solid #c9d2bf; border-radius: 6px; padding: 14px; }
 .copy-text:focus-visible { outline: 2px solid #627a4f; outline-offset: 2px; }

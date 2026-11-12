@@ -136,6 +136,7 @@ test('portable paths cover escaped configuration text, Windows spellings and fla
     JSON.stringify({ cwd: 'd:/repository alias/src', config: 'D:\\Repository Alias\\config.json' }),
     'projects.C:\\Users\\Private Person\\Checkout.trust_level',
     'Z:\\Custom Profile\\.codex\\config.toml',
+    'hooks.state.Z:\\Custom Profile\\.codex\\hooks.json:pre_tool_use:0:0.trusted_hash',
   ];
   const exported = portable(report);
   assert.deepEqual(exported.assumptions, [
@@ -143,6 +144,7 @@ test('portable paths cover escaped configuration text, Windows spellings and fla
     JSON.stringify({ cwd: '<repo>/src', config: '<repo>\\config.json' }),
     'projects.<repo>.trust_level',
     '~\\.codex\\config.toml',
+    'hooks.state.~\\.codex\\hooks.json:pre_tool_use:0:0.trusted_hash',
   ]);
 });
 

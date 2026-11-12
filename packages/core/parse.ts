@@ -23,6 +23,17 @@ const jsonErrorMessages: Record<string, string> = {
   InvalidCharacter: 'Invalid character in the string.',
 };
 
+const tomlKeyPart = String.raw`[^\s."'\[\]#=]+|"(?:\\.|[^"\\])*"|'[^']*'`;
+const tomlAssignment = new RegExp(String.raw`^\s*((?:${tomlKeyPart})(?:\s*\.\s*(?:${tomlKeyPart}))*)\s*=`);
+
+function tomlKeyPath(text: string): string {
+  const parts = text.match(new RegExp(tomlKeyPart, 'g')) ?? [];
+  return parts.map(part => {
+    if (!part.startsWith('"') && !part.startsWith("'")) return part;
+    return Object.keys(toml(`${part} = 0`))[0];
+  }).join('.');
+}
+
 export function parseSource(s: Source): Finding[] {
   const findings: Finding[] = [];
   const issue = (rule: string, message: string, line = 1, column = 1) => {
@@ -66,9 +77,9 @@ export function parseSource(s: Source): Finding[] {
       let section = '';
       s.text.split('\n').forEach((l, i) => {
         const header = l.match(/^\s*\[\[?(.+?)\]\]?\s*(?:#.*)?$/);
-        if (header) section = header[1].replace(/"([^"\\]*)"/g, '$1');
-        const key = l.match(/^\s*([\w.-]+|"[^"\n]+")\s*=/);
-        if (key) s.lines[[section, key[1].replace(/^"|"$/g, '')].filter(Boolean).join('.')] = i + 1;
+        if (header) section = tomlKeyPath(header[1]);
+        const key = l.match(tomlAssignment);
+        if (key) s.lines[[section, tomlKeyPath(key[1])].filter(Boolean).join('.')] = i + 1;
         if (header) s.lines[section] = i + 1;
       });
     } else if (/\.ya?ml$/.test(s.path)) {

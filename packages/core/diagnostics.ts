@@ -4,6 +4,7 @@ import { cmp, finding, locate, splitGlobs } from './utils.js';
 
 export function diagnose(ctx: Context, clients: Effective[]): Finding[] {
   const out: Finding[] = [];
+  const selected = new Set(clients.map(client => client.client));
   for (const e of clients) {
     if (!e.detected) continue;
     for (const d of e.decisions) {
@@ -17,7 +18,7 @@ export function diagnose(ctx: Context, clients: Effective[]): Finding[] {
       }
       if (d.status === 'ignored' && s.owners.includes(e.client) && /does not match|do not match/.test(d.reason)) out.push(finding('rule.target-unmatched', 'info', locate(s), 'Path-scoped rule does not match this target.', d.reason, 'Inspect a matching file or correct the rule’s glob.', e.client));
       const patterns = s.data.paths ?? s.data.applyTo ?? s.data.globs;
-      if (patterns === undefined) continue;
+      if (patterns === undefined || !s.owners.includes(e.client)) continue;
       const globs = typeof patterns === 'string' ? splitGlobs(patterns) : Array.isArray(patterns) ? patterns : [];
       for (const g of globs) if (typeof g === 'string' && (g.startsWith('../') || /^[A-Za-z]:[\\/]/.test(g) || g.includes('\0') || /\[[^\]]*$/.test(g))) out.push(finding('glob.impossible', 'warn', locate(s, s.data.applyTo ? 'applyTo' : s.data.globs ? 'globs' : 'paths'), 'Glob cannot match the inspected repository-relative target convention.', 'Parent traversal, platform drive prefixes or unclosed character classes do not match these relative paths.', 'Use a valid relative glob such as src/**/*.ts.', e.client));
     }
@@ -30,7 +31,7 @@ export function diagnose(ctx: Context, clients: Effective[]): Finding[] {
     if (definitions.size > 1) out.push(finding('mcp.cross-client-drift', 'warn', group[0].location, `MCP server "${name}" has different commands or endpoints across clients/sources.`, 'The same server name does not imply the same process or remote service.', 'Align the transport definitions intentionally, then inspect each client’s effective server.', undefined, group.slice(1).map(x => x.location)));
   }
   const topKeys = ['permissions', 'hooks', 'env', 'model', 'mcpServers', 'claudeMdExcludes', 'enabledPlugins'];
-  for (const s of ctx.sources.filter(s => s.kind === 'settings' && s.owners.includes('claude'))) {
+  for (const s of ctx.sources.filter(s => selected.has('claude') && s.kind === 'settings' && s.owners.includes('claude'))) {
     for (const key of Object.keys(s.data)) {
       const correct = topKeys.find(k => k.toLowerCase() === key.toLowerCase() && k !== key);
       if (correct) out.push(finding('config.field-case', 'warn', locate(s, key), `Unknown case-sensitive field "${key}".`, `The documented field is "${correct}".`, `Rename it to ${correct}.`, 'claude'));
@@ -38,6 +39,9 @@ export function diagnose(ctx: Context, clients: Effective[]): Finding[] {
     if (s.data.permissions?.allowed !== undefined) out.push(finding('config.unknown-field', 'warn', locate(s, 'permissions.allowed'), 'Unknown permission field "allowed".', 'The documented permission list is named allow.', 'Rename allowed to allow.', 'claude'));
     if (s.data.mcpServers) out.push(finding('config.unsupported-capability', 'warn', locate(s, 'mcpServers'), 'Claude settings.json does not configure MCP servers.', 'Claude MCP servers belong in .mcp.json or ~/.claude.json.', 'Move the server definition to the appropriate MCP configuration.', 'claude'));
   }
-  for (const s of ctx.sources.filter(s => s.kind === 'mcp')) if (path.basename(s.path) !== '.claude.json' && s.data.mcpServers === undefined && s.owners.some(x => x === 'claude' || x === 'copilot' || x === 'cursor')) out.push(finding('mcp.root-key', 'error', locate(s), 'MCP configuration has no mcpServers object.', 'The client does not read this top-level shape (for example, VS Code uses a different servers key).', 'Use the client’s mcpServers schema.'));
+  for (const s of ctx.sources.filter(s => s.kind === 'mcp' && !s.invalid)) {
+    const applicable = clients.some(client => client.decisions.some(decision => decision.sourceId === s.id && decision.status !== 'ignored'));
+    if (applicable && path.basename(s.path) !== '.claude.json' && s.data.mcpServers === undefined && s.owners.some(owner => selected.has(owner) && ['claude', 'copilot', 'cursor'].includes(owner))) out.push(finding('mcp.root-key', 'error', locate(s), 'MCP configuration has no mcpServers object.', 'The client does not read this top-level shape (for example, VS Code uses a different servers key).', 'Use the client’s mcpServers schema.'));
+  }
   return out;
 }

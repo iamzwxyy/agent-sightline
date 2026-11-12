@@ -25,6 +25,10 @@ try {
   writeFileSync(path.join(invalidRepo, '.github/hooks/test.json'), JSON.stringify({ version: 1, hooks: { sessionStart: [{ type: 'command', bash: 'echo safe', powershell: 'echo safe', cwd: 42 }] } }));
   const malformed = JSON.parse(execFileSync(process.execPath, [cli, '--repo', invalidRepo, '--no-user', '--trust', 'trusted', '--clients', 'claude,copilot', '--json'], { encoding: 'utf8' }));
   if (!malformed.findings.some(finding => finding.ruleId === 'extension.cwd-type') || !malformed.findings.some(finding => finding.ruleId === 'mcp.env-type') || malformed.clients.some(client => client.extensions.find(extension => extension.name === 'valid')?.status !== 'active')) throw new Error('Installed malformed-extension diagnostics failed.');
+  mkdirSync(path.join(invalidRepo, '.claude'));
+  writeFileSync(path.join(invalidRepo, '.claude/settings.local.json'), '{ broken JSON');
+  const scoped = JSON.parse(execFileSync(process.execPath, [cli, 'ci', '--repo', invalidRepo, '--no-user', '--client', 'codex'], { encoding: 'utf8' }));
+  if (scoped.findings.some(finding => finding.ruleId.startsWith('parse.')) || !scoped.sources.some(source => source.relativePath === '.claude/settings.local.json' && source.invalid)) throw new Error('Installed client diagnostic scoping failed.');
   const alias = path.join(temp, 'repository-alias');
   symlinkSync(repo, alias, process.platform === 'win32' ? 'junction' : 'dir');
   writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, cwd: alias, args: ['--root=' + alias] } } }));
@@ -37,10 +41,11 @@ try {
   const version = execFileSync(process.execPath, [cli, 'version'], { encoding: 'utf8' }).trim(); if (version !== pkg.version || report.tool.version !== pkg.version) throw new Error('Wrong package version.');
   const profileHome = path.join(temp, 'profile-home');
   mkdirSync(path.join(profileHome, '.codex'), { recursive: true });
-  writeFileSync(path.join(profileHome, '.codex/config.toml'), 'model = "base-model"\n');
+  writeFileSync(path.join(profileHome, '.codex/config.toml'), 'model = "base-model"\n[hooks.state.fixture]\nenabled=false\ntrusted_hash="fixture-hash"\n');
   writeFileSync(path.join(profileHome, '.codex/review.config.toml'), 'model = "review-model"\n');
   const profiled = JSON.parse(execFileSync(process.execPath, [cli, '--repo', repo, '--home', profileHome, '--client', 'codex', '--profile', 'review', '--json'], { encoding: 'utf8' }));
   if (profiled.inputs?.codexProfile !== 'review' || profiled.clients[0].settings.find(setting => setting.key === 'model' && setting.status === 'active')?.value !== 'review-model') throw new Error('Installed profile resolution failed.');
+  if (profiled.findings.some(finding => finding.ruleId === 'hook.type')) throw new Error('Installed hook review-state handling failed.');
   const demo = JSON.parse(execFileSync(process.execPath, [cli, 'demo', '--clients', 'codex,claude,copilot', '--json'], { encoding: 'utf8' }));
   if (new Set(demo.findings.map(f => f.ruleId)).size < 5) throw new Error('Bundled demo failed to demonstrate real findings.');
   if (!demo.findings.some(finding => finding.ruleId === 'instructions.truncated') || demo.clients.find(client => client.client === 'codex')?.settings.find(setting => setting.key === 'project_doc_max_bytes' && setting.status === 'active')?.value !== 160) throw new Error('The installed Git-free sample lost its Codex byte-budget configuration.');

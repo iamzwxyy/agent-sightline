@@ -118,6 +118,24 @@ const cases: RuntimeCase[] = [
     keys: ['mcp_servers.fixture.command', 'mcp_servers.fixture.args'],
   },
   {
+    name: 'persisted hook review state',
+    user: 'model="user-model"\n[hooks.state.fixture]\nenabled=false\ntrusted_hash="reviewed-fixture-hash"\n',
+    files: {},
+    keys: ['hooks.state.fixture.enabled', 'hooks.state.fixture.trusted_hash'],
+  },
+  {
+    name: 'project disables hooks after user configuration',
+    user: '[features]\nhooks=true\n',
+    files: { '.codex/config.toml': '[features]\nhooks=false\n' },
+    keys: ['features.hooks'],
+  },
+  {
+    name: 'project enables hooks after user configuration',
+    user: '[features]\nhooks=false\n',
+    files: { '.codex/config.toml': '[features]\nhooks=true\n' },
+    keys: ['features.hooks'],
+  },
+  {
     name: 'nearest nested Git repository', cwd: 'nested/src', trustRoot: 'nested', gitRoots: ['.', 'nested'],
     user: 'model="user-model"\nmodel_reasoning_effort="low"\n',
     files: { '.codex/config.toml': 'model="outer-model"\n', 'nested/.codex/config.toml': 'model_reasoning_effort="medium"\n', 'nested/src/.codex/config.toml': 'model_reasoning_effort="high"\n' },
@@ -218,6 +236,7 @@ for (const fixture of cases) test(`Codex runtime configuration matches Sightline
     }
   }
   assert.ok(!report.findings.some(finding => finding.ruleId.startsWith('parse.') || finding.ruleId === 'config.schema'));
+  assert.ok(!report.findings.some(finding => finding.ruleId === 'hook.type'));
   if ((fixture.canonicalTrust ?? fixture.trust) === 'untrusted') assert.ok(actual.layers.some((layer: any) => layer.name.type === 'project' && layer.disabledReason));
   // Only initialize, initialized and config/read are sent to the real client.
   assert.equal(actual.config.analytics.enabled, false);

@@ -269,18 +269,18 @@
     if (related.length) {
       content.append(node('h3', 'Related sources'));
       const list = node('ul', undefined, 'related-list');
-      related.forEach(location => list.append(node('li', `${short(location.path)} · line ${location.line}, column ${location.column}`)));
+      related.forEach(location => {
+        const label = `${short(location.path)} · line ${location.line}, column ${location.column}`;
+        const row = node('li');
+        row.append(sourceClient(location) ? button(label, () => inspectSourceLocation(location), 'source-link') : node('span', label));
+        list.append(row);
+      });
       content.append(list);
     }
     const actions = node('div', undefined, 'dialog-actions');
-    const client = finding.clients[0] ?? report.clients.find(candidate => candidate.decisions.some(source => source.path === finding.location.path && source.status !== 'ignored'))?.client ?? state.client;
-    actions.append(button('Inspect source →', () => {
-      $('detail-dialog').close();
-      state.sourceFilter = 'all';
-      $('source-search').value = '';
-      state.highlightLine = finding.location.line;
-      navigate('effective', client, finding.location.path);
-    }, 'button button-primary'), button('Copy location', () => copy(`${finding.location.path}:${finding.location.line}:${finding.location.column}`), 'button'));
+    const client = sourceClient(finding.location, finding.clients[0]);
+    if (client) actions.append(button('Inspect source →', () => inspectSourceLocation(finding.location, client), 'button button-primary'));
+    actions.append(button('Copy location', () => copy(`${finding.location.path}:${finding.location.line}:${finding.location.column}`), 'button'));
     content.append(actions);
     $('detail-body').replaceChildren(content);
     if (!$('detail-dialog').open) $('detail-dialog').showModal();
@@ -420,7 +420,7 @@
         code.append(node('div', 'Byte limit reached · content below is not loaded', 'byte-limit-marker'));
       }
     });
-    else code.append(empty('No source preview available', source.bytes === 0 ? 'This configuration file is empty.' : 'The file was discovered outside the active instruction chain. Its loading decision is shown in Source details.'));
+    else code.append(empty('No source preview available', source.bytes === 0 ? 'This configuration file is empty.' : 'This report includes the source’s loading decision and provenance in Source details.'));
     content.push(code);
     $('instructions').replaceChildren(...content);
     $('copy-source').disabled = !preview.text;
@@ -442,7 +442,7 @@
     }
     why.push(metadata);
     if (source.importedFrom) why.push(node('p', `Imported from ${short(source.importedFrom.path)}:${source.importedFrom.line}`, 'path'));
-    why.push(button('Copy absolute path', () => copy(source.path), 'text-button'));
+    why.push(button('Copy source path', () => copy(source.path), 'text-button'));
     const related = groupFindings().filter(finding => finding.location.path === source.path && (!finding.clients.length || finding.clients.includes(state.client)));
     if (related.length) {
       const list = node('div', undefined, 'why-findings'); list.append(node('h3', `${related.length} related findings`));
@@ -457,18 +457,26 @@
     const title = node('h2', setting.key); title.id = 'detail-title';
     content.append(badge(setting.status), title, node('pre', JSON.stringify(setting.value, null, 2)), node('h3', 'Why this value applies'), node('p', setting.reason));
     const origins = node('div', undefined, 'setting-origins');
-    origins.append(node('h3', 'Selected definition'), button(`${short(setting.location.path)} · line ${setting.location.line}`, () => inspectSettingLocation(setting.location, client), 'source-link'));
+    origins.append(node('h3', 'Selected definition'), button(`${short(setting.location.path)} · line ${setting.location.line}`, () => inspectSourceLocation(setting.location, client), 'source-link'));
     if (setting.overrides.length) {
       origins.append(node('h3', 'Replaces these definitions'));
-      setting.overrides.forEach(location => origins.append(button(`${short(location.path)} · line ${location.line}`, () => inspectSettingLocation(location, client), 'source-link')));
+      setting.overrides.forEach(location => origins.append(button(`${short(location.path)} · line ${location.line}`, () => inspectSourceLocation(location, client), 'source-link')));
     }
     content.append(origins);
     const actions = node('div', undefined, 'dialog-actions');
-    actions.append(button('Inspect source →', () => inspectSettingLocation(setting.location, client), 'button button-primary'), button('Copy value', () => copy(JSON.stringify(setting.value, null, 2))));
+    actions.append(button('Inspect source →', () => inspectSourceLocation(setting.location, client), 'button button-primary'), button('Copy value', () => copy(JSON.stringify(setting.value, null, 2))));
     content.append(actions); $('detail-body').replaceChildren(content);
     if (!$('detail-dialog').open) $('detail-dialog').showModal();
   }
-  function inspectSettingLocation(location, client) {
+  function sourceClient(location, preferred) {
+    const clients = report.clients.filter(client => client.decisions.some(source => source.path === location.path));
+    return clients.find(client => client.client === preferred)?.client
+      ?? clients.find(client => client.decisions.some(source => source.path === location.path && source.status !== 'ignored'))?.client
+      ?? clients[0]?.client;
+  }
+  function inspectSourceLocation(location, preferred) {
+    const client = sourceClient(location, preferred);
+    if (!client) return;
     $('detail-dialog').close(); state.sourceFilter = 'all'; $('source-search').value = ''; state.highlightLine = location.line;
     navigate('effective', client, location.path);
   }
@@ -486,7 +494,7 @@
       const name = node('td'); name.append(button(setting.key, () => showSetting(setting, client), 'source-link setting-name'), badge(setting.status));
       const value = node('td'); value.append(node('code', JSON.stringify(setting.value), 'setting-value'));
       const owner = node('td'); const identity = node('span', undefined, 'setting-client'); identity.append(avatar(client), node('span', names[client])); owner.append(identity);
-      const source = node('td'); source.append(button(`${short(setting.location.path)}:${setting.location.line}`, () => inspectSettingLocation(setting.location, client), 'source-link'));
+      const source = node('td'); source.append(button(`${short(setting.location.path)}:${setting.location.line}`, () => inspectSourceLocation(setting.location, client), 'source-link'));
       row.append(name, value, owner, source); body.append(row);
     }
     table.append(body);

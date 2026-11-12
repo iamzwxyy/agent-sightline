@@ -92,15 +92,15 @@ export function portable(report: Report): Report {
   });
   const commonHome = new RegExp(before + "(?:/(?:Users|home)/[^/\"\\\\\\r\\n]+|[A-Za-z]:[/\\\\]+Users[/\\\\]+[^/\\\\\"\\r\\n]+)", 'g');
   const scrub = (text: string): string => {
-    // Flattened project keys keep their final setting name separate from the path.
-    const project = text.match(/^(projects\.)(.*)(\.[^.]+)$/);
-    if (project) text = project[2];
+    // Flattened configuration keys keep their final setting name separate from the path.
+    const pathKey = text.match(/^(projects\.|hooks\.state\.)(.*)(\.[^.]+)$/);
+    if (pathKey) text = pathKey[2];
     for (const rule of replacements) {
       if (rule.exact.test(text)) { text = rule.replacement; continue; }
       text = text.replace(rule.path, (_match, prefix: string) => prefix + rule.replacement + rule.suffix);
     }
     text = text.replace(commonHome, (_match, prefix: string) => prefix + '~');
-    return project ? project[1] + text + project[3] : text;
+    return pathKey ? pathKey[1] + text + pathKey[3] : text;
   };
   const walk = (value: any): any => {
     if (typeof value === 'string') return scrub(value);

@@ -10,6 +10,79 @@ import AxeBuilder from '@axe-core/playwright';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('selected Codex diagnostics keep hook review state and foreign syntax errors in their own roles', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'Repository instructions.', '.claude/settings.local.json': '{ broken JSON' }, {
+    '.codex/config.toml': '[hooks.state.fixture]\nenabled=false\ntrusted_hash="reviewed-fixture-hash"\n',
+    '.codex/hooks.json': JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'node' }] }] } }),
+  });
+  const reviewId = path.join(w.home, '.codex/retired-hooks.json') + ':pre_tool_use:0:0';
+  await writeFile(path.join(w.home, '.codex/config.toml'), `[hooks.state.${JSON.stringify(reviewId)}]\nenabled=false\ntrusted_hash="reviewed-fixture-hash"\n`);
+  const server = await serve({ ...w, clients: ['codex'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    await expect(page.locator('#overview-heading')).toHaveText('No configuration issues found.');
+    await page.getByRole('button', { name: 'Inspect Codex instructions', exact: true }).click();
+    await page.getByRole('button', { name: 'All discovered', exact: true }).click();
+    await page.locator('#sources .source').filter({ hasText: 'settings.local.json' }).click();
+    await expect(page.locator('#source-status')).toHaveText('Not loaded');
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('selected-client.html');
+    await (await pending).saveAs(file);
+    expect(await readFile(file, 'utf8')).not.toContain(JSON.stringify(w.home).slice(1, -1));
+    await page.goto(pathToFileURL(file).href);
+    const report = JSON.parse(await page.locator('#report-data').textContent() ?? 'null');
+    expect(report.findings.some((finding: any) => finding.ruleId.startsWith('parse.') || finding.ruleId === 'hook.type' || finding.ruleId === 'hook.dual-source')).toBe(false);
+    expect(report.sources.find((source: any) => source.relativePath === '.claude/settings.local.json').invalid).toBe(true);
+    expect(report.clients[0].extensions.filter((extension: any) => extension.kind === 'hook')).toHaveLength(1);
+    const review = report.clients[0].settings.find((setting: any) => setting.key.startsWith('hooks.state.') && setting.key.endsWith('.enabled'));
+    expect(review.key).toContain('hooks.state.~');
+    expect(review.location.line).toBe(2);
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('related finding locations navigate to the owning client and exact source line online and offline', async ({ page }) => {
+  const w = await workspace({
+    '.codex/config.toml': '[mcp_servers.db]\ncommand="missing-codex-server"\n',
+    '.mcp.json': JSON.stringify({ mcpServers: { db: { command: 'missing-claude-server' } } }, null, 2),
+  });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    for (const offline of [false, true]) {
+      if (offline) {
+        const pending = page.waitForEvent('download');
+        await page.getByRole('button', { name: /Export report/ }).click();
+        const file = test.info().outputPath('related-sources.html');
+        await (await pending).saveAs(file);
+        await page.goto(pathToFileURL(file).href);
+      }
+      await page.locator('#findings-tab').click();
+      await page.locator('#findings-list .finding').filter({ hasText: 'different commands or endpoints' }).click();
+      if (!offline) await page.screenshot({ path: test.info().outputPath('related-finding.png') });
+      await page.locator('.related-list').getByRole('button', { name: /\.mcp.json · line/ }).click();
+      await expect(page.locator('#effective-title')).toHaveText('Claude Code’s instructions');
+      await expect(page.locator('#source-title')).toHaveText('.mcp.json');
+      await expect(page.locator('.code-line.highlight')).toContainText('"db": {');
+      await expect(page.getByRole('button', { name: 'Copy source path', exact: true })).toBeVisible();
+    }
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('unreadable source findings keep their location without navigating to a different file', async ({ page }) => {
+  const w = await workspace({ 'CLAUDE.md': 'Available project instructions.' });
+  await symlink(w.home, path.join(w.repo, '.mcp.json'), process.platform === 'win32' ? 'junction' : 'dir');
+  const server = await serve({ ...w, user: false, clients: ['claude'] });
+  try {
+    await page.goto(server.url);
+    await page.locator('#findings-tab').click();
+    await page.locator('#findings-list .finding').filter({ hasText: 'Symlink points outside' }).click();
+    await expect(page.locator('#detail-dialog')).toContainText('.mcp.json');
+    await expect(page.getByRole('button', { name: /Inspect source/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Copy location', exact: true })).toBeVisible();
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('report exports replace verified path aliases and custom home paths through refresh and offline navigation', async ({ page }) => {
   const w = await workspace({ 'CLAUDE.md': 'Project instructions.', 'src/a.ts': '' }, { '.claude/CLAUDE.md': 'Personal instructions.' });
   const repo = await realpath(w.repo);
@@ -377,6 +450,10 @@ test('effective text, resolved settings and browser history preserve their prove
     await page.getByLabel('Search settings').fill('user-model');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText('Shadowed');
+    await rows.first().getByRole('button', { name: /config.toml:1$/ }).click();
+    await expect(page.locator('.code-line.highlight')).toContainText('user-model');
+    await page.goBack();
+    await expect(page.locator('#configuration')).toBeVisible();
     await page.getByRole('button', { name: 'Inspect Codex instructions', exact: true }).click();
     await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
     await expect(page.locator('#effective-document')).toContainText('Root instruction.');

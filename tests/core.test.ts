@@ -41,6 +41,20 @@ test('TOML/YAML/frontmatter reject syntax and duplicate keys', () => {
   const s = source('[mcp_servers.db]\ncommand="node"\nargs=["x"]', 'toml'); assert.deepEqual(parseSource(s), []); assert.equal(s.lines['mcp_servers.db.command'], 2);
   const md = source('---\nnot: [yaml\n', 'md', 'instructions'); assert.deepEqual(parseSource(md), []); assert.equal(md.body, md.text, 'AGENTS.md is raw Markdown, not YAML configuration');
 });
+
+test('TOML quoted hook-state and project keys retain decoded paths and exact source lines', () => {
+  for (const key of ['C:\\Users\\Fixture\\.codex\\hooks.json:pre_tool_use:0:0', '/tmp/quoted"project/hooks.json:stop:0:0']) {
+    for (const quoted of [JSON.stringify(key), "'" + key + "'"]) {
+      const input = source(`[hooks . state . ${quoted}]\nenabled=false\ntrusted_hash="fixture-hash"\n`, 'toml');
+      assert.deepEqual(parseSource(input), []);
+      assert.equal(input.lines[`hooks.state.${key}.enabled`], 2);
+      assert.equal(input.lines[`hooks.state.${key}.trusted_hash`], 3);
+    }
+    const project = source(`[projects.${JSON.stringify(key)}]\ntrust_level="trusted"\n`, 'toml');
+    assert.deepEqual(parseSource(project), []);
+    assert.equal(project.lines[`projects.${key}.trust_level`], 2);
+  }
+});
 test('glob semantics preserve platform separators, braces and client matchBase differences', () => {
   assert.deepEqual(splitGlobs('src/**/*.{ts,tsx}, docs/**/*.md'), ['src/**/*.{ts,tsx}', 'docs/**/*.md']);
   assert.ok(matches('src\\a.ts', ['src/**/*.ts'])); assert.ok(matches('src/nested/a.md', ['*.md'], true)); assert.ok(!matches('src/a.md', ['*.md'])); assert.ok(!matches('src/a.md', ['/*.md'], true));
@@ -134,6 +148,29 @@ test('malformed sources do not turn an unrelated client into an invalid or detec
   assert.equal(codex.detected, false);
   assert.equal(codex.decisions[0].status, 'ignored');
   assert.equal(r.clients.find(client => client.client === 'claude')!.decisions[0].status, 'invalid');
+});
+
+test('selected clients scope syntax, glob and configuration diagnostics to their source owners', async t => {
+  const w = await workspace({
+    'AGENTS.md': 'Repository instructions.',
+    '.claude/settings.local.json': '{ broken JSON',
+    '.claude/settings.json': '{"Permissions":{"allow":[]},"permissions":{"allowed":[]}}',
+    '.claude/rules/check.md': '---\npaths: ["../outside/**"]\n---\nCheck the target.',
+    '.github/mcp.json': '{"servers":{}}',
+    '.vscode/mcp.json': '{"servers":{"editor":{"command":"node"}}}',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const codex = await scan({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+  assert.ok(!codex.findings.some(finding => finding.severity !== 'info'));
+  assert.ok(codex.sources.some(source => source.relativePath === '.claude/settings.local.json' && source.invalid));
+  assert.ok(codex.clients[0].decisions.some(decision => decision.path.endsWith('settings.local.json') && decision.status === 'ignored'));
+  const claude = await scan({ ...w, user: false, clients: ['claude'] });
+  for (const rule of ['parse.json', 'config.field-case', 'config.unknown-field', 'glob.impossible']) assert.ok(claude.findings.some(finding => finding.ruleId === rule), rule);
+  assert.ok(!claude.findings.some(finding => finding.ruleId === 'mcp.root-key'));
+  const copilot = await scan({ ...w, user: false, clients: ['copilot'] });
+  assert.ok(copilot.findings.some(finding => finding.ruleId === 'mcp.root-key'));
+  assert.equal(copilot.findings.filter(finding => finding.ruleId === 'mcp.root-key').length, 1);
+  assert.ok(!copilot.findings.some(finding => finding.ruleId.startsWith('parse.')));
 });
 
 test('unsupported filenames inside agent configuration directories still report actionable placement errors', async t => {

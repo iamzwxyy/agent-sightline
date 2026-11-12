@@ -4,6 +4,46 @@ import path from 'node:path';
 import { rm, symlink, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { workspace } from './helpers.js';
+
+test('Codex hook review state coexists with standalone hooks and real inline definitions', async t => {
+  const state = '[hooks.state.fixture]\nenabled=false\ntrusted_hash="reviewed-fixture-hash"\n';
+  const w = await workspace({}, { '.codex/config.toml': state, '.codex/hooks.json': JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'missing-standalone-hook' }] }] } }) });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['codex'] });
+  assert.ok(!report.findings.some(finding => finding.ruleId === 'hook.type' || finding.ruleId === 'hook.dual-source'));
+  assert.equal(report.clients[0].extensions.filter(extension => extension.kind === 'hook').length, 1);
+  assert.ok(report.clients[0].settings.some(setting => setting.key === 'hooks.state.fixture.enabled' && setting.value === false));
+  await writeFile(path.join(w.home, '.codex/config.toml'), state + '\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="missing-inline-hook"\n');
+  const both = await scan({ ...w, clients: ['codex'] });
+  assert.ok(!both.findings.some(finding => finding.ruleId === 'hook.type'));
+  assert.ok(both.findings.some(finding => finding.ruleId === 'hook.dual-source'));
+  assert.deepEqual(both.clients[0].extensions.filter(extension => extension.kind === 'hook').map(extension => extension.name).sort(), ['SessionStart', 'Stop']);
+  await writeFile(path.join(w.home, '.codex/config.toml'), '[hooks.state.fixture]\nenabled="invalid"\n');
+  const invalid = await scan({ ...w, clients: ['codex'] });
+  assert.ok(invalid.findings.some(finding => finding.ruleId === 'config.schema'));
+  const reviewId = path.join(w.home, '.codex/retired-hooks.json') + ':pre_tool_use:0:0';
+  await writeFile(path.join(w.home, '.codex/config.toml'), `[hooks.state.${JSON.stringify(reviewId)}]\nenabled="invalid"\n`);
+  const quoted = await scan({ ...w, clients: ['codex'] });
+  assert.equal(quoted.findings.find(finding => finding.ruleId === 'config.schema')?.location.line, 2);
+});
+
+test('Codex hook discovery uses the final feature flag across applicable configuration layers', async t => {
+  const definitions = '\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="missing-inline-hook"\n';
+  const w = await workspace({ '.codex/config.toml': '[features]\nhooks=false\n' }, {
+    '.codex/config.toml': '[features]\nhooks=true\n' + definitions,
+    '.codex/hooks.json': JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'missing-standalone-hook' }] }] } }),
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const disabled = await scan({ ...w, clients: ['codex'], trust: 'trusted' });
+  assert.equal(disabled.clients[0].extensions.filter(extension => extension.kind === 'hook').length, 0);
+  assert.ok(disabled.clients[0].decisions.some(decision => decision.kind === 'hooks' && decision.status === 'ignored' && decision.reason.includes('features.hooks')));
+  assert.ok(!disabled.findings.some(finding => finding.ruleId === 'hook.dual-source'));
+  await writeFile(path.join(w.home, '.codex/config.toml'), '[features]\nhooks=false\n' + definitions);
+  await writeFile(path.join(w.repo, '.codex/config.toml'), '[features]\nhooks=true\n');
+  const enabled = await scan({ ...w, clients: ['codex'], trust: 'trusted' });
+  assert.deepEqual(enabled.clients[0].extensions.filter(extension => extension.kind === 'hook').map(extension => extension.name).sort(), ['SessionStart', 'Stop']);
+  assert.ok(enabled.findings.some(finding => finding.ruleId === 'hook.dual-source'));
+});
 test('Codex rejects unknown and wrong-type fields via pinned schema', async t => {
   const w = await workspace({ '.codex/config.toml': 'project_doc_max_bytes=-1\nmisspelled_field=true' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = await scan({ ...w, clients: ['codex'], trust: 'trusted' }); assert.ok(r.findings.some(f => f.ruleId === 'config.schema')); assert.ok(r.clients[0].decisions.some(d => d.kind === 'settings' && d.status === 'invalid'));

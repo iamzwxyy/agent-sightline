@@ -1,5 +1,17 @@
 # Release validation
 
+## v0.2.5
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 121-case core suite completed with 120 passes and one Windows-only skip.
+* A read-only Codex scan of the development workspace reproduced a hook-review state error and a parser error from a Claude-owned example. The error count changed from two to zero after the fixes. Isolated fixtures reproduce those structures.
+* The pinned Codex 0.167.2 version check and eighteen native configuration scenarios passed. Added scenarios compare stored hook review values and file origins, plus both directions of user/project hook-feature precedence. Local hook-discovery fixtures cover standalone/inline combinations, state-only configuration, invalid review values and the final feature flag.
+* Client selection fixtures verify syntax, case-sensitive fields, permission-field names, globs and MCP root shapes, including editor-scoped MCP files. CLI CI cases verify Codex-only success with a malformed Claude file and syntax failures for selected owners of shared MCP sources. Operational discovery findings and completeness retain their filesystem scope.
+* Quoted TOML paths, escaped Windows hook identifiers and literal keys retain decoded key paths and source lines. Portable reports replace path-bearing hook-state keys. The browser export checks both path privacy and the stored value's source line.
+* All twenty-one Chromium browser cases passed, including owning-client and exact-line navigation from related findings, offline exports, available actions for unreadable sources, direct setting-table provenance links, accessibility, profiles, scope and phone layouts.
+* Installed-package smoke covers selected-client syntax scoping and hook-review metadata alongside the existing resolver, profile, extension, portable-path, Git-free sample, HTML and inspector checks. Production dependency audit reported zero vulnerabilities.
+
 ## v0.2.4
 
 Verified locally on macOS on 2026-11-13.
