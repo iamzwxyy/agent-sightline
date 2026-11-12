@@ -18,6 +18,7 @@
       <nav id="main-navigation" class="main-navigation">
         <button data-view="overview" id="overview-tab"><span class="nav-symbol" aria-hidden="true">◫</span>Overview<span id="overview-count" class="nav-count"></span></button>
         <button data-view="effective" id="effective-tab"><span class="nav-symbol" aria-hidden="true">≡</span>Instructions</button>
+        <button data-view="configuration" id="configuration-tab"><span class="nav-symbol" aria-hidden="true">☷</span>Settings<span id="setting-count" class="nav-count"></span></button>
         <button data-view="compare" id="compare-tab"><span class="nav-symbol" aria-hidden="true">⇄</span>Compare clients</button>
         <button data-view="extensions" id="extensions-tab"><span class="nav-symbol" aria-hidden="true">⊞</span>Extensions<span id="extension-count" class="nav-count"></span></button>
         <button data-view="findings" id="findings-tab"><span class="nav-symbol" aria-hidden="true">◇</span>Findings<span id="finding-count" class="nav-count"></span></button>
@@ -40,6 +41,7 @@
       <main id="main-content" tabindex="-1">
         <section id="overview" class="page-view">
           <div class="page-heading"><div><p class="overline" id="overview-eyebrow">Workspace health</p><h1 id="overview-heading">A clear view of your configuration.</h1><p id="overview-description" class="page-description"></p></div><button id="review-findings" class="button button-primary">Review findings <span aria-hidden="true">→</span></button></div>
+          <div id="getting-started" class="getting-started" hidden></div>
           <div id="stats" class="stats-row"></div>
           <div class="section-heading"><h2>Needs your attention</h2><button class="text-button" data-go="findings">View all findings <span aria-hidden="true">→</span></button></div>
           <div id="priority-findings" class="issue-list"></div>
@@ -49,15 +51,23 @@
         </section>
         <section id="effective" class="page-view" hidden>
           <div class="page-heading compact"><div><p class="overline" id="effective-eyebrow">Instruction chain</p><h1 id="effective-title">Effective configuration</h1><p id="effective-summary" class="page-description"></p></div><button id="copy-effective" class="button button-small">Copy effective text</button></div>
-          <div class="inspector-layout">
+          <div class="instruction-view-picker segmented-control" role="group" aria-label="Instruction view"><button data-instruction-view="sources" aria-pressed="true">Trace sources</button><button data-instruction-view="document" aria-pressed="false">Read effective text</button></div>
+          <div id="effective-document" hidden></div>
+          <div id="instruction-explorer" class="inspector-layout">
             <aside class="source-panel"><div class="source-panel-heading"><h2>Sources</h2><span id="source-count" class="subtle"></span></div><label class="source-search"><span aria-hidden="true">⌕</span><input id="source-search" aria-label="Search sources" placeholder="Filter sources…" type="search"></label><div class="source-filter"><button data-source-filter="relevant" aria-pressed="true">In scope</button><button data-source-filter="all" aria-pressed="false">All discovered</button></div><div id="sources" role="navigation" aria-label="Configuration sources"></div></aside>
             <article class="source-content"><div class="file-tab"><span class="file-symbol" aria-hidden="true">▤</span><strong id="source-title">Select a source</strong><span id="source-status"></span><button id="copy-source" class="icon-button" aria-label="Copy source content" title="Copy source content">⧉</button></div><div id="instructions"></div><div class="source-information"><h2>Effective settings from this source</h2><div id="settings"></div></div></article>
             <aside class="why-panel"><div class="inspector-caption">Source details</div><div id="why"></div></aside>
           </div>
         </section>
+        <section id="configuration" class="page-view" hidden>
+          <div class="page-heading compact"><div><p class="overline">Resolved configuration</p><h1>Settings, with their sources.</h1><p class="page-description">Find the value each client receives and follow the layers that selected it.</p></div></div>
+          <div class="list-toolbar"><label class="search-field"><span aria-hidden="true">⌕</span><input id="setting-search" type="search" placeholder="Search keys, values or source paths…" aria-label="Search settings"></label><label class="filter-label">Client<select id="setting-client"><option value="all">All clients</option></select></label><label class="check-label"><input type="checkbox" id="include-shadowed"> Include overridden</label></div>
+          <div id="setting-list" class="table-scroll"></div><p id="setting-summary" class="subtle"></p>
+        </section>
         <section id="compare" class="page-view" hidden>
           <div class="page-heading compact"><div><p class="overline">Across clients</p><h1>Same repository. Different context.</h1><p class="page-description">See where instructions reach your clients, and where their paths diverge.</p></div></div>
           <div id="compare-clients" class="compare-client-picker" aria-label="Clients to compare"></div>
+          <details class="comparison-text" open><summary>Effective instruction text</summary><p class="subtle">The exact loaded text for this target, in each client’s loading order.</p><div id="comparison-text"></div></details>
           <div class="section-heading"><h2>Instruction coverage</h2><label class="check-label"><input type="checkbox" id="differences-only" checked> Differences only</label></div><div id="comparison-matrix" class="table-scroll"></div>
           <div class="section-heading"><h2>Extension differences</h2><span class="subtle">Select a definition to inspect it</span></div><div id="comparison-extensions"></div>
         </section>

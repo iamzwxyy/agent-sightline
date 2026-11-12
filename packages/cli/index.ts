@@ -59,29 +59,36 @@ async function run(mode: string, target?: string, repository?: string): Promise<
   if (o.output) await atomic(o.output, content); else process.stdout.write(content);
   process.exitCode = failed(report, o.failOn ?? (mode === 'ci' ? 'error' : 'none')) ? 1 : 0;
 }
+async function openInspector(scanOptions: ScanOptions): Promise<void> {
+  const o = program.opts();
+  if (o.probe) throw new Error('UI does not execute MCP probes. Use doctor --probe.');
+  const port = Number(o.port);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('--port must be an integer from 0 to 65535.');
+  const server = await serve(scanOptions, port);
+  process.stdout.write(`Agent Sightline is listening at ${server.url}\nPress Ctrl+C to stop.\n`);
+  if (o.open !== false) {
+    const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'rundll32' : 'xdg-open';
+    const child = spawn(command, process.platform === 'win32' ? ['url.dll,FileProtocolHandler', server.url] : [server.url], { stdio: 'ignore', detached: true, shell: false });
+    child.on('error', () => {}); child.unref();
+  }
+  const stop = () => { void server.close().then(() => { process.exitCode = 0; }); };
+  process.once('SIGINT', stop); process.once('SIGTERM', stop);
+}
 program.action(repository => run('scan', undefined, repository));
 for (const mode of ['scan', 'doctor', 'ci', 'report']) program.command(mode).description(mode === 'doctor' ? 'Validate extensions and optionally probe local stdio MCP startup' : mode === 'ci' ? 'Machine-readable diagnostics with a finding exit threshold' : mode === 'report' ? 'Export terminal, JSON or a portable standalone HTML report' : 'Discover and diagnose configuration').action(() => run(mode));
 program.command('explain <target>').description('Explain file-scoped loading, ignored sources and effective configuration').action(target => run('explain', target));
 program.command('diff <target>').description('Compare instruction recipients and extension definitions').action(target => run('diff', target));
-program.command('demo').description('Diagnose the bundled intentionally broken example').action(() => {
+program.command('demo').description('Explore the bundled intentionally broken example').option('--ui', 'open the sample workspace in the browser inspector').action(commandOptions => {
   program.setOptionValue('user', false); program.setOptionValue('trust', 'trusted');
-  return run('scan', 'src/payments/refund.ts', fileURLToPath(new URL('../../examples/broken-agent-config', import.meta.url)));
+  const repository = fileURLToPath(new URL('../../examples/broken-agent-config', import.meta.url));
+  program.setOptionValue('repo', repository);
+  return commandOptions.ui ? openInspector(options('src/payments/refund.ts', repository)) : run('scan', 'src/payments/refund.ts', repository);
 });
 program.command('adapters').description('List rule versions, source links and known limitations').action(() => {
   const list = adapters.map(a => a.metadata); process.stdout.write(program.opts().json ? JSON.stringify(list, null, 2) + '\n' : list.map(m => `${m.id.padEnd(9)} ${m.maturity.padEnd(12)} ${m.ruleVersion}\n  Verified: ${m.verifiedOn}\n  ${m.evidence.join('\n  ')}\n  Limits: ${m.limitations.join(' ')}`).join('\n\n') + '\n');
 });
 program.command('version').description('Print package version').action(() => { process.stdout.write('0.1.0\n'); });
-program.command('ui').description('Open a read-only inspector on 127.0.0.1').action(async () => {
-  const o = program.opts(); if (o.probe) throw new Error('UI does not execute MCP probes. Use doctor --probe.');
-  const port = Number(o.port); if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('--port must be an integer from 0 to 65535.');
-  const server = await serve(options(), port);
-  process.stdout.write(`Agent Sightline is listening at ${server.url}\nPress Ctrl+C to stop.\n`);
-  if (o.open !== false) {
-    const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'rundll32' : 'xdg-open';
-    const child = spawn(command, process.platform === 'win32' ? ['url.dll,FileProtocolHandler', server.url] : [server.url], { stdio: 'ignore', detached: true, shell: false }); child.on('error', () => {}); child.unref();
-  }
-  const stop = () => { void server.close().then(() => { process.exitCode = 0; }); }; process.once('SIGINT', stop); process.once('SIGTERM', stop);
-});
+program.command('ui').description('Open a read-only inspector on 127.0.0.1').action(() => openInspector(options()));
 // Useful for shells and CI; never echo raw parser errors or environment values.
 program.exitOverride().configureOutput({ outputError: str => process.stderr.write(redactText(str)) });
 try { await program.parseAsync(); } catch (error) {

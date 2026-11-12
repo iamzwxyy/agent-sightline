@@ -5,12 +5,13 @@
   const originalDocument = document.documentElement.outerHTML;
   const names = { codex: 'Codex', claude: 'Claude Code', copilot: 'GitHub Copilot', gemini: 'Gemini CLI', cursor: 'Cursor', opencode: 'OpenCode' };
   const initials = { codex: 'C', claude: '✳', copilot: 'G', gemini: 'G', cursor: '↗', opencode: 'O' };
-  const viewLabels = { overview: 'Overview', effective: 'Instructions', compare: 'Compare clients', extensions: 'Extensions', findings: 'Findings' };
+  const viewLabels = { overview: 'Overview', effective: 'Instructions', configuration: 'Settings', compare: 'Compare clients', extensions: 'Extensions', findings: 'Findings' };
   const state = {
     view: 'overview',
     client: report.clients.find(client => client.detected)?.client ?? report.clients[0]?.client,
     source: null,
     sourceFilter: 'relevant',
+    instructionView: 'sources',
     extensionKind: 'all',
     compareClients: new Set(report.clients.filter(client => client.detected).slice(0, 3).map(client => client.client)),
     highlightLine: null,
@@ -26,6 +27,7 @@
     return element;
   };
   const short = value => value.startsWith(report.repository) ? value.slice(report.repository.length).replace(/^[/\\]/, '').replace(/\\/g, '/') || '.' : value.replace(/\\/g, '/');
+  const initialTarget = short(report.target);
   const basename = value => value.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'Workspace';
   const selectedClient = () => report.clients.find(client => client.client === state.client) ?? report.clients[0];
   const statusNames = { active: 'Loaded', conditional: 'Conditional', shadowed: 'Shadowed', ignored: 'Not loaded', truncated: 'Truncated', invalid: 'Invalid' };
@@ -78,7 +80,7 @@
   }
   function navigate(view, client, source) {
     if (client) state.client = client;
-    if (source) state.source = source;
+    if (source) { state.source = source; state.instructionView = 'sources'; }
     state.view = view;
     document.body.classList.remove('nav-open');
     $('navigation-scrim').hidden = true;
@@ -87,10 +89,13 @@
     if (view === 'effective') {
       hash.set('client', state.client);
       if (state.source) hash.set('source', short(state.source));
+      if (state.instructionView === 'document') hash.set('text', 'effective');
     }
-    history.replaceState(null, '', '#' + hash.toString());
+    const nextHash = '#' + hash.toString();
+    if (location.hash !== nextHash) history.pushState(null, '', nextHash);
     renderNavigation();
     if (view === 'effective') renderInstructions();
+    if (view === 'configuration') renderSettings();
     if (view === 'compare') renderCompare();
     if (view === 'extensions') renderExtensions();
     if (view === 'findings') renderFindings();
@@ -136,6 +141,23 @@
     const detected = report.clients.filter(client => client.detected);
     $('overview-heading').textContent = actionable.length ? `${actionable.length} configuration issues found.` : 'No configuration issues found.';
     $('overview-description').textContent = `We traced ${report.sources.length} sources across ${detected.length} clients. ${actionable.length ? 'Start with a finding, or follow a client’s instruction chain.' : 'Choose a client to see its loaded instructions and configuration sources.'}`;
+    const noConfiguration = !report.sources.length;
+    if (noConfiguration) {
+      $('overview-heading').textContent = 'Your first configuration starts here.';
+      $('overview-description').textContent = 'No agent configuration was discovered in this scan. Explore the sample workspace, or add an instruction file in a supported location.';
+    }
+    const starting = $('getting-started');
+    starting.hidden = !noConfiguration && (!live || short(report.target) !== '.');
+    starting.replaceChildren();
+    if (!starting.hidden) {
+      const description = node('div');
+      description.append(node('h2', noConfiguration ? 'See how a configuration issue looks' : 'Choose the file your agent is working on'), node('p', noConfiguration ? 'The sample includes missing imports, instruction overrides and a byte limit you can trace to the exact source.' : 'Loading rules depend on the target’s directory and file type. Pick a source file to inspect its instruction chain.'));
+      const actions = node('div', undefined, 'getting-started-actions');
+      if (live && !noConfiguration) actions.append(button('Choose a target file', () => { $('target').focus(); $('target').select(); }, 'button button-primary'));
+      if (live) { const demo = node('a', 'Explore sample workspace →', 'button'); demo.href = '/demo/'; actions.append(demo); }
+      actions.append(button('Copy demo command', () => copy('agent-sightline demo --ui', 'Demo command copied'), 'button'));
+      starting.append(description, actions);
+    }
     $('review-findings').hidden = !actionable.length;
     const stats = [
       { label: 'Errors', value: errors.length, note: 'Configuration needs a fix', className: 'error', action: () => { $('severity').value = 'error'; navigate('findings'); } },
@@ -149,7 +171,7 @@
       return element;
     }));
     $('priority-findings').replaceChildren(...actionable.slice(0, 5).map(issueRow));
-    if (!actionable.length) $('priority-findings').append(empty('No errors or warnings found', 'You can still inspect information notices and source loading decisions.'));
+    if (!actionable.length) $('priority-findings').append(empty(noConfiguration ? 'No configuration to diagnose yet' : 'No errors or warnings found', noConfiguration ? 'Codex reads AGENTS.md, Claude Code reads CLAUDE.md, and Copilot reads .github/copilot-instructions.md. Refresh after adding your configuration.' : 'You can still inspect information notices and source loading decisions.'));
     $('client-overview').replaceChildren(...detected.map(client => {
       const element = button('', () => { state.source = null; navigate('effective', client.client); }, 'client-card');
       const heading = node('div', undefined, 'client-card-heading');
@@ -217,6 +239,12 @@
     if (!client) return;
     $('effective-title').textContent = `${names[client.client]}’s instructions`;
     $('effective-summary').textContent = `${client.instructionBytes.toLocaleString()} loaded bytes · ~${client.estimatedTokens.toLocaleString()} estimated tokens · rules ${client.metadata.ruleVersion}`;
+    $('copy-effective').onclick = () => copy(client.instructions, 'Effective instructions copied');
+    $('copy-effective').disabled = !client.instructions;
+    document.querySelectorAll('[data-instruction-view]').forEach(element => element.setAttribute('aria-pressed', String(element.dataset.instructionView === state.instructionView)));
+    $('instruction-explorer').hidden = state.instructionView !== 'sources';
+    $('effective-document').hidden = state.instructionView !== 'document';
+    if (state.instructionView === 'document') renderEffectiveDocument(client);
     const sources = decisions();
     const selected = sources.find(source => source.path === state.source) ?? sources.find(source => ['active', 'truncated'].includes(source.status) && ['instructions', 'rules'].includes(source.kind)) ?? sources[0];
     state.source = selected?.path ?? null;
@@ -227,6 +255,22 @@
       $('why').replaceChildren(node('p', client.metadata.limitations.join(' ')));
     }
     renderNavigation();
+  }
+  function renderEffectiveDocument(client) {
+    const origins = node('div', undefined, 'effective-origins');
+    client.decisions.filter(source => ['active', 'truncated'].includes(source.status) && source.content && ['instructions', 'rules'].includes(source.kind)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).forEach(source => {
+      origins.append(button(`${source.order} · ${short(source.path)}`, () => {
+        state.instructionView = 'sources'; state.sourceFilter = 'all';
+        navigate('effective', client.client, source.path);
+      }, 'source-origin'));
+    });
+    const content = node('article', undefined, 'effective-document');
+    const conditional = client.decisions.filter(source => source.status === 'conditional' && ['instructions', 'rules'].includes(source.kind));
+    if (conditional.length) content.append(node('div', `${conditional.length} instruction sources depend on trust, approval or a session condition. Review their loading decisions in Trace sources.`, 'code-note'));
+    content.append(origins);
+    if (client.instructions) content.append(node('pre', client.instructions, 'effective-text'));
+    else content.append(empty('No proven active instruction text', 'Review the source chain and workspace trust assumptions for this client.'));
+    $('effective-document').replaceChildren(content);
   }
   function renderSourceList() {
     const query = $('source-search').value.toLowerCase();
@@ -332,8 +376,49 @@
       why.push(list);
     }
     $('why').replaceChildren(...why);
-    $('copy-effective').onclick = () => copy(client.instructions, 'Effective instructions copied');
-    $('copy-effective').disabled = !client.instructions;
+  }
+  function showSetting(setting, client) {
+    $('detail-category').textContent = `${names[client]} / setting`;
+    const content = node('div', undefined, 'dialog-content');
+    const title = node('h2', setting.key); title.id = 'detail-title';
+    content.append(badge(setting.status), title, node('pre', JSON.stringify(setting.value, null, 2)), node('h3', 'Why this value applies'), node('p', setting.reason));
+    const origins = node('div', undefined, 'setting-origins');
+    origins.append(node('h3', 'Selected definition'), button(`${short(setting.location.path)} · line ${setting.location.line}`, () => inspectSettingLocation(setting.location, client), 'source-link'));
+    if (setting.overrides.length) {
+      origins.append(node('h3', 'Replaces these definitions'));
+      setting.overrides.forEach(location => origins.append(button(`${short(location.path)} · line ${location.line}`, () => inspectSettingLocation(location, client), 'source-link')));
+    }
+    content.append(origins);
+    const actions = node('div', undefined, 'dialog-actions');
+    actions.append(button('Inspect source →', () => inspectSettingLocation(setting.location, client), 'button button-primary'), button('Copy value', () => copy(JSON.stringify(setting.value, null, 2))));
+    content.append(actions); $('detail-body').replaceChildren(content);
+    if (!$('detail-dialog').open) $('detail-dialog').showModal();
+  }
+  function inspectSettingLocation(location, client) {
+    $('detail-dialog').close(); state.sourceFilter = 'all'; $('source-search').value = ''; state.highlightLine = location.line;
+    navigate('effective', client, location.path);
+  }
+  function renderSettings() {
+    const selected = $('setting-client').value;
+    const query = $('setting-search').value.trim().toLowerCase();
+    const settings = report.clients.filter(client => selected === 'all' || selected === client.client).flatMap(client => client.settings.map(setting => ({ setting, client: client.client })));
+    const visible = settings.filter(({ setting }) => ($('include-shadowed').checked || setting.status !== 'shadowed') && (!query || [setting.key, JSON.stringify(setting.value), short(setting.location.path)].join(' ').toLowerCase().includes(query)));
+    const table = node('table', undefined, 'coverage-table settings-table');
+    const head = node('thead'); const header = node('tr');
+    ['Setting', 'Resolved value', 'Client', 'Source'].forEach(label => header.append(node('th', label))); head.append(header); table.append(head);
+    const body = node('tbody');
+    for (const { setting, client } of visible) {
+      const row = node('tr');
+      const name = node('td'); name.append(button(setting.key, () => showSetting(setting, client), 'source-link setting-name'), badge(setting.status));
+      const value = node('td'); value.append(node('code', JSON.stringify(setting.value), 'setting-value'));
+      const owner = node('td'); const identity = node('span', undefined, 'setting-client'); identity.append(avatar(client), node('span', names[client])); owner.append(identity);
+      const source = node('td'); source.append(button(`${short(setting.location.path)}:${setting.location.line}`, () => inspectSettingLocation(setting.location, client), 'source-link'));
+      row.append(name, value, owner, source); body.append(row);
+    }
+    table.append(body);
+    const reset = () => { $('setting-search').value = ''; $('setting-client').value = 'all'; $('include-shadowed').checked = false; renderSettings(); };
+    $('setting-list').replaceChildren(visible.length ? table : empty(settings.length ? 'No settings match your filters' : 'No structured settings discovered', settings.length ? 'Try another key, value, client or source path.' : 'Structured settings appear here when a supported configuration file is discovered.', button('Reset filters', reset, 'button button-small')));
+    $('setting-summary').textContent = `${visible.length} of ${settings.length} setting definitions shown. Select a key to inspect its precedence and replaced origins.`;
   }
   function renderCompare() {
     const clients = report.clients.filter(client => state.compareClients.has(client.client));
@@ -349,6 +434,19 @@
       element.setAttribute('aria-pressed', String(state.compareClients.has(client.client)));
       return element;
     }));
+    $('comparison-text').replaceChildren(...clients.map(client => {
+      const panel = node('article', undefined, 'comparison-document');
+      const heading = node('div', undefined, 'comparison-document-heading');
+      const title = node('h3'); title.append(avatar(client.client), node('span', names[client.client]));
+      heading.append(title, button('Copy text', () => copy(client.instructions, `${names[client.client]} instructions copied`), 'button button-small'));
+      const loaded = client.decisions.filter(source => ['active', 'truncated'].includes(source.status) && source.content && ['instructions', 'rules'].includes(source.kind));
+      const conditional = client.decisions.filter(source => source.status === 'conditional' && ['instructions', 'rules'].includes(source.kind)).length;
+      panel.append(heading, node('p', `${client.instructionBytes.toLocaleString()} bytes · ${loaded.length} ${loaded.length === 1 ? 'source' : 'sources'} loaded${conditional ? ` · ${conditional} conditional` : ''}`, 'comparison-document-meta'));
+      if (client.instructions) { const text = node('pre', client.instructions, 'comparison-document-text'); text.tabIndex = 0; text.setAttribute('aria-label', `${names[client.client]} effective instructions`); panel.append(text); }
+      else panel.append(node('p', 'No proven active instruction text for this target.', 'comparison-document-text subtle'));
+      panel.append(button('Trace this instruction chain →', () => { state.source = null; state.instructionView = 'sources'; navigate('effective', client.client); }, 'text-button'));
+      return panel;
+    }));
     const sources = report.sources.filter(source => ['instructions', 'rules'].includes(source.kind));
     const table = node('table', undefined, 'coverage-table');
     const head = node('thead'); const header = node('tr'); header.append(node('th', 'Instruction source'));
@@ -357,7 +455,7 @@
     let count = 0;
     for (const source of sources) {
       const decisions = clients.map(client => client.decisions.find(decision => decision.sourceId === source.id));
-      if ($('differences-only').checked && new Set(decisions.map(decision => decision?.status ?? 'ignored')).size <= 1) continue;
+      if ($('differences-only').checked && new Set(decisions.map(decision => JSON.stringify([decision?.status ?? 'ignored', decision?.loadedBytes ?? 0, decision?.content ?? '']))).size <= 1) continue;
       const row = node('tr'); const label = node('td');
       label.append(button(basename(source.path), () => { state.sourceFilter = 'all'; navigate('effective', clients[0].client, source.path); }, 'source-link'), node('span', short(source.path), 'source-path')); row.append(label);
       decisions.forEach((decision, index) => {
@@ -439,7 +537,8 @@
     $('finding-count').textContent = String(groups.length);
     $('overview-count').textContent = String(groups.filter(finding => finding.severity !== 'info').length);
     $('extension-count').textContent = String(report.clients.reduce((count, client) => count + client.extensions.filter(extension => extension.status === 'active' || extension.status === 'conditional').length, 0));
-    for (const id of ['finding-client', 'extension-client']) {
+    $('setting-count').textContent = String(report.clients.reduce((count, client) => count + client.settings.filter(setting => setting.status !== 'shadowed').length, 0));
+    for (const id of ['finding-client', 'extension-client', 'setting-client']) {
       const previous = $(id).value;
       $(id).replaceChildren();
       const all = node('option', 'All clients'); all.value = 'all'; $(id).append(all);
@@ -448,6 +547,7 @@
     }
     renderNavigation(); renderOverview(); renderScope();
     if (state.view === 'effective') renderInstructions();
+    if (state.view === 'configuration') renderSettings();
     if (state.view === 'findings') renderFindings();
     if (state.view === 'compare') renderCompare();
     if (state.view === 'extensions') renderExtensions();
@@ -464,7 +564,12 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       if (request !== state.request) return;
-      report = data; state.source = null; state.highlightLine = null;
+      report = data;
+      if (!report.sources.some(source => source.path === state.source)) state.source = null;
+      state.highlightLine = null;
+      const address = new URL(location.href);
+      address.searchParams.set('target', short(report.target)); address.searchParams.set('trust', $('trust').value);
+      history.replaceState(null, '', address);
       render(); toast('Configuration updated');
     } catch (error) {
       if (error.name !== 'AbortError' && request === state.request) { $('error').textContent = error.message; $('error').hidden = false; }
@@ -476,6 +581,8 @@
     }
   }
   document.querySelectorAll('[data-view]').forEach(element => { element.onclick = () => navigate(element.dataset.view); });
+  document.querySelector('.brand').onclick = event => { event.preventDefault(); navigate('overview'); };
+  document.querySelectorAll('[data-instruction-view]').forEach(element => { element.onclick = () => { state.instructionView = element.dataset.instructionView; navigate('effective', state.client); }; });
   document.querySelectorAll('[data-go]').forEach(element => { element.onclick = () => navigate(element.dataset.go); });
   document.querySelectorAll('[data-source-filter]').forEach(element => { element.onclick = () => { state.sourceFilter = element.dataset.sourceFilter; renderSourceList(); }; });
   document.querySelectorAll('[data-kind]').forEach(element => { element.onclick = () => { state.extensionKind = element.dataset.kind; renderExtensions(); }; });
@@ -487,6 +594,9 @@
   $('finding-search').oninput = renderFindings;
   $('severity').onchange = renderFindings;
   $('finding-client').onchange = renderFindings;
+  $('setting-search').oninput = renderSettings;
+  $('setting-client').onchange = renderSettings;
+  $('include-shadowed').onchange = renderSettings;
   $('extension-client').onchange = renderExtensions;
   $('differences-only').onchange = renderCompare;
   $('review-findings').onclick = () => { $('severity').value = 'actionable'; navigate('findings'); };
@@ -514,14 +624,31 @@
       items[Math.max(0, Math.min(items.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))].focus();
     }
   });
-  const hash = new URLSearchParams(location.hash.slice(1));
-  if (viewLabels[hash.get('view')]) state.view = hash.get('view');
-  if (report.clients.some(client => client.client === hash.get('client'))) state.client = hash.get('client');
-  const sourcePath = hash.get('source'); if (sourcePath) state.source = report.sources.find(source => short(source.path) === sourcePath)?.path;
+  function readLocation() {
+    const hash = new URLSearchParams(location.hash.slice(1));
+    state.view = viewLabels[hash.get('view')] ? hash.get('view') : 'overview';
+    if (report.clients.some(client => client.client === hash.get('client'))) state.client = hash.get('client');
+    state.instructionView = hash.get('text') === 'effective' ? 'document' : 'sources';
+    const sourcePath = hash.get('source');
+    state.source = sourcePath ? report.sources.find(source => short(source.path) === sourcePath)?.path ?? null : null;
+  }
+  readLocation();
+  window.addEventListener('popstate', () => {
+    if (location.hash === '#main-content') return;
+    readLocation();
+    if (live) {
+      const params = new URLSearchParams(location.search);
+      const target = params.get('target') ?? initialTarget;
+      const trust = params.get('trust') ?? initialTrust;
+      if (target !== short(report.target) || trust !== $('trust').value) { $('trust').value = trust; void refresh(target); return; }
+    }
+    render();
+  });
   if (state.compareClients.size < 2) report.clients.slice(0, 3).forEach(client => state.compareClients.add(client.client));
   const trustAssumption = report.assumptions.find(assumption => assumption.startsWith('Trust:')) ?? '';
   if (trustAssumption.includes('trusted;')) $('trust').value = 'trusted';
   if (trustAssumption.includes('untrusted;')) $('trust').value = 'untrusted';
+  const initialTrust = $('trust').value;
   if (!live) {
     $('target').readOnly = true; $('inspect').hidden = true; $('refresh').hidden = true;
     $('target-shortcut').hidden = true; $('trust-control').hidden = true; $('snapshot-label').hidden = false;

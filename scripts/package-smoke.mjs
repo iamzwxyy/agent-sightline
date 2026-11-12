@@ -1,4 +1,5 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -19,5 +20,23 @@ try {
   const version = execFileSync(process.execPath, [cli, 'version'], { encoding: 'utf8' }).trim(); if (version !== '0.1.0') throw new Error('Wrong package version.');
   const demo = JSON.parse(execFileSync(process.execPath, [cli, 'demo', '--clients', 'codex,claude,copilot', '--json'], { encoding: 'utf8' }));
   if (new Set(demo.findings.map(f => f.ruleId)).size < 5) throw new Error('Bundled demo failed to demonstrate real findings.');
-  console.log(`Installed ${result[0].filename}: CLI, Codex resolution, HTML assets and version passed (${result[0].size} compressed bytes).`);
+  const inspector = spawn(process.execPath, [cli, 'demo', '--ui', '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let startupTimer;
+  try {
+    const url = await new Promise((resolve, reject) => {
+      let output = '';
+      startupTimer = setTimeout(() => reject(new Error('Installed demo inspector did not start.')), 15000);
+      inspector.once('error', reject);
+      inspector.once('exit', () => reject(new Error('Installed demo inspector exited before startup.')));
+      inspector.stdout.on('data', chunk => { output += chunk.toString(); const match = output.match(/http:\/\/127\.0\.0\.1:\d+/); if (match) resolve(match[0]); });
+    });
+    const page = await (await globalThis.fetch(url)).text();
+    if (!page.includes('Read effective text') || !page.includes('instructions.truncated')) throw new Error('Installed demo inspector assets are incomplete.');
+    const sample = await (await globalThis.fetch(url + '/api/scan?target=src/payments/refund.ts')).json();
+    if (!sample.assumptions.includes('User configuration: excluded.')) throw new Error('Demo inspector must exclude personal configuration.');
+  } finally {
+    clearTimeout(startupTimer);
+    if (inspector.exitCode === null) { const stopped = once(inspector, 'exit'); inspector.kill(); await stopped; }
+  }
+  console.log(`Installed ${result[0].filename}: CLI, Codex resolution, HTML assets, version and browser demo startup passed (${result[0].size} compressed bytes).`);
 } finally { rmSync(temp, { recursive: true, force: true }); }

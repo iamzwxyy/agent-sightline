@@ -7,6 +7,7 @@ One file. Several agents. Different instructions. Sightline shows every discover
 ```sh
 npm install -g ./agent-sightline-0.1.0.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
+agent-sightline demo --ui
 ```
 
 Node 22+. The v0.1.0 tarball can be built from this checkout with `npm ci`, `npm run build`, then `npm pack`. Public npm publication is pending; the local package is installable now.
@@ -44,6 +45,8 @@ agent-sightline ci --no-user --fail-on warn --json
 The browser UI has client/source navigation, effective content, provenance explanations, client comparison, finding filters and portable HTML export. It binds to `127.0.0.1`; no Electron or hosted service is involved. `--no-open` prints the URL without opening a browser.
 
 The workspace opens with grouped errors and warnings. Select a finding to read its cause and suggested resolution, then jump to the source line. The source explorer shows the original redacted file with line numbers and the byte cutoff. Search target files with ⌘K / Ctrl+K, filter sources with `/`, and inspect client coverage in the comparison matrix. Trust assumptions can be changed from the top bar.
+
+Read effective text shows the exact accumulated instructions with clickable source origins. Compare clients puts those instructions side by side. Settings lets you search resolved values, inspect the selected definition and follow replaced layers. The target and trust choice survive reloads, and browser Back returns through your inspection history. A repository with no configuration opens with a working sample-workspace entry point.
 
 The companion website includes an interactive example, a complete installation guide, product walkthroughs and a working CLI package download. Build and preview both interfaces locally with `npm run build:website` followed by `npm run preview`.
 

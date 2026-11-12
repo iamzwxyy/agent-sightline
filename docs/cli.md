@@ -7,6 +7,7 @@
 | `diff <target> --clients codex,claude,copilot` | Instruction content recipients and extensions by client |
 | `doctor` | Extension validation; `--probe` opts into local stdio startup |
 | `ui` | Loopback browser inspector; `--no-open` prints URL |
+| `demo --ui` | Open the bundled sample in the browser, excluding personal configuration |
 | `report --format html --output report.html` | Portable, self-contained report |
 | `ci --fail-on warn` | JSON diagnostics; finding threshold sets exit 1 |
 | `adapters --json` | Rule evidence/version/limitations |

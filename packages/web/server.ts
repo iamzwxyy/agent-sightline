@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { readdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 import type { ScanOptions } from '../core/types.js';
 import { scan } from '../core/index.js';
@@ -17,7 +18,14 @@ export async function serve(options: ScanOptions, port = 0): Promise<{ url: stri
     if (req.method !== 'GET') { res.writeHead(405); res.end('Read-only endpoint.'); return; }
     const url = new URL(req.url ?? '/', `http://${expected}`);
     try {
-      if (url.pathname === '/') { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(html(initial, { live: true, portable: false })); }
+      if (url.pathname === '/') {
+        const report = await scan({ ...options, target: url.searchParams.get('target') ?? options.target, trust: requestedTrust(url, options.trust) });
+        res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(html(report, { live: true, portable: false }));
+      }
+      else if (url.pathname === '/demo/') {
+        const report = await scan({ repo: fileURLToPath(new URL('../../examples/broken-agent-config', import.meta.url)), target: 'src/payments/refund.ts', user: false, trust: 'trusted', clients: ['codex', 'claude', 'copilot'] });
+        res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(html(report));
+      }
       else if (url.pathname === '/api/scan') {
         const target = url.searchParams.get('target') ?? '.';
         if (target.length > 2048) throw new Error('Target path is too long.');
