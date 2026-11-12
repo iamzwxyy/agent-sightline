@@ -5,7 +5,7 @@ import { CLIENTS, type ClientId, type Context, type Kind, type ScanOptions, type
 import { bytes, cmp, finding, hash, parents, slash, within } from './utils.js';
 import { parseSource } from './parse.js';
 
-const skip = new Set(['.git', 'node_modules', '.next', '.venv', 'venv', 'dist', 'build', 'coverage', 'vendor', 'target']);
+export const excludedDirectories = new Set(['.git', 'node_modules', '.next', '.venv', 'venv', 'dist', 'build', 'coverage', 'vendor', 'target']);
 export function classify(file: string): { owners: ClientId[]; kind: Kind } | null {
   const p = slash(file); const n = path.posix.basename(p); const parent = path.posix.basename(path.posix.dirname(p));
   if (/^AGENTS(?:\.override|\.local)?\.md$/.test(n)) return { owners: ['codex', 'claude', 'copilot', 'cursor', 'opencode'], kind: 'instructions' };
@@ -60,6 +60,7 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
     read: async () => null,
   };
   ctx.read = async (file, owner, kind, scope) => {
+    ctx.options.signal?.throwIfAborted();
     const abs = path.resolve(file);
     const existing = ctx.sources.find(s => s.path === abs);
     if (existing) { if (!existing.owners.includes(owner)) existing.owners.push(owner); return existing; }
@@ -92,6 +93,7 @@ export async function discoverRepository(ctx: Context): Promise<void> {
   let count = 0; const seen = new Set<string>();
   const realRepo = await realpath(ctx.repo);
   const walk = async (dir: string, depth: number): Promise<void> => {
+    ctx.options.signal?.throwIfAborted();
     if (depth > 48) return;
     let real: string;
     try { real = await realpath(dir); } catch { return; }
@@ -103,7 +105,7 @@ export async function discoverRepository(ctx: Context): Promise<void> {
     for (const entry of entries.sort((a, b) => cmp(a.name, b.name))) {
       if (++count > (ctx.options.maxFiles ?? 50000)) return;
       const p = path.join(dir, entry.name);
-      if (entry.isDirectory()) { if (!skip.has(entry.name)) await walk(p, depth + 1); }
+      if (entry.isDirectory()) { if (!excludedDirectories.has(entry.name)) await walk(p, depth + 1); }
       else {
         const type = classify(p);
         if (type) { const s = await ctx.read(p, type.owners[0] ?? 'codex', type.kind); if (s) s.owners = type.owners; }
@@ -119,6 +121,7 @@ export async function readUserTree(ctx: Context, dir: string, owner: ClientId, k
   const seen = new Set<string>();
   let realRoot: string; try { realRoot = await realpath(dir); } catch { return; }
   const walk = async (d: string, depth: number): Promise<void> => {
+    ctx.options.signal?.throwIfAborted();
     if (depth > 8 || ctx.sources.length > 4000) return;
     let real: string; try { real = await realpath(d); } catch { return; }
     // User skill/rule symlinks can lead to private unrelated trees. Report instead.

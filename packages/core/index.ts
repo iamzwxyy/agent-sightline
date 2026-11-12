@@ -23,18 +23,21 @@ function envValues(ctx: Context): string[] {
   return [...values].filter(v => v && !v.startsWith('${'));
 }
 export async function scan(options: ScanOptions & { probe?: boolean } = {}): Promise<Report> {
+  options.signal?.throwIfAborted();
   const ctx = await makeContext(options);
   await discoverRepository(ctx);
   const chosen = adapters.filter(a => selectedClients(options).includes(a.metadata.id));
   // Ordered discovery shares a bounded cache and keeps all imported sources visible to diff.
-  for (const a of chosen) await a.discover(ctx);
+  for (const a of chosen) { options.signal?.throwIfAborted(); await a.discover(ctx); }
   const clients: Effective[] = [];
   for (const a of chosen) {
+    options.signal?.throwIfAborted();
     const e = await a.resolveForTarget(ctx);
     e.findings.push(...await a.validate(ctx, e));
-    if (options.probe) for (const x of e.extensions) e.findings.push(...await a.probe(x, ctx));
+    if (options.probe) for (const x of e.extensions) { options.signal?.throwIfAborted(); e.findings.push(...await a.probe(x, ctx)); }
     clients.push(e);
   }
+  options.signal?.throwIfAborted();
   // Later adapters can discover imported files. Every client must explain those too.
   for (const e of clients) finish(e, ctx);
   const findings = [...ctx.findings, ...clients.flatMap(e => e.findings), ...diagnose(ctx, clients)];

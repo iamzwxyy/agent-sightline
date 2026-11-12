@@ -15,6 +15,7 @@ test('read-only local UI serves, scans target, exports portable HTML and rejects
   const paths = await (await fetch(server.url + '/api/targets')).json(); assert.ok(paths.paths.includes('src/a.ts'));
   await writeFile(path.join(w.repo, 'src/new.ts'), '');
   const updatedPaths = await (await fetch(server.url + '/api/targets')).json(); assert.ok(updatedPaths.paths.includes('src/new.ts'));
+  for (const query of ['limit=0', 'limit=1501', 'limit=wrong', 'q=' + 'x'.repeat(2049)]) assert.equal((await fetch(server.url + '/api/targets?' + query)).status, 400);
   const trusted = await (await fetch(server.url + '/api/scan?target=src/a.ts&trust=untrusted')).json(); assert.ok(trusted.assumptions.some((value: string) => value.includes('Trust: untrusted;')));
   const output = await (await fetch(server.url + '/api/export?target=src/a.ts')).text(); assert.ok(!output.includes(w.repo)); assert.ok(output.includes('data-live="false"'));
   const demo = await (await fetch(server.url + '/demo/')).text(); assert.ok(demo.includes('instructions.truncated')); assert.ok(!demo.includes(w.repo)); assert.ok(!demo.includes(w.home)); assert.ok(demo.includes('data-live="false"'));

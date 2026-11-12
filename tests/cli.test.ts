@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { readFile, readdir, rm } from 'node:fs/promises';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { readFile, readdir, rm, watch } from 'node:fs/promises';
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
@@ -28,4 +29,31 @@ test('HTML/JSON report writes only explicit output and redacts exported paths', 
   const w = await workspace({ 'CLAUDE.md': 'API_KEY=secret-sentinel-value' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = run(['report', '--client', 'claude', '--no-user', '--format', 'html', '--output', 'report.html'], w.repo); assert.equal(r.status, 0); const html = await readFile(path.join(w.repo, 'report.html'), 'utf8'); assert.ok(html.startsWith('<!doctype html>')); assert.ok(!html.includes('secret-sentinel-value')); assert.ok(!html.includes(w.repo));
   const broken = run(['report', '--output', 'missing-dir/report.json', '--json', '--no-user'], w.repo); assert.equal(broken.status, 2);
+});
+
+test('interrupting a CLI probe terminates its server before exiting', { skip: process.platform === 'win32', timeout: 15000 }, async t => {
+  const server = `import { writeFileSync, renameSync } from 'node:fs';
+writeFileSync('probe.pid.tmp', String(process.pid));
+renameSync('probe.pid.tmp', 'probe.pid');
+setInterval(() => {}, 1000);
+process.on('SIGTERM', () => {});`;
+  const w = await workspace({ 'server.mjs': server, '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: ['server.mjs'] } } }) });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const changes = watch(w.repo, { signal: AbortSignal.timeout(10000) });
+  const child = spawn(process.execPath, ['--import', import.meta.resolve('tsx'), cli, 'doctor', '--probe', '--client', 'claude', '--trust', 'trusted', '--no-user'], { cwd: w.repo, stdio: 'ignore' });
+  const closed = once(child, 'close');
+  let pid: number | undefined;
+  try {
+    for await (const change of changes) if (change.filename === 'probe.pid') break;
+    pid = Number(await readFile(path.join(w.repo, 'probe.pid'), 'utf8'));
+    child.kill('SIGINT');
+    const [code, signal] = await closed;
+    assert.equal(code, 130);
+    assert.equal(signal, null);
+    assert.throws(() => process.kill(pid!, 0));
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    await closed;
+    if (pid) { try { process.kill(-pid, 'SIGKILL'); } catch { /* the owned probe already exited */ } }
+  }
 });

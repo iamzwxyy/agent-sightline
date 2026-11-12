@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { serve } from '../../packages/web/server.js';
 import { workspace } from '../helpers.js';
 import { rm, writeFile } from 'node:fs/promises';
+import AxeBuilder from '@axe-core/playwright';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
@@ -27,6 +28,14 @@ test('finding → source line → client comparison → portable report', async 
     await page.getByRole('button', { name: 'Inspect Codex instructions', exact: true }).click();
     await expect(page.locator('#source-status')).toContainText('Truncated');
     await expect(page.locator('.byte-limit-marker')).toBeVisible();
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('Clipboard permission denied.'); } }, configurable: true }));
+    await page.getByRole('button', { name: 'Copy effective text', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Copy this text' })).toBeVisible();
+    const copyField = page.getByRole('textbox', { name: 'Text to copy' });
+    await expect(copyField).toBeFocused();
+    await expect(copyField).toHaveValue(/Payment override/);
+    expect(await copyField.evaluate((field: HTMLTextAreaElement) => field.selectionStart === 0 && field.selectionEnd === field.value.length)).toBeTruthy();
+    await page.keyboard.press('Escape');
     await page.locator('#compare-tab').click();
     await expect(page.locator('#comparison-matrix')).toContainText('AGENTS.override.md');
     await expect(page.locator('#comparison-matrix .status.truncated')).toBeVisible();
@@ -47,12 +56,13 @@ test('target suggestions, rejected target, trust assumptions and keyboard naviga
   const server = await serve({ ...sampleOptions, clients: [...sampleOptions.clients], target: 'src/payments/refund.ts' });
   try {
     await page.goto(server.url);
-    await expect(page.locator('#target-options option[value="src/payments/refund.ts"]')).toHaveCount(1);
     await page.keyboard.press('ControlOrMeta+k');
     await expect(page.locator('#target')).toBeFocused();
+    await expect(page.getByRole('option').filter({ hasText: 'src/payments/refund.ts' })).toBeVisible();
     await page.locator('#target').fill('../outside');
     await page.locator('#inspect').click();
     await expect(page.locator('#error')).toContainText('Choose a path inside');
+    await expect(page.locator('#scan-status')).toHaveText('Scan failed');
     await expect(page.locator('#footer-target')).toHaveText('src/payments/refund.ts');
     await page.locator('#trust').selectOption('untrusted');
     await expect(page.locator('#error')).toBeHidden();
@@ -73,6 +83,53 @@ test('target suggestions, rejected target, trust assumptions and keyboard naviga
     await page.keyboard.press('Escape');
     await expect(page.locator('#scope-dialog')).not.toBeVisible();
   } finally { await server.close(); }
+});
+
+test('file picker supports fuzzy keyboard selection and hidden project files', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'Root instruction.', 'src/payments/refund.ts': '', 'src/search/result.ts': '', '.github/workflows/ci.yml': '' });
+  const server = await serve({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    await page.keyboard.press('ControlOrMeta+k');
+    await page.locator('#target').fill('srcrefts');
+    await expect(page.getByRole('option').filter({ hasText: 'src/payments/refund.ts' })).toBeVisible();
+    await page.keyboard.press('ArrowUp');
+    await expect(page.locator('#target-options [aria-selected="true"]')).toContainText('refund.ts');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#footer-target')).toHaveText('src/payments/refund.ts');
+    await expect(page.locator('#target-picker')).toBeHidden();
+    await page.keyboard.press('ControlOrMeta+k');
+    await page.locator('#target').fill('ci.yml');
+    await page.getByRole('option').filter({ hasText: '.github/workflows/ci.yml' }).click();
+    await expect(page.locator('#footer-target')).toHaveText('.github/workflows/ci.yml');
+    await page.keyboard.press('ControlOrMeta+k');
+    await page.locator('#target').fill('');
+    await expect(page.getByRole('option').first()).toBeVisible();
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(results.violations.map(violation => ({ id: violation.id, nodes: violation.nodes.map(node => node.target) }))).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#target-picker')).toBeHidden();
+    await expect(page.locator('#target')).toBeFocused();
+
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('file picker supports touch selection without page overflow', async ({ browser, browserName }) => {
+  test.skip(browserName === 'firefox', 'Mobile context emulation is available in Chromium and WebKit.');
+  const server = await serve({ ...sampleOptions, clients: [...sampleOptions.clients] });
+  const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  try {
+    await phone.goto(server.url);
+    await phone.locator('#target').tap();
+    await phone.locator('#target').fill('refund');
+    const choice = phone.getByRole('option').filter({ hasText: 'src/payments/refund.ts' });
+    await expect(choice).toBeVisible();
+    expect(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    await choice.tap();
+    await expect(phone.locator('#target')).toHaveValue('src/payments/refund.ts');
+    await expect(phone.locator('#target-picker')).toBeHidden();
+    await expect(phone.locator('#scan-status')).toHaveText('Scan complete');
+  } finally { await phone.close(); await server.close(); }
 });
 
 test('mobile navigation, filters and extension details stay usable without page overflow', async ({ page }) => {

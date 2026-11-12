@@ -17,6 +17,8 @@ Common flags: `--repo`, `--client` or `--clients`, `--no-user`, `--home` (isolat
 
 `--severity` filters displayed findings at or above that level. `--fail-on` always evaluates the unfiltered report. CI defaults to `--json --fail-on error`; other commands default to no threshold. Unknown/missing arguments, invalid targets, bad formats and write errors exit 2. Help/version exit 0. Non-interactive output has no ANSI or animations.
 
+SIGINT and SIGTERM interruptions stop active probes before returning exit code 130 or 143 respectively. SDK callers can pass `ScanOptions.signal` to cancel an inspection.
+
 No-argument runs include explicit documented user configuration locations. Use `--no-user` for repository-only CI. Unknown project trust is conditional. `--trust trusted` models a trusted session and, for Claude project MCP, approved servers; it does not change the client’s real trust state.
 
 Reports write only when `--output` is supplied. Output uses a temporary sibling and atomic rename; invalid CLI input does not create partial files. The UI never writes user configuration. The default scan never executes a client, hook, MCP server or skill script.

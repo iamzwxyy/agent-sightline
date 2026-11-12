@@ -2,9 +2,13 @@
 
 ## 0.1.1 — 2026-11-12
 
+* Search repository targets by filename, path or fuzzy query, including results beyond the initial suggestion limit, with keyboard and touch selection.
+* Show failed scan status when target inspection fails.
+* Make the manual clipboard fallback keyboard-accessible when browser clipboard access is unavailable.
 * Wait for MCP probe processes to exit before returning, terminate ordinary runtime-wrapper children, and bound shutdown for servers that ignore SIGTERM.
 * Support Windows command shims with literal argument handling during explicit probes.
-* Read the product version from the package manifest across CLI output, reports and MCP initialization.
+* Clean up active probes when a CLI scan is interrupted, with standard SIGINT and SIGTERM exit codes.
+* Read the product version from the package manifest across CLI output, reports, the inspector and MCP initialization.
 * Preserve historical website package downloads through verified GitHub release assets.
 
 ## 0.1.0 — 2026-11-12

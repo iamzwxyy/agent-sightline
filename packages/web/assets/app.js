@@ -19,6 +19,11 @@
   };
   let toastTimer;
   let scanController;
+  let targetTimer;
+  let targetController;
+  let targetRequest = 0;
+  let targetItems = [];
+  let targetIndex = -1;
   const $ = id => document.getElementById(id);
   const node = (tag, text, className) => {
     const element = document.createElement(tag);
@@ -62,10 +67,72 @@
       toast(label ?? 'Copied to clipboard');
     } catch {
       const content = node('div', undefined, 'dialog-content');
-      content.append(node('h2', 'Copy this text'), node('p', 'Select the text below and copy it with your keyboard.'), node('pre', text));
+      const title = node('h2', 'Copy this text'); title.id = 'detail-title';
+      const field = node('textarea', undefined, 'copy-text');
+      field.value = text; field.readOnly = true; field.rows = Math.min(12, Math.max(3, text.split('\n').length + 1));
+      field.setAttribute('aria-label', 'Text to copy');
+      content.append(title, node('p', 'Press ⌘C or Ctrl+C to copy the selected text.'), field);
+      $('detail-category').textContent = 'Clipboard';
       $('detail-body').replaceChildren(content);
-      $('detail-dialog').showModal();
+      if (!$('detail-dialog').open) $('detail-dialog').showModal();
+      field.focus(); field.select();
     }
+  }
+  function closeTargetPicker() {
+    if (!live) return;
+    clearTimeout(targetTimer); targetController?.abort(); targetRequest++;
+    $('target-picker').hidden = true; $('target').setAttribute('aria-expanded', 'false');
+    $('target').removeAttribute('aria-activedescendant'); targetIndex = -1;
+  }
+  function chooseTarget(value) {
+    $('target').value = value; closeTargetPicker(); void refresh(value);
+  }
+  function searchTargetFiles(immediate = false) {
+    if (!live) return;
+    clearTimeout(targetTimer); targetController?.abort();
+    const request = ++targetRequest;
+    const query = $('target').value;
+    targetItems = []; targetIndex = -1;
+    $('target').removeAttribute('aria-activedescendant');
+    $('target').setAttribute('aria-expanded', 'true'); $('target-picker').hidden = false;
+    $('target-options').replaceChildren(); $('target-search-status').textContent = 'Searching repository…';
+    const search = async () => {
+      targetController = new AbortController();
+      try {
+        const parameters = new URLSearchParams({ q: query === '.' ? '' : query, limit: '40' });
+        const response = await fetch(`/api/targets?${parameters}`, { signal: targetController.signal });
+        if (!response.ok) throw new Error('File search failed.');
+        const data = await response.json();
+        if (request !== targetRequest || $('target-picker').hidden || query !== $('target').value) return;
+        targetItems = Array.isArray(data.paths) ? data.paths : [];
+        $('target-options').replaceChildren(...targetItems.map((value, index) => {
+          const option = node('li', undefined, 'target-option');
+          option.id = `target-option-${index}`; option.setAttribute('role', 'option'); option.setAttribute('aria-selected', 'false');
+          const label = node('div');
+          label.append(node('strong', value === '.' ? 'Repository root' : basename(value)), node('span', value, 'target-option-path'));
+          const icon = node('span', value.endsWith('/') || value === '.' ? '▱' : '▤', 'target-option-icon'); icon.setAttribute('aria-hidden', 'true');
+          option.append(icon, label);
+          option.onpointerdown = event => event.preventDefault();
+          option.onclick = () => chooseTarget(value);
+          return option;
+        }));
+        let status = 'No matching files. You can enter a repository-relative path.';
+        if (targetItems.length) status = `${targetItems.length} results${data.hasMore ? ' · Keep typing to narrow the list' : ''}`;
+        if (data.truncated) status = 'Suggestions are partial. You can enter a path directly.';
+        $('target-search-status').textContent = status;
+      } catch (error) {
+        if (error.name !== 'AbortError' && request === targetRequest) $('target-search-status').textContent = 'File suggestions are unavailable. Enter a path to inspect it.';
+      }
+    };
+    if (immediate) void search(); else targetTimer = setTimeout(search, 180);
+  }
+  function moveTargetSelection(direction) {
+    if (!targetItems.length) return;
+    if (targetIndex === -1) targetIndex = direction > 0 ? 0 : targetItems.length - 1;
+    else targetIndex = (targetIndex + direction + targetItems.length) % targetItems.length;
+    [...$('target-options').children].forEach((option, index) => option.setAttribute('aria-selected', String(index === targetIndex)));
+    const option = $(`target-option-${targetIndex}`);
+    $('target').setAttribute('aria-activedescendant', option.id); option.scrollIntoView({ block: 'nearest' });
   }
   function groupFindings() {
     const groups = new Map();
@@ -528,6 +595,7 @@
   }
   function render() {
     const project = basename(report.repository);
+    $('tool-version').textContent = report.tool.version;
     $('project-name').textContent = project === '<repo>' ? 'Shared report' : project;
     $('workspace-name').textContent = project === '<repo>' ? 'Shared report' : project;
     $('repository').textContent = report.repository;
@@ -557,7 +625,9 @@
     const request = ++state.request;
     scanController?.abort(); scanController = new AbortController();
     $('error').hidden = true; $('inspect').disabled = true; $('refresh').disabled = true;
-    $('scan-status').classList.add('scanning'); $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', 'Inspecting…'));
+    $('scan-status').classList.remove('failed'); $('scan-status').classList.add('scanning');
+    $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', 'Inspecting…'));
+    let succeeded = false;
     try {
       const query = new URLSearchParams({ target, trust: $('trust').value });
       const response = await fetch(`/api/scan?${query}`, { signal: scanController.signal });
@@ -571,12 +641,14 @@
       address.searchParams.set('target', short(report.target)); address.searchParams.set('trust', $('trust').value);
       history.replaceState(null, '', address);
       render(); toast('Configuration updated');
+      succeeded = true;
     } catch (error) {
       if (error.name !== 'AbortError' && request === state.request) { $('error').textContent = error.message; $('error').hidden = false; }
     } finally {
       if (request === state.request) {
         $('inspect').disabled = false; $('refresh').disabled = false;
-        $('scan-status').classList.remove('scanning'); $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', 'Scan complete'));
+        $('scan-status').classList.remove('scanning'); $('scan-status').classList.toggle('failed', !succeeded);
+        $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', succeeded ? 'Scan complete' : 'Scan failed'));
       }
     }
   }
@@ -602,7 +674,21 @@
   $('review-findings').onclick = () => { $('severity').value = 'actionable'; navigate('findings'); };
   $('scope-button').onclick = () => $('scope-dialog').showModal();
   $('help-button').onclick = () => $('help-dialog').showModal();
-  $('target-form').onsubmit = event => { event.preventDefault(); void refresh($('target').value.trim() || '.'); };
+  $('target-form').onsubmit = event => { event.preventDefault(); closeTargetPicker(); void refresh($('target').value.trim() || '.'); };
+  $('target').onfocus = () => searchTargetFiles(true);
+  $('target').oninput = () => searchTargetFiles();
+  $('target').onblur = () => closeTargetPicker();
+  $('target').onkeydown = event => {
+    if (!live || event.isComposing) return;
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeTargetPicker(); }
+    if (event.key === 'Tab') closeTargetPicker();
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if ($('target-picker').hidden) searchTargetFiles(true); else moveTargetSelection(event.key === 'ArrowDown' ? 1 : -1);
+    }
+    if (event.key === 'Enter' && !$('target-picker').hidden && targetIndex >= 0) { event.preventDefault(); chooseTarget(targetItems[targetIndex]); }
+  };
+  document.addEventListener('pointerdown', event => { if (!$('target-form').contains(event.target)) closeTargetPicker(); });
   $('refresh').onclick = () => void refresh();
   $('trust').onchange = () => void refresh();
   $('export').onclick = () => {
@@ -616,7 +702,7 @@
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && document.body.classList.contains('nav-open')) $('navigation-scrim').click();
     const editing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); if (live) { $('target').focus(); $('target').select(); } else toast('This report is a snapshot. Open the local CLI to inspect another file.'); }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); if (live) { if (document.activeElement === $('target')) searchTargetFiles(true); else $('target').focus(); $('target').select(); } else toast('This report is a snapshot. Open the local CLI to inspect another file.'); }
     if (event.key === '?' && !editing && !document.querySelector('dialog[open]')) $('help-dialog').showModal();
     if (event.key === '/' && !editing && !document.querySelector('dialog[open]')) { event.preventDefault(); navigate('effective'); $('source-search').focus(); }
     if (['ArrowUp', 'ArrowDown'].includes(event.key) && document.activeElement.classList.contains('source')) {
@@ -651,13 +737,9 @@
   const initialTrust = $('trust').value;
   if (!live) {
     $('target').readOnly = true; $('inspect').hidden = true; $('refresh').hidden = true;
+    ['role', 'aria-autocomplete', 'aria-controls', 'aria-expanded'].forEach(attribute => $('target').removeAttribute(attribute));
     $('target-shortcut').hidden = true; $('trust-control').hidden = true; $('snapshot-label').hidden = false;
     $('mode-label').textContent = 'Report snapshot'; $('project-caption').textContent = 'Shared configuration report';
-  } else {
-    fetch('/api/targets').then(response => response.json()).then(data => {
-      const paths = Array.isArray(data.paths) ? data.paths : [];
-      $('target-options').replaceChildren(...paths.map(path => { const option = node('option'); option.value = path; return option; }));
-    }).catch(() => {});
   }
   render();
 })();

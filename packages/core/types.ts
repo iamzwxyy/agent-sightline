@@ -48,6 +48,7 @@ export interface ScanOptions {
   repo?: string; target?: string; clients?: ClientId[]; home?: string; user?: boolean;
   trust?: 'auto' | 'trusted' | 'untrusted'; system?: boolean;
   env?: NodeJS.ProcessEnv; maxFiles?: number;
+  signal?: AbortSignal;
 }
 export interface Context {
   repo: string; target: string; directory: string; home: string; codexHome: string;

@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Command, CommanderError, InvalidArgumentError } from 'commander';
 import { scan, adapters } from '../core/index.js';
-import { CLIENTS, type ClientId, type ScanOptions, type Severity } from '../core/types.js';
+import { CLIENTS, type ClientId, type Report, type ScanOptions, type Severity } from '../core/types.js';
 import { failed, filter, html, json, terminal } from '../reporter/index.js';
 import { redactText } from '../core/redact.js';
 import { serve } from '../web/server.js';
@@ -33,7 +33,7 @@ program.name('agent-sightline').description('See what your coding agent actually
   .option('--probe', 'doctor only: launch local stdio MCP servers and test initialize/tools-list')
   .option('--port <port>', 'ui only: loopback port; 0 chooses a free port', '0')
   .option('--no-open', 'ui only: print URL without opening the browser')
-  .addHelpText('after', '\nExamples:\n  agent-sightline\n  agent-sightline examples/broken-agent-config --no-user\n  agent-sightline explain src/payments/refund.ts --client codex --trust trusted\n  agent-sightline diff src/payments/refund.ts --clients codex,claude,copilot\n  agent-sightline report --format html --output report.html\n  agent-sightline ci --no-user --fail-on warn --json\n  agent-sightline ui --no-open\n\nExit codes: 0 success; 1 finding threshold reached; 2 input/inspection error.\nEnvironment values are redacted. No client, hook or MCP process runs unless doctor --probe is supplied.');
+  .addHelpText('after', '\nExamples:\n  agent-sightline\n  agent-sightline examples/broken-agent-config --no-user\n  agent-sightline explain src/payments/refund.ts --client codex --trust trusted\n  agent-sightline diff src/payments/refund.ts --clients codex,claude,copilot\n  agent-sightline report --format html --output report.html\n  agent-sightline ci --no-user --fail-on warn --json\n  agent-sightline ui --no-open\n\nExit codes: 0 success; 1 finding threshold reached; 2 input/inspection error.\nInterruptions use 130 for SIGINT and 143 for SIGTERM.\nEnvironment values are redacted. No client, hook or MCP process runs unless doctor --probe is supplied.');
 
 function options(target?: string, repository?: string): ScanOptions & { probe?: boolean } {
   const o = program.opts();
@@ -54,7 +54,19 @@ async function run(mode: string, target?: string, repository?: string): Promise<
   if (o.probe && mode !== 'doctor') throw new Error('--probe is available only with doctor.');
   const format = o.json ? 'json' : o.format ?? (mode === 'ci' ? 'json' : 'terminal');
   if (!['terminal', 'json', 'html'].includes(format) || o.json && o.format && o.format !== 'json') throw new Error('Choose --format terminal, json or html; --json cannot be combined with another format.');
-  const report = await scan(options(target, repository));
+  const controller = new AbortController();
+  let interrupted: 'SIGINT' | 'SIGTERM' | undefined;
+  const interrupt = () => { interrupted = 'SIGINT'; controller.abort(); };
+  const terminate = () => { interrupted = 'SIGTERM'; controller.abort(); };
+  process.once('SIGINT', interrupt); process.once('SIGTERM', terminate);
+  let report: Report;
+  try { report = await scan({ ...options(target, repository), signal: controller.signal }); }
+  catch (error) {
+    if (interrupted) { process.exitCode = interrupted === 'SIGINT' ? 130 : 143; return; }
+    throw error;
+  } finally {
+    process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', terminate);
+  }
   const outputReport = filter(report, o.severity);
   const content = format === 'html' ? html(outputReport) : format === 'json' ? json(outputReport) : terminal(outputReport, mode === 'ci' || mode === 'doctor' || mode === 'report' ? 'scan' : mode);
   if (o.output) await atomic(o.output, content); else process.stdout.write(content);

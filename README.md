@@ -44,7 +44,7 @@ agent-sightline ci --no-user --fail-on warn --json
 
 The browser UI has client/source navigation, effective content, provenance explanations, client comparison, finding filters and portable HTML export. It binds to `127.0.0.1`; no Electron or hosted service is involved. `--no-open` prints the URL without opening a browser.
 
-The workspace opens with grouped errors and warnings. Select a finding to read its cause and suggested resolution, then jump to the source line. The source explorer shows the original redacted file with line numbers and the byte cutoff. Search target files with ⌘K / Ctrl+K, filter sources with `/`, and inspect client coverage in the comparison matrix. Trust assumptions can be changed from the top bar.
+The workspace opens with grouped errors and warnings. Select a finding to read its cause and suggested resolution, then jump to the source line. The source explorer shows the original redacted file with line numbers and the byte cutoff. Find target files by name, path or fuzzy query with ⌘K / Ctrl+K. Use arrow keys and Enter to select a result, or inspect a typed path. Filter sources with `/` and inspect client coverage in the comparison matrix. Trust assumptions can be changed from the top bar.
 
 Read effective text shows the exact accumulated instructions with clickable source origins. Compare clients puts those instructions side by side. Settings lets you search resolved values, inspect the selected definition and follow replaced layers. The target and trust choice survive reloads, and browser Back returns through your inspection history. A repository with no configuration opens with a working sample-workspace entry point.
 
@@ -92,6 +92,8 @@ agent-sightline examples/broken-agent-config --no-user
 `npm run check` runs lint, typecheck, parser/resolver/adapter/CLI/report/server/probe tests, build and a real isolated package-install smoke test. GitHub Actions runs these checks plus Chromium browser tests on Linux, macOS and Windows. See the [executed validation record](docs/validation.md) and its private CI run link for results.
 
 Exit codes: **0** successful inspection, **1** `--fail-on` threshold reached, **2** input/inspection error. CI defaults to JSON and failing on errors. See [CLI contract](docs/cli.md) for flags and JSON structure.
+
+Interrupted scans exit with 130 for SIGINT or 143 for SIGTERM, after active probe processes have stopped.
 
 ## Scope and next steps
 

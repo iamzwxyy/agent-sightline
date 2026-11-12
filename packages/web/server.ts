@@ -1,11 +1,10 @@
 import { createServer } from 'node:http';
-import path from 'node:path';
-import { readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 import type { ScanOptions } from '../core/types.js';
 import { scan } from '../core/index.js';
 import { html, json } from '../reporter/index.js';
+import { searchTargets } from './targets.js';
 
 export async function serve(options: ScanOptions, port = 0): Promise<{ url: string; close: () => Promise<void> }> {
   const initial = await scan(options);
@@ -34,10 +33,18 @@ export async function serve(options: ScanOptions, port = 0): Promise<{ url: stri
         const report = await scan({ ...options, trust: requestedTrust(url, options.trust), target: url.searchParams.get('target') ?? options.target });
         res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Content-Disposition', 'attachment; filename="agent-sightline-report.html"'); res.end(html(report));
       } else if (url.pathname === '/api/targets') {
-        res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ paths: await listTargets(initial.repository) }));
+        const query = url.searchParams.get('q') ?? '';
+        const limitValue = url.searchParams.get('limit');
+        const limit = limitValue === null ? undefined : Number(limitValue);
+        if (query.length > 2048 || limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 1500)) throw new Error('Invalid file search.');
+        const controller = new AbortController();
+        res.once('close', () => controller.abort());
+        const result = await searchTargets(initial.repository, { query, limit, maxEntries: options.maxFiles, signal: controller.signal });
+        res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(result));
       } else { res.writeHead(404); res.end('Not found.'); }
     } catch {
-      res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Cannot inspect target. Choose a path inside the repository with an existing parent directory.' }));
+      const error = url.pathname === '/api/targets' ? 'Cannot search repository files. Use up to 2048 characters and a result limit from 1 to 1500.' : 'Cannot inspect target. Choose a path inside the repository with an existing parent directory.';
+      res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error }));
     }
   });
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', () => resolve()); });
@@ -50,27 +57,4 @@ function requestedTrust(url: URL, fallback: ScanOptions['trust']): ScanOptions['
   if (value === null) return fallback;
   if (value === 'auto' || value === 'trusted' || value === 'untrusted') return value;
   throw new Error('Invalid workspace trust value.');
-}
-
-async function listTargets(repository: string): Promise<string[]> {
-  const paths = ['.'];
-  const excluded = new Set(['node_modules', 'dist', 'build', 'coverage', 'vendor', 'target']);
-  let entriesVisited = 0;
-  async function walk(directory: string, depth: number): Promise<void> {
-    if (depth > 12 || entriesVisited >= 20000 || paths.length >= 1500) return;
-    let entries;
-    try { entries = await readdir(directory, { withFileTypes: true }); } catch { return; }
-    for (const entry of entries.sort((a, b) => a.name < b.name ? -1 : 1)) {
-      if (++entriesVisited >= 20000 || paths.length >= 1500) break;
-      if (entry.name.startsWith('.') || excluded.has(entry.name) || entry.isSymbolicLink()) continue;
-      const absolute = path.join(directory, entry.name);
-      const relative = path.relative(repository, absolute).replace(/\\/g, '/');
-      if (entry.isDirectory()) {
-        paths.push(relative + '/');
-        await walk(absolute, depth + 1);
-      } else if (entry.isFile()) paths.push(relative);
-    }
-  }
-  await walk(repository, 0);
-  return paths;
 }

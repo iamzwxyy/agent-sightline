@@ -95,6 +95,7 @@ export async function probeMcp(extension: Extension, ctx: Context, client?: Clie
   try { if (!within(await realpath(ctx.repo), await realpath(cwd))) return [finding('probe.outside-scope', 'warn', x.location, 'MCP probe working directory resolves outside repository.', 'An external directory symlink is not an in-repository probe location.', 'Choose a working directory inside --repo.', client)]; } catch { return []; }
   const command = await executable(x.config.command, cwd, { ...ctx.env, ...x.config.env });
   if (!command) return [];
+  ctx.options.signal?.throwIfAborted();
   return new Promise(resolve => {
     let ended = false; let buffer = ''; let initialized = false; let ready = false;
     let forceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -117,9 +118,12 @@ export async function probeMcp(extension: Extension, ctx: Context, client?: Clie
       forceTimer = setTimeout(() => { terminate('SIGKILL'); child.stdout.destroy(); child.stderr.destroy(); }, 1000);
     };
     const timer = setTimeout(() => done(false), 5000);
+    const abort = () => done(false);
+    ctx.options.signal?.addEventListener('abort', abort, { once: true });
     child.once('close', () => {
       if (!ended) done(false);
       clearTimeout(timer); clearTimeout(forceTimer);
+      ctx.options.signal?.removeEventListener('abort', abort);
       resolve([finding(ready ? 'probe.mcp-ready' : 'probe.mcp-failed', ready ? 'info' : 'error', x.location, ready ? `MCP server "${x.name}" initialized and listed tools.` : `MCP server "${x.name}" failed the startup probe.`, ready ? 'A local JSON-RPC initialize and tools/list exchange completed; no tool was invoked.' : 'The process exited, emitted invalid protocol data, or timed out after 5 seconds. Raw process output is never exported.', ready ? 'Use the client to verify its permission and authentication state.' : 'Run the server directly and check its private logs.')]);
     });
     child.on('error', () => done(false)); child.on('exit', () => done(false)); child.stderr.on('data', () => { /* drain without exporting logs */ });
