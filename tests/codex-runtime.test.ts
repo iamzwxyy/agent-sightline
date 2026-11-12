@@ -92,6 +92,19 @@ interface RuntimeCase {
   keys: string[];
 }
 
+function assertConfiguredValue(configured: any, actual: any, key: string): void {
+  if (Array.isArray(configured)) {
+    assert.ok(Array.isArray(actual), `${key} is not an array in Codex.`);
+    assert.equal(actual.length, configured.length, `${key} has a different number of entries.`);
+    configured.forEach((value, index) => assertConfiguredValue(value, actual[index], `${key}.${index}`));
+  } else if (configured && typeof configured === 'object') {
+    for (const [field, value] of Object.entries(configured)) {
+      const canonical = key.startsWith('hooks.') && field === 'command_windows' ? 'commandWindows' : field;
+      assertConfiguredValue(value, actual?.[canonical], `${key}.${canonical}`);
+    }
+  } else assert.deepEqual(configured, actual, `${key} differs from the installed Codex configuration.`);
+}
+
 const cases: RuntimeCase[] = [
   {
     name: 'trusted user, repository and nested layers',
@@ -122,6 +135,16 @@ const cases: RuntimeCase[] = [
     user: 'model="user-model"\n[hooks.state.fixture]\nenabled=false\ntrusted_hash="reviewed-fixture-hash"\n',
     files: {},
     keys: ['hooks.state.fixture.enabled', 'hooks.state.fixture.trusted_hash'],
+  },
+  {
+    name: 'TOML Windows hook command aliases',
+    user: '[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="echo posix"\ncommand_windows="echo windows"\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="echo fallback"\ncommandWindows="echo override"\n',
+    files: {}, keys: ['hooks.Stop'],
+  },
+  {
+    name: 'model request and skipped hook handlers',
+    user: '[[hooks.PreModelRequest]]\n[[hooks.PreModelRequest.hooks]]\ntype="mcp_tool"\nserver="fixture"\ntool="inspect"\n[[hooks.PostModelRequest]]\n[[hooks.PostModelRequest.hooks]]\ntype="command"\ncommand="echo safe"\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="prompt"\n[[hooks.Stop.hooks]]\ntype="agent"\n',
+    files: {}, keys: ['hooks.PreModelRequest', 'hooks.PostModelRequest', 'hooks.Stop'],
   },
   {
     name: 'project disables hooks after user configuration',
@@ -226,8 +249,9 @@ for (const fixture of cases) test(`Codex runtime configuration matches Sightline
     const value = key.split('.').reduce((object, part) => object?.[part], actual.config);
     const setting = report.clients[0].settings.find(setting => setting.key === key && setting.status === 'active');
     assert.ok(setting, `No active Sightline value for ${key}.`);
-    assert.deepEqual(setting.value, value, `${key} differs from the installed Codex configuration.`);
-    const originKeys = Array.isArray(value) ? value.map((_, index) => `${key}.${index}`) : [key];
+    assertConfiguredValue(setting.value, value, key);
+    const originKeys = Object.keys(actual.origins).filter(originKey => originKey === key || originKey.startsWith(key + '.'));
+    assert.ok(originKeys.length, `Codex did not expose origins for ${key}.`);
     for (const originKey of originKeys) {
       const origin = actual.origins[originKey];
       assert.ok(origin, `Codex did not expose the origin for ${originKey}.`);

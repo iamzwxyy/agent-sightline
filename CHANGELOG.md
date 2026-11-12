@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.7 — 2026-11-13
+
+* Resolve Codex Windows commandWindows and TOML command_windows overrides through the same field selection used by executable checks and source navigation. Validate override types and duplicate aliases.
+* Align Codex event names and handler types with the pinned schema. Recognize model-request events and MCP tool handlers, and mark parsed prompt/agent handlers as skipped.
+* Check Codex commands from the session directory and explain ignored cwd, env and args fields. Retain Copilot's configured hook working-directory and environment behavior.
+* Track nested TOML array-table indices and skip header-like content inside multiline strings, arrays and comments when mapping source lines.
+* Extend native Codex configuration comparisons to twenty scenarios, including Windows aliases and hook handlers, alongside CLI, browser and installed-package regressions.
+
 ## 0.2.6 — 2026-11-13
 
 * Preserve engine-generated report fields, client identifiers, statuses, rule IDs, source links and version metadata when private environment values match those strings.

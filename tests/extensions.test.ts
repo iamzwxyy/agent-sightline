@@ -4,6 +4,100 @@ import path from 'node:path';
 import { chmod, rm, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { workspace } from './helpers.js';
+import { hookCommandField } from '../packages/core/extensions.js';
+
+test('hook command field selection preserves client and platform semantics', () => {
+  for (const field of ['commandWindows', 'command_windows']) {
+    const handler = { command: 'echo default', [field]: 'echo windows' };
+    assert.equal(hookCommandField('codex', handler, 'config.toml', 'win32'), field);
+    for (const platform of ['darwin', 'linux'] as const) assert.equal(hookCommandField('codex', handler, 'config.toml', platform), 'command');
+    assert.equal(hookCommandField('claude', handler, 'settings.json', 'win32'), 'command');
+  }
+  assert.equal(hookCommandField('codex', { command: 'echo fallback' }, 'config.toml', 'win32'), 'command');
+  assert.equal(hookCommandField('copilot', {}, 'hooks.json', 'win32'), 'powershell');
+  assert.equal(hookCommandField('copilot', {}, 'hooks.json', 'linux'), 'bash');
+});
+
+test('Codex command aliases use the host platform and point to the selected TOML handler field', async t => {
+  const text = [
+    '[[hooks.Stop]]', '[[hooks.Stop.hooks]]', 'type="command"', 'command="missing-posix-hook-fixture"', 'command_windows="echo windows"',
+    '[[hooks.Stop.hooks]]', 'type="command"', 'command="echo posix"', 'commandWindows="missing-windows-hook-fixture"',
+  ].join('\n');
+  const w = await workspace({ '.codex/config.toml': text });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+  const handlers = report.clients[0].extensions.filter(extension => extension.kind === 'hook');
+  assert.equal(handlers.length, 2);
+  assert.deepEqual(handlers.map(handler => handler.location.line), process.platform === 'win32' ? [5, 9] : [4, 8]);
+  assert.deepEqual(handlers.map(handler => handler.location.key), process.platform === 'win32' ? ['hooks.Stop.0.hooks.0.command_windows', 'hooks.Stop.0.hooks.1.commandWindows'] : ['hooks.Stop.0.hooks.0.command', 'hooks.Stop.0.hooks.1.command']);
+  const missing = report.findings.filter(finding => finding.ruleId === 'hook.command-missing');
+  assert.equal(missing.length, 1);
+  assert.equal(missing[0].location.line, process.platform === 'win32' ? 9 : 4);
+  assert.ok(handlers.every(handler => handler.status === 'conditional'));
+});
+
+test('Codex model events and MCP handlers follow the pinned schema while prompt and agent handlers are skipped', async t => {
+  const w = await workspace({ '.codex/hooks.json': JSON.stringify({ hooks: {
+    PreModelRequest: [{ hooks: [{ type: 'mcp_tool', server: 'fixture', tool: 'inspect', input: {} }] }],
+    PostModelRequest: [{ hooks: [{ type: 'command', command: 'echo safe' }] }],
+    Stop: [{ hooks: [{ type: 'prompt', prompt: 'Ignored prompt.' }, { type: 'agent', prompt: 'Ignored agent.' }] }],
+  } }, null, 2) });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+  assert.ok(!report.findings.some(finding => finding.ruleId.startsWith('hook.')));
+  const hooks = report.clients[0].extensions;
+  assert.equal(hooks.find(hook => hook.name === 'PreModelRequest')?.status, 'conditional');
+  assert.equal(hooks.find(hook => hook.name === 'PostModelRequest')?.status, 'conditional');
+  assert.ok(hooks.filter(hook => hook.name === 'Stop').every(hook => hook.status === 'ignored'));
+  assert.ok(hooks.filter(hook => hook.name === 'Stop').every(hook => hook.reason.includes('skipped')));
+  assert.ok(hooks.filter(hook => hook.config.type !== 'command').every(hook => hook.location.key?.endsWith('.type')));
+});
+
+test('Codex validates inactive command overrides and MCP hook fields while retaining valid JSON siblings', async t => {
+  const handlers = [
+    { type: 'command', command: 'echo safe', commandWindows: 42 },
+    { type: 'command', commandWindows: 'echo windows' },
+    { type: 'mcp_tool', server: 42, tool: 'inspect' },
+    { type: 'mcp_tool', server: 'fixture', tool: 'inspect', input: [] },
+    { type: 'http', url: 'https://example.test/hook' },
+    { command: 'echo safe' },
+    { type: 'command', command: 'echo valid' },
+  ];
+  const text = JSON.stringify({ hooks: { Stop: [{ hooks: handlers }] } }, null, 2);
+  const w = await workspace({ '.codex/hooks.json': text });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+  assert.equal(report.clients[0].extensions.filter(hook => hook.status === 'invalid').length, 6);
+  assert.equal(report.clients[0].extensions.filter(hook => hook.status === 'conditional').length, 1);
+  const override = report.findings.find(finding => finding.ruleId === 'hook.command' && finding.location.key === 'hooks.Stop.0.hooks.0.commandWindows')!;
+  assert.ok(text.split('\n')[override.location.line - 1].includes('"commandWindows": 42'));
+  assert.ok(report.findings.some(finding => finding.ruleId === 'hook.mcp-field' && finding.location.key === 'hooks.Stop.0.hooks.2.server'));
+  assert.ok(report.findings.some(finding => finding.ruleId === 'hook.mcp-field' && finding.location.key === 'hooks.Stop.0.hooks.3.input'));
+});
+
+test('Codex TOML command aliases retain schema validation and duplicate-alias diagnostics', async t => {
+  const base = '[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="echo safe"\n';
+  const w = await workspace({ '.codex/config.toml': base + 'command_windows=42\n' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const invalid = await scan({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+  assert.ok(invalid.findings.some(finding => finding.ruleId === 'config.schema' && finding.location.line === 5));
+  await writeFile(path.join(w.repo, '.codex/config.toml'), base + 'command_windows="echo snake"\ncommandWindows="echo camel"\n');
+  const duplicate = await scan({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+  assert.equal(duplicate.clients[0].extensions[0].status, 'invalid');
+  assert.equal(duplicate.findings.find(finding => finding.ruleId === 'hook.command-alias')?.location.line, 5);
+});
+
+test('Codex hook executable checks use the session directory and explain ignored command fields', async t => {
+  const w = await workspace({ '.codex/hooks.json': JSON.stringify({ hooks: { Stop: [{ hooks: [
+    { type: 'command', command: 'echo safe', cwd: 'missing-hook-directory', env: [], args: [] },
+    { type: 'command', command: 'echo safe', cwd: 42 },
+  ] }] } }, null, 2) });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+  assert.ok(report.clients[0].extensions.every(hook => hook.status === 'conditional'));
+  assert.equal(report.findings.filter(finding => finding.ruleId === 'hook.unsupported-field').length, 4);
+  assert.ok(!report.findings.some(finding => finding.ruleId === 'extension.cwd-missing' || finding.ruleId === 'extension.cwd-type' || finding.ruleId === 'hook.command-missing'));
+});
 
 test('malformed MCP fields are invalid while valid sibling servers remain discoverable', async t => {
   const servers = {

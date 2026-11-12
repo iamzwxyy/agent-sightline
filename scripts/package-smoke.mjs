@@ -37,6 +37,12 @@ try {
   const privateReport = JSON.parse(privateOutput);
   if (privateReport.schemaVersion !== '1.0' || privateReport.clients[0].client !== 'codex' || !privateReport.clients[0].decisions.some(decision => decision.status === 'active') || !privateReport.findings.some(finding => finding.ruleId === 'parse.duplicate-key' && finding.severity === 'error') || privateReport.clients[0].instructions !== '[REDACTED] [REDACTED] [REDACTED]') throw new Error('Installed private-value redaction corrupted report structure.');
   if (privateOutput.includes('discarded-preview-sentinel') || privateReport.sources.find(source => source.relativePath === '.claude/settings.local.json')?.preview !== undefined) throw new Error('Installed syntax-invalid preview privacy failed.');
+  const hookRepo = path.join(temp, 'hook-repository'); mkdirSync(path.join(hookRepo, '.codex'), { recursive: true });
+  writeFileSync(path.join(hookRepo, '.codex/config.toml'), '[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="missing-posix-hook-fixture"\ncommand_windows="missing-windows-hook-fixture"\n[[hooks.Stop.hooks]]\ntype="prompt"\n[[hooks.PreModelRequest]]\n[[hooks.PreModelRequest.hooks]]\ntype="mcp_tool"\nserver="fixture"\ntool="inspect"\n');
+  const hookReport = JSON.parse(execFileSync(process.execPath, [cli, '--repo', hookRepo, '--no-user', '--trust', 'trusted', '--client', 'codex', '--json'], { encoding: 'utf8' }));
+  const missingHook = hookReport.findings.filter(finding => finding.ruleId === 'hook.command-missing');
+  if (missingHook.length !== 1 || missingHook[0].location.line !== (process.platform === 'win32' ? 5 : 4) || hookReport.findings.some(finding => finding.ruleId === 'hook.unknown-event' || finding.ruleId === 'hook.unsupported-type')) throw new Error('Installed Codex hook command or source-line resolution failed.');
+  if (hookReport.clients[0].extensions.find(hook => hook.config.type === 'mcp_tool')?.status !== 'conditional' || hookReport.clients[0].extensions.find(hook => hook.config.type === 'prompt')?.status !== 'ignored') throw new Error('Installed Codex hook handler states failed.');
   const alias = path.join(temp, 'repository-alias');
   symlinkSync(repo, alias, process.platform === 'win32' ? 'junction' : 'dir');
   writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, cwd: alias, args: ['--root=' + alias] } } }));

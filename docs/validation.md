@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.2.7
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 134-case core suite completed with 133 passes and one Windows-only skip.
+* The pinned Codex 0.167.2 version check and twenty native configuration scenarios passed. Added comparisons cover both Windows command aliases, model-request events, MCP tool handlers and parsed prompt/agent handlers. Hook comparisons verify every configured field using the API's canonical alias names, array lengths, ordering and winning files. The API also supplies runtime defaults. The harness sends initialization and configuration reads using isolated homes and temporary repositories.
+* Public scan fixtures verify host-specific command selection, exact TOML field locations, string override types, required default commands, duplicate aliases, standalone MCP fields, unsupported handler types and ignored Codex cwd/env/args fields. Claude and Copilot hook regressions remain included.
+* TOML provenance fixtures cover repeated parent groups, nested handler array tables, Windows alias fields, quoted state keys, CRLF, multiline basic/literal strings and multiline arrays containing header-like text.
+* All twenty-three Chromium browser cases passed. The added case follows a Codex hook finding to the exact host command line in both live and portable reports, and checks MCP/ignored handler states. The source view was visually inspected.
+* Installed-package smoke verifies platform command locations and handler states. Production dependency audit reported zero vulnerabilities. Twelve previously published archives retained their recorded SHA-256 values.
+
 ## v0.2.6
 
 Verified locally on macOS on 2026-11-13.

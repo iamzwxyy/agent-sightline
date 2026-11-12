@@ -2,7 +2,7 @@ import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import type { Adapter, AdapterMetadata, Context, Decision, Effective, Source, Status } from '../core/types.js';
 import { bytes, cmp, executable, finding, locate, plainObject, prefix, slash, splitGlobs, within } from '../core/utils.js';
-import { validateExtensions, probeMcp } from '../core/extensions.js';
+import { hookCommandField, validateExtensions, probeMcp } from '../core/extensions.js';
 
 export async function base(metadata: AdapterMetadata, ctx: Context): Promise<Effective> {
   const exec = await executable(metadata.id === 'cursor' ? 'cursor-agent' : metadata.id, ctx.directory, ctx.env);
@@ -65,9 +65,7 @@ export function hooks(e: Effective, s: Source, value: unknown, status: Status): 
       if (plainObject(g) && g.hooks !== undefined && !Array.isArray(g.hooks)) { e.findings.push(finding('hook.type', 'error', locate(s, `hooks.${event}.${i}.hooks`), 'Hook handlers must be an array.', 'The matcher group cannot supply handlers from this value.', 'Use an array of hook handler objects.', e.client)); return; }
       const handlers = plainObject(g) && Array.isArray(g.hooks) ? g.hooks : [g];
       handlers.forEach((h: any, j: number) => {
-        const platformField = process.platform === 'win32' ? 'powershell' : 'bash';
-        const defaultField = e.client === 'copilot' ? platformField : 'command';
-        const commandField = process.platform === 'win32' && e.client === 'codex' && h?.commandWindows !== undefined ? 'commandWindows' : defaultField;
+        const commandField = h?.type !== undefined && h.type !== 'command' ? 'type' : hookCommandField(e.client, h, s.path);
         e.extensions.push({ kind: 'hook', name: event, config: plainObject(h) ? { ...h, matcher: g?.matcher ?? '', _index: `${i}.${j}` } : { _invalid: true }, status: e.client === 'codex' && status === 'active' ? 'conditional' : status, location: locate(s, `hooks.${event}.${i}${g?.hooks ? `.hooks.${j}` : ''}.${commandField}`), reason: e.client === 'codex' ? 'Discovered hook; exact-definition trust and event/matcher runtime state are not inferred.' : 'Discovered hook; runs only when its event and matcher trigger.' });
       });
     });

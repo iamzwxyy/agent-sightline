@@ -55,6 +55,31 @@ test('TOML quoted hook-state and project keys retain decoded paths and exact sou
     assert.equal(project.lines[`projects.${key}.trust_level`], 2);
   }
 });
+
+test('TOML array tables retain per-handler source lines across multiline values and repeated parent groups', () => {
+  const text = [
+    'description = """', '[hooks.Stop]', 'command="string content"', '"""',
+    'literal = \'\'\'', '[[hooks.Stop.hooks]]', 'command="literal content"', '\'\'\'',
+    'values = [', '  "[fake.table]",', '  "command=value",', ']',
+    '[[hooks.Stop]]', 'matcher="first"', '[[hooks.Stop.hooks]]', 'type="command"', 'command="first-command"',
+    'command_windows="first-windows"', '[[hooks.Stop.hooks]]', 'type="command"', 'command="second-command"',
+    '[[hooks.Stop]]', 'matcher="second"', '[[hooks.Stop.hooks]]', 'type="command"', 'command="third-command"',
+    '[hooks.state."quoted.key"]', 'enabled=false',
+  ].join('\n');
+  for (const newline of ['\n', '\r\n']) {
+    const input = source(text.replaceAll('\n', newline), 'toml');
+    assert.deepEqual(parseSource(input), []);
+    assert.equal(input.lines['hooks.Stop.0.matcher'], 14);
+    assert.equal(input.lines['hooks.Stop.0.hooks.0.command'], 17);
+    assert.equal(input.lines['hooks.Stop.0.hooks.0.command_windows'], 18);
+    assert.equal(input.lines['hooks.Stop.0.hooks.1.command'], 21);
+    assert.equal(input.lines['hooks.Stop.1.matcher'], 23);
+    assert.equal(input.lines['hooks.Stop.1.hooks.0.command'], 26);
+    assert.equal(input.lines['hooks.state.quoted.key.enabled'], 28);
+    assert.equal(input.lines['fake.table'], undefined);
+    assert.equal(input.lines['command'], undefined);
+  }
+});
 test('glob semantics preserve platform separators, braces and client matchBase differences', () => {
   assert.deepEqual(splitGlobs('src/**/*.{ts,tsx}, docs/**/*.md'), ['src/**/*.{ts,tsx}', 'docs/**/*.md']);
   assert.ok(matches('src\\a.ts', ['src/**/*.ts'])); assert.ok(matches('src/nested/a.md', ['*.md'], true)); assert.ok(!matches('src/a.md', ['*.md'])); assert.ok(!matches('src/a.md', ['/*.md'], true));

@@ -7,6 +7,19 @@ import { mkdir, readFile, readdir, realpath, rm, watch, writeFile } from 'node:f
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
+test('CLI explains platform-specific Codex hook commands with exact source lines and supported MCP handlers', async t => {
+  const w = await workspace({ '.codex/config.toml': '[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="missing-posix-hook-fixture"\ncommand_windows="missing-windows-hook-fixture"\n[[hooks.PreModelRequest]]\n[[hooks.PreModelRequest.hooks]]\ntype="mcp_tool"\nserver="fixture"\ntool="inspect"\n' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const result = run(['ci', '--no-user', '--trust', 'trusted', '--client', 'codex'], w.repo);
+  assert.equal(result.status, 1, result.stderr);
+  const report = JSON.parse(result.stdout);
+  const missing = report.findings.filter((finding: any) => finding.ruleId === 'hook.command-missing');
+  assert.equal(missing.length, 1);
+  assert.equal(missing[0].location.line, process.platform === 'win32' ? 5 : 4);
+  assert.ok(missing[0].location.key.endsWith(process.platform === 'win32' ? '.command_windows' : '.command'));
+  assert.ok(!report.findings.some((finding: any) => finding.ruleId === 'hook.unknown-event' || finding.ruleId === 'hook.unsupported-type'));
+  assert.equal(report.clients[0].extensions.find((hook: any) => hook.config.type === 'mcp_tool').status, 'conditional');
+});
 test('CI retains finding thresholds and stable JSON with private values matching machine fields', async t => {
   const w = await workspace({
     'AGENTS.md': 'codex active 1',

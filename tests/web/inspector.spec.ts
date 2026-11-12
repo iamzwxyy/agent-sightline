@@ -10,6 +10,37 @@ import AxeBuilder from '@axe-core/playwright';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('Codex TOML hook findings navigate to the platform command line online and offline', async ({ page }) => {
+  const w = await workspace({ '.codex/config.toml': [
+    '[[hooks.Stop]]', '[[hooks.Stop.hooks]]', 'type="command"', 'command="missing-posix-hook-fixture"', 'command_windows="missing-windows-hook-fixture"',
+    '[[hooks.Stop.hooks]]', 'type="prompt"',
+    '[[hooks.PreModelRequest]]', '[[hooks.PreModelRequest.hooks]]', 'type="mcp_tool"', 'server="fixture"', 'tool="inspect"',
+  ].join('\n') });
+  const server = await serve({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    for (const offline of [false, true]) {
+      if (offline) {
+        const pending = page.waitForEvent('download');
+        await page.getByRole('button', { name: /Export report/ }).click();
+        const file = test.info().outputPath('codex-platform-hooks.html');
+        await (await pending).saveAs(file);
+        await page.goto(pathToFileURL(file).href);
+      }
+      await page.locator('#findings-tab').click();
+      await page.locator('#findings-list .finding').filter({ hasText: 'Hook command was not found or is not executable.' }).click();
+      await page.getByRole('button', { name: /Inspect source/ }).click();
+      await expect(page.locator('#source-title')).toHaveText('.codex/config.toml');
+      await expect(page.locator('.code-line.highlight')).toContainText(process.platform === 'win32' ? 'command_windows="missing-windows-hook-fixture"' : 'command="missing-posix-hook-fixture"');
+      const report = JSON.parse(await page.locator('#report-data').textContent() ?? 'null');
+      expect(report.clients[0].extensions.find((hook: any) => hook.config.type === 'mcp_tool').status).toBe('conditional');
+      expect(report.clients[0].extensions.find((hook: any) => hook.config.type === 'prompt').status).toBe('ignored');
+      expect(report.findings.some((finding: any) => finding.ruleId === 'hook.unknown-event' || finding.ruleId === 'hook.unsupported-type')).toBe(false);
+      if (!offline) await page.screenshot({ path: test.info().outputPath('codex-platform-hook-source.png') });
+    }
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('private environment literals preserve inspector navigation and syntax-invalid previews stay private online and offline', async ({ page }) => {
   const w = await workspace({
     'AGENTS.md': 'codex active 1',

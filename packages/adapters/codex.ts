@@ -9,7 +9,7 @@ import { adapter, addInstruction, base, decision, effectiveValue, finish, flatte
 export const codexMetadata: AdapterMetadata = {
   id: 'codex', name: 'OpenAI Codex CLI', maturity: 'verified', ruleVersion: '0.167.2', verifiedOn: '2026-11-13',
   evidence: ['https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/core/src/agents_md.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/codex-home/src/instructions/mod.rs', 'https://developers.openai.com/codex/config-basic', 'https://developers.openai.com/codex/config-advanced#profiles', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/config/src/loader/mod.rs', 'https://developers.openai.com/codex/skills', 'https://learn.chatgpt.com/docs/hooks', 'https://learn.chatgpt.com/docs/app-server'],
-  limitations: ['Static single-directory session with explicit profile files. Other CLI overrides and managed/cloud requirements are not inferred.', 'Base/project scalar and MCP values and winning files have real-client configuration API tests. Profiles, instruction bodies and line numbers use source/schema fixtures.', 'Global instructions are separate from the project byte budget in 0.167.2; project empty overrides shadow the ordinary file.', 'Hook definition trust is reported as conditional. Bundled/plugin components and starlark exec-policy evaluation are not inspected.'],
+  limitations: ['Static single-directory session with explicit profile files. Other CLI overrides and managed/cloud requirements are not inferred.', 'Scalar/MCP precedence, configured hook values and winning files have real-client configuration API tests. Profiles, instruction bodies and line numbers use source/schema fixtures.', 'Global instructions are separate from the project byte budget in 0.167.2; project empty overrides shadow the ordinary file.', 'Hook definition trust is reported as conditional. Bundled/plugin components and starlark exec-policy evaluation are not inspected.'],
 };
 let validator: ReturnType<Ajv['compile']> | undefined;
 function inlineHooks(value: unknown): unknown {
@@ -29,6 +29,9 @@ export const codex = adapter(codexMetadata, discover, async ctx => {
   const e = await base(codexMetadata, ctx);
   if (!validator) {
     const schema = JSON.parse(await readFile(new URL('./schemas/codex.json', import.meta.url), 'utf8'));
+    // The official prose documents this TOML alias, which the generated schema omits.
+    const commandHook = schema.definitions.HookHandlerConfig.oneOf.find((handler: any) => handler.properties.commandWindows);
+    commandHook.properties.command_windows = commandHook.properties.commandWindows;
     const ajv = new Ajv({ strict: false, allErrors: true });
     for (const format of ['uint', 'uint8', 'uint16', 'uint32', 'uint64', 'int32', 'int64']) ajv.addFormat(format, { type: 'number', validate: (v: number) => Number.isInteger(v) && (format.startsWith('uint') ? v >= 0 && (format === 'uint8' ? v <= 255 : format === 'uint16' ? v <= 65535 : format === 'uint32' ? v <= 4294967295 : true) : format === 'int32' ? v >= -2147483648 && v <= 2147483647 : true) });
     ajv.addFormat('double', { type: 'number', validate: Number.isFinite });

@@ -26,12 +26,76 @@ const jsonErrorMessages: Record<string, string> = {
 const tomlKeyPart = String.raw`[^\s."'\[\]#=]+|"(?:\\.|[^"\\])*"|'[^']*'`;
 const tomlAssignment = new RegExp(String.raw`^\s*((?:${tomlKeyPart})(?:\s*\.\s*(?:${tomlKeyPart}))*)\s*=`);
 
-function tomlKeyPath(text: string): string {
+function tomlKeyParts(text: string): string[] {
   const parts = text.match(new RegExp(tomlKeyPart, 'g')) ?? [];
   return parts.map(part => {
     if (!part.startsWith('"') && !part.startsWith("'")) return part;
     return Object.keys(toml(`${part} = 0`))[0];
-  }).join('.');
+  });
+}
+
+function* tomlStatements(text: string): Generator<{ text: string; line: number }> {
+  let start = 0, line = 1, firstLine = 1, depth = 0;
+  let quote = '', comment = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (char === '\n') {
+      line++;
+      comment = false;
+      if (!quote && depth === 0) {
+        yield { text: text.slice(start, index).trim(), line: firstLine };
+        start = index + 1; firstLine = line;
+      }
+      continue;
+    }
+    if (comment) continue;
+    if (quote) {
+      if (char === '\\' && quote[0] === '"') {
+        if (text[index + 1] === '\n') line++;
+        index++;
+      } else if (text.startsWith(quote, index)) {
+        index += quote.length - 1;
+        // TOML multiline strings can end with four or five quote characters.
+        if (quote.length === 3) while (text[index + 1] === quote[0]) index++;
+        quote = '';
+      }
+      continue;
+    }
+    if (char === '#') comment = true;
+    else if (char === '"' || char === "'") {
+      quote = text.startsWith(char.repeat(3), index) ? char.repeat(3) : char;
+      index += quote.length - 1;
+    } else if (char === '[' || char === '{') depth++;
+    else if (char === ']' || char === '}') depth--;
+  }
+  if (start < text.length) yield { text: text.slice(start).trim(), line: firstLine };
+}
+
+function tomlLines(source: Source): void {
+  const indices = new Map<string, number>();
+  let section: string[] = [];
+  for (const statement of tomlStatements(source.text)) {
+    const header = statement.text.match(/^\[\[?(.+?)\]\]?\s*(?:#.*)?$/);
+    if (header) {
+      const parts = tomlKeyParts(header[1]);
+      const arrayTable = statement.text.startsWith('[[');
+      section = [];
+      let value: any = source.data;
+      parts.forEach((part, index) => {
+        section.push(part); value = value?.[part];
+        if (!Array.isArray(value)) return;
+        const key = section.join('.');
+        const current = arrayTable && index === parts.length - 1 ? (indices.get(key) ?? -1) + 1 : indices.get(key) ?? 0;
+        indices.set(key, current);
+        source.lines[key] ??= statement.line;
+        section.push(String(current)); value = value[current];
+      });
+      source.lines[section.join('.')] = statement.line;
+    } else {
+      const assignment = statement.text.match(tomlAssignment);
+      if (assignment) source.lines[[...section, ...tomlKeyParts(assignment[1])].join('.')] = statement.line;
+    }
+  }
 }
 
 export function parseSource(s: Source): Finding[] {
@@ -74,14 +138,7 @@ export function parseSource(s: Source): Finding[] {
     } else if (s.path.endsWith('.toml')) {
       syntaxRule = 'parse.toml';
       s.data = toml(s.text);
-      let section = '';
-      s.text.split('\n').forEach((l, i) => {
-        const header = l.match(/^\s*\[\[?(.+?)\]\]?\s*(?:#.*)?$/);
-        if (header) section = tomlKeyPath(header[1]);
-        const key = l.match(tomlAssignment);
-        if (key) s.lines[[section, tomlKeyPath(key[1])].filter(Boolean).join('.')] = i + 1;
-        if (header) s.lines[section] = i + 1;
-      });
+      tomlLines(s);
     } else if (/\.ya?ml$/.test(s.path)) {
       syntaxRule = 'parse.yaml';
       const lc = new LineCounter(); const doc = parseDocument(s.text, { uniqueKeys: true, lineCounter: lc });

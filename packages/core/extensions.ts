@@ -8,11 +8,20 @@ import { VERSION } from './version.js';
 
 const mcpKeys = new Set(['command', 'args', 'env', 'env_vars', 'cwd', 'url', 'type', 'transport', 'headers', 'http_headers', 'env_http_headers', 'bearer_token_env_var', 'startup_timeout_sec', 'startup_timeout_ms', 'tool_timeout_sec', 'enabled', 'required', 'enabled_tools', 'disabled_tools', 'tools', 'timeout', 'description', 'name', 'oauth', 'headersHelper', 'output_token_budget', 'sandbox']);
 const events: Record<string, Set<string>> = {
-  codex: new Set(['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SubagentStart', 'SubagentStop', 'PreCompact', 'PostCompact', 'TaskCompleted', 'TeammateIdle', 'ConfigChange', 'InstructionsLoaded', 'WorktreeCreate', 'WorktreeRemove', 'Interrupt']),
+  codex: new Set(['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'PreModelRequest', 'PostModelRequest', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Stop', 'SubagentStart', 'SubagentStop', 'PreCompact', 'PostCompact', 'Interrupt']),
   claude: new Set(['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'PermissionDenied', 'Notification', 'Stop', 'StopFailure', 'SubagentStart', 'SubagentStop', 'PreCompact', 'PostCompact', 'TaskCompleted', 'TeammateIdle', 'ConfigChange', 'InstructionsLoaded', 'WorktreeCreate', 'WorktreeRemove', 'Elicitation', 'ElicitationResult']),
   copilot: new Set(['sessionStart', 'sessionEnd', 'userPromptSubmitted', 'preToolUse', 'postToolUse', 'errorOccurred', 'agentStop', 'subagentStart', 'subagentStop']),
 };
 const builtins = new Set(['echo', 'printf', 'cd', 'export', 'set', 'exit', 'true', 'false', 'test', '[', 'read', 'pwd', 'command', 'exec', 'type', 'ulimit', 'umask', 'source', '.', 'return']);
+
+export function hookCommandField(client: ClientId, handler: Record<string, any> | null | undefined, filename: string, platform = process.platform): string {
+  if (client === 'copilot') return platform === 'win32' ? 'powershell' : 'bash';
+  if (client === 'codex' && platform === 'win32') {
+    if (handler?.commandWindows !== undefined) return 'commandWindows';
+    if (filename.endsWith('.toml') && handler?.command_windows !== undefined) return 'command_windows';
+  }
+  return 'command';
+}
 
 function expandEnvironmentReferences(value: any, env: NodeJS.ProcessEnv, strict = true): any {
   if (typeof value === 'string') return value.replace(/\$\{(?:env:)?([A-Za-z_][\w]*)(?:(:-|-)([^}]*))?\}/g, (_match, name, operator, fallback) => {
@@ -31,7 +40,7 @@ export async function validateExtensions(ctx: Context, e: Effective): Promise<Fi
   for (const x of e.extensions) {
     if (!['active', 'conditional'].includes(x.status)) continue;
     const source = ctx.sources.find(source => source.path === x.location.path);
-    const baseKey = x.kind === 'hook' ? x.location.key?.replace(/\.(?:command|commandWindows|bash|powershell)$/, '') : x.location.key;
+    const baseKey = x.kind === 'hook' ? x.location.key?.replace(/\.(?:command|commandWindows|command_windows|bash|powershell|type)$/, '') : x.location.key;
     const issue = (rule: string, message: string, why: string, suggestion: string, severity: 'error' | 'warn' | 'info' = 'error', field?: string) => {
       const location = source && baseKey && field ? locate(source, `${baseKey}.${field}`) : x.location;
       out.push(finding(rule, severity, location, message, why, suggestion, e.client));
@@ -91,18 +100,29 @@ export async function validateExtensions(ctx: Context, e: Effective): Promise<Fi
     } else if (x.kind === 'hook') {
       if (x.config._invalid) { invalid('hook.type', 'Hook handler must be an object.', 'The handler has an invalid configuration structure.', 'Use a documented hook handler object.'); continue; }
       if (events[e.client] && !events[e.client].has(x.name)) issue('hook.unknown-event', `Unknown hook event "${x.name}".`, 'Event names are client-specific and case-sensitive.', 'Use an event name from the adapter’s verified documentation.', 'warn');
-      const handlerTypes = ['command', ...(e.client === 'copilot' ? [] : ['prompt', 'agent', 'http']), ...(e.client === 'claude' ? ['mcp_tool'] : [])];
-      if (x.config.type !== undefined && !handlerTypes.includes(x.config.type)) { invalid('hook.unsupported-type', 'Hook has an unsupported handler type.', 'This handler type is not supported by the client.', 'Use the documented handler type.', 'type'); continue; }
+      const handlerTypes = e.client === 'codex' ? ['command', 'mcp_tool', 'prompt', 'agent'] : ['command', ...(e.client === 'claude' ? ['prompt', 'agent', 'http', 'mcp_tool'] : [])];
+      if ((x.config.type !== undefined || e.client === 'codex') && !handlerTypes.includes(x.config.type)) { invalid('hook.unsupported-type', 'Hook has an unsupported handler type.', 'This handler type is not supported by the client.', 'Use the documented handler type.', 'type'); continue; }
+      if (e.client === 'codex' && ['prompt', 'agent'].includes(x.config.type)) { x.status = 'ignored'; x.reason = 'Codex parses this handler type but it is skipped at runtime.'; continue; }
+      if (e.client === 'codex' && x.config.type === 'mcp_tool') {
+        for (const field of ['server', 'tool']) if (typeof x.config[field] !== 'string') invalid('hook.mcp-field', `MCP hook ${field} must be a string.`, 'MCP hook handlers require a server and tool name.', 'Supply the documented MCP hook fields.', field);
+        if (x.config.input !== undefined && !plainObject(x.config.input)) invalid('hook.mcp-field', 'MCP hook input must be an object.', 'MCP hook arguments use a JSON object.', 'Supply an object containing tool arguments.', 'input');
+      }
       if (x.config.type !== 'command' && x.config.type !== undefined) continue;
       if (e.client === 'claude') for (const field of ['cwd', 'env', 'commandWindows']) if (x.config[field] !== undefined) issue('hook.unsupported-field', `Claude command hooks do not use the field "${field}".`, 'The documented command hook fields use command and optional args, with the session working directory and environment.', 'Use a wrapper command or the documented hook fields.', 'warn', field);
-      const windowsCommand = process.platform === 'win32' && e.client !== 'claude' ? x.config.commandWindows ?? x.config.command : x.config.command;
-      const cmd = e.client === 'copilot' ? x.config[process.platform === 'win32' ? 'powershell' : 'bash'] : windowsCommand;
+      if (e.client === 'codex') {
+        for (const field of ['cwd', 'env', 'args']) if (x.config[field] !== undefined) issue('hook.unsupported-field', `Codex command hooks do not use the field "${field}".`, 'Codex uses the command string and session working directory.', 'Put arguments in command and use a wrapper for custom environment or directory changes.', 'warn', field);
+        const commandFields = ['command', 'commandWindows', ...(source?.path.endsWith('.toml') ? ['command_windows'] : [])];
+        for (const field of commandFields) if ((field === 'command' || x.config[field] !== undefined) && typeof x.config[field] !== 'string') invalid('hook.command', `Hook ${field} must be a string.`, 'Codex command hooks require command and string platform overrides.', 'Supply the documented command fields.', field);
+        if (source?.path.endsWith('.toml') && x.config.commandWindows !== undefined && x.config.command_windows !== undefined) invalid('hook.command-alias', 'Hook declares both Windows command aliases.', 'Both names address the same Codex command override.', 'Keep one of commandWindows or command_windows.', 'command_windows');
+        if (x.status === 'invalid') continue;
+      }
+      const cmd = x.config[hookCommandField(e.client, x.config, x.location.path)];
       if (typeof cmd !== 'string') { invalid('hook.command', 'Hook has no string command for this platform.', 'Copilot uses bash on POSIX and powershell on Windows; other clients require command.', 'Set the correct platform command.'); continue; }
       const execForm = e.client === 'claude' && x.config.args !== undefined;
       if (execForm && (!Array.isArray(x.config.args) || x.config.args.some((arg: unknown) => typeof arg !== 'string'))) { invalid('hook.args-type', 'Hook args must be an array of strings.', 'Exec-form hook arguments are passed directly to the executable.', 'Use one string per argument.', 'args'); continue; }
-      if (e.client !== 'claude' && x.config.cwd !== undefined && typeof x.config.cwd !== 'string') { invalid('extension.cwd-type', 'Hook working directory must be a string.', 'The hook cannot resolve this working-directory value.', 'Use a directory path string.', 'cwd'); continue; }
+      if (e.client === 'copilot' && x.config.cwd !== undefined && typeof x.config.cwd !== 'string') { invalid('extension.cwd-type', 'Hook working directory must be a string.', 'The hook cannot resolve this working-directory value.', 'Use a directory path string.', 'cwd'); continue; }
       if (e.client === 'copilot' && x.config.env !== undefined && (!plainObject(x.config.env) || Object.values(x.config.env).some(value => typeof value !== 'string'))) { invalid('hook.env-type', 'Hook environment must map names to strings.', 'The hook environment contains an invalid value type.', 'Use an object containing string environment values.', 'env'); continue; }
-      const cwd = e.client !== 'claude' && x.config.cwd ? path.resolve(ctx.directory, x.config.cwd) : ctx.directory;
+      const cwd = e.client === 'copilot' && x.config.cwd ? path.resolve(ctx.directory, x.config.cwd) : ctx.directory;
       try { if (!(await stat(cwd)).isDirectory()) throw new Error(); } catch { issue('extension.cwd-missing', 'Hook working directory does not exist.', 'The hook cannot start in this directory.', 'Correct the cwd path.'); }
       // Complex shell programs are not guessed or executed. A simple leading command is provable.
       const first = cmd.match(/^\s*(?:"([^"]+)"|'([^']+)'|([^\s;&|<>]+))/);
