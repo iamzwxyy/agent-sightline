@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import path from 'node:path';
 import os from 'node:os';
 const temp = mkdtempSync(path.join(os.tmpdir(), 'sightline-install-'));
+const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const npm = process.env.npm_execpath;
 if (!npm) throw new Error('Run this script using npm run smoke.');
 const runNpm = args => execFileSync(process.execPath, [npm, ...args], { encoding: 'utf8' });
@@ -17,7 +18,7 @@ try {
   const report = JSON.parse(output); if (report.clients[0].instructions !== 'Installed package works.') throw new Error('Installed resolver failed.');
   const htmlFile = path.join(temp, 'report.html'); execFileSync(process.execPath, [cli, 'report', '--repo', repo, '--no-user', '--format', 'html', '--output', htmlFile]);
   if (!readFileSync(htmlFile, 'utf8').includes('Sightline — Agent configuration')) throw new Error('Installed HTML reporter failed.');
-  const version = execFileSync(process.execPath, [cli, 'version'], { encoding: 'utf8' }).trim(); if (version !== '0.1.0') throw new Error('Wrong package version.');
+  const version = execFileSync(process.execPath, [cli, 'version'], { encoding: 'utf8' }).trim(); if (version !== pkg.version || report.tool.version !== pkg.version) throw new Error('Wrong package version.');
   const demo = JSON.parse(execFileSync(process.execPath, [cli, 'demo', '--clients', 'codex,claude,copilot', '--json'], { encoding: 'utf8' }));
   if (new Set(demo.findings.map(f => f.ruleId)).size < 5) throw new Error('Bundled demo failed to demonstrate real findings.');
   const inspector = spawn(process.execPath, [cli, 'demo', '--ui', '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 — 2026-11-12
+
+* Wait for MCP probe processes to exit before returning, terminate ordinary runtime-wrapper children, and bound shutdown for servers that ignore SIGTERM.
+* Support Windows command shims with literal argument handling during explicit probes.
+* Read the product version from the package manifest across CLI output, reports and MCP initialization.
+* Preserve historical website package downloads through verified GitHub release assets.
+
 ## 0.1.0 — 2026-11-12
 
 Product experience update

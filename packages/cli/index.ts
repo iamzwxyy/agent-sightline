@@ -10,13 +10,14 @@ import { CLIENTS, type ClientId, type ScanOptions, type Severity } from '../core
 import { failed, filter, html, json, terminal } from '../reporter/index.js';
 import { redactText } from '../core/redact.js';
 import { serve } from '../web/server.js';
+import { VERSION } from '../core/version.js';
 
 const program = new Command().exitOverride();
 const severity = (s: string): Severity => { if (!['error', 'warn', 'info'].includes(s)) throw new InvalidArgumentError('Choose error, warn or info.'); return s as Severity; };
 const client = (s: string): ClientId => { if (!CLIENTS.includes(s as ClientId)) throw new InvalidArgumentError(`Choose ${CLIENTS.join(', ')}.`); return s as ClientId; };
 const failOn = (s: string): Severity | 'none' => s === 'none' ? s : severity(s);
 program.name('agent-sightline').description('See what your coding agent actually sees. Local, read-only configuration diagnostics.')
-  .version('0.1.0').argument('[repository]', 'directory to scan (default: current directory)')
+  .version(VERSION).argument('[repository]', 'directory to scan (default: current directory)')
   .option('--repo <directory>', 'inspection boundary / repository directory')
   .option('--client <client>', 'inspect one client', client)
   .option('--clients <list>', 'comma-separated client IDs')
@@ -87,7 +88,7 @@ program.command('demo').description('Explore the bundled intentionally broken ex
 program.command('adapters').description('List rule versions, source links and known limitations').action(() => {
   const list = adapters.map(a => a.metadata); process.stdout.write(program.opts().json ? JSON.stringify(list, null, 2) + '\n' : list.map(m => `${m.id.padEnd(9)} ${m.maturity.padEnd(12)} ${m.ruleVersion}\n  Verified: ${m.verifiedOn}\n  ${m.evidence.join('\n  ')}\n  Limits: ${m.limitations.join(' ')}`).join('\n\n') + '\n');
 });
-program.command('version').description('Print package version').action(() => { process.stdout.write('0.1.0\n'); });
+program.command('version').description('Print package version').action(() => { process.stdout.write(VERSION + '\n'); });
 program.command('ui').description('Open a read-only inspector on 127.0.0.1').action(() => openInspector(options()));
 // Useful for shells and CI; never echo raw parser errors or environment values.
 program.exitOverride().configureOutput({ outputError: str => process.stderr.write(redactText(str)) });

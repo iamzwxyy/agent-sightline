@@ -1,8 +1,10 @@
 import path from 'node:path';
 import { realpath, stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import crossSpawn from 'cross-spawn';
 import type { ClientId, Context, Effective, Extension, Finding } from './types.js';
 import { executable, finding, plainObject, within } from './utils.js';
+import { VERSION } from './version.js';
 
 const mcpKeys = new Set(['command', 'args', 'env', 'env_vars', 'cwd', 'url', 'type', 'transport', 'headers', 'http_headers', 'env_http_headers', 'bearer_token_env_var', 'startup_timeout_sec', 'startup_timeout_ms', 'tool_timeout_sec', 'enabled', 'required', 'enabled_tools', 'disabled_tools', 'tools', 'timeout', 'description', 'name', 'oauth', 'headersHelper', 'output_token_budget', 'sandbox']);
 const events: Record<string, Set<string>> = {
@@ -94,18 +96,38 @@ export async function probeMcp(extension: Extension, ctx: Context, client?: Clie
   const command = await executable(x.config.command, cwd, { ...ctx.env, ...x.config.env });
   if (!command) return [];
   return new Promise(resolve => {
-    let ended = false; let buffer = ''; let initialized = false;
-    const child = spawn(command, x.config.args ?? [], { cwd, env: { ...ctx.env, ...x.config.env }, stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true });
+    let ended = false; let buffer = ''; let initialized = false; let ready = false;
+    let forceTimer: ReturnType<typeof setTimeout> | undefined;
+    const child = crossSpawn.spawn(command, x.config.args ?? [], { cwd, env: { ...ctx.env, ...x.config.env }, stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true, detached: process.platform !== 'win32' });
+    const terminate = (signal: 'SIGTERM' | 'SIGKILL') => {
+      if (!child.pid) return;
+      if (process.platform !== 'win32') {
+        // The probe owns this process group, including ordinary runtime wrappers.
+        try { process.kill(-child.pid, signal); } catch { child.kill(signal); }
+      } else if (child.exitCode === null && child.signalCode === null) {
+        if (signal === 'SIGKILL') { child.kill(signal); return; }
+        const taskkill = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe');
+        const killer = spawn(taskkill, ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+        killer.once('error', () => { child.kill(); });
+      }
+    };
     const done = (ok: boolean) => {
-      if (ended) return; ended = true; clearTimeout(timer); child.kill();
-      resolve([finding(ok ? 'probe.mcp-ready' : 'probe.mcp-failed', ok ? 'info' : 'error', x.location, ok ? `MCP server "${x.name}" initialized and listed tools.` : `MCP server "${x.name}" failed the startup probe.`, ok ? 'A local JSON-RPC initialize and tools/list exchange completed; no tool was invoked.' : 'The process exited, emitted invalid protocol data, or timed out after 5 seconds. Raw process output is never exported.', ok ? 'Use the client to verify its permission and authentication state.' : 'Run the server directly and check its private logs.')]);
+      if (ended) return; ended = true; ready = ok; clearTimeout(timer);
+      child.stdin.end(); terminate('SIGTERM');
+      forceTimer = setTimeout(() => { terminate('SIGKILL'); child.stdout.destroy(); child.stderr.destroy(); }, 1000);
     };
     const timer = setTimeout(() => done(false), 5000);
+    child.once('close', () => {
+      if (!ended) done(false);
+      clearTimeout(timer); clearTimeout(forceTimer);
+      resolve([finding(ready ? 'probe.mcp-ready' : 'probe.mcp-failed', ready ? 'info' : 'error', x.location, ready ? `MCP server "${x.name}" initialized and listed tools.` : `MCP server "${x.name}" failed the startup probe.`, ready ? 'A local JSON-RPC initialize and tools/list exchange completed; no tool was invoked.' : 'The process exited, emitted invalid protocol data, or timed out after 5 seconds. Raw process output is never exported.', ready ? 'Use the client to verify its permission and authentication state.' : 'Run the server directly and check its private logs.')]);
+    });
     child.on('error', () => done(false)); child.on('exit', () => done(false)); child.stderr.on('data', () => { /* drain without exporting logs */ });
     child.stdout.on('data', chunk => {
+      if (ended) return;
       buffer += chunk.toString(); if (buffer.length > 1024 * 1024) { done(false); return; }
       let i;
-      while ((i = buffer.indexOf('\n')) >= 0) {
+      while (!ended && (i = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, i); buffer = buffer.slice(i + 1);
         let reply; try { reply = JSON.parse(line); } catch { continue; }
         if (reply.id === 1 && reply.result && !initialized) {
@@ -117,6 +139,6 @@ export async function probeMcp(extension: Extension, ctx: Context, client?: Clie
       }
     });
     child.stdin.on('error', () => done(false));
-    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'agent-sightline', version: '0.1.0' } } }) + '\n');
+    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'agent-sightline', version: VERSION } } }) + '\n');
   });
 }

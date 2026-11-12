@@ -4,6 +4,7 @@ import { discoverRepository, makeContext, selectedClients } from './discovery.js
 import { diagnose } from './diagnostics.js';
 import { redact } from './redact.js';
 import { cmp } from './utils.js';
+import { VERSION } from './version.js';
 import type { Context, Effective, Report, ScanOptions } from './types.js';
 export type * from './types.js';
 export { adapters } from '../adapters/index.js';
@@ -46,7 +47,7 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
     diff.set(key, entry);
   }
   const report: Report = {
-    schemaVersion: '1.0', tool: { name: 'Agent Sightline', version: '0.1.0' }, repository: ctx.repo, target: ctx.target, sessionDirectory: ctx.directory,
+    schemaVersion: '1.0', tool: { name: 'Agent Sightline', version: VERSION }, repository: ctx.repo, target: ctx.target, sessionDirectory: ctx.directory,
     assumptions: ['Fresh session launched in sessionDirectory, with target opened for path matching.', `User configuration: ${options.user === false ? 'excluded' : 'documented locations only (marked user)'}.`, `Trust: ${options.trust ?? 'auto'}; unknown trust remains conditional. --trust trusted also assumes project MCP approval for Claude.`, 'Only sources within --repo and explicit user/system configuration locations are read; external ancestors/imports may add context.', 'Token estimates use UTF-8 bytes / 4, not a model tokenizer. No model call or telemetry.'],
     sources: ctx.sources.sort((a, b) => cmp(a.path, b.path)).map(source => {
       const { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid } = source;

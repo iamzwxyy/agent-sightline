@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { serveStatic } from '../../scripts/static-server.mjs';
+import { VERSION } from '../../packages/core/version.js';
+import { createHash } from 'node:crypto';
 
 test('website connects the real client demo, workflow walkthrough, guide and downloadable package', async ({ page }) => {
   const server = await serveStatic('website/dist');
@@ -30,7 +32,10 @@ test('website connects the real client demo, workflow walkthrough, guide and dow
     await page.getByText('Does Sightline change my configuration?', { exact: false }).click();
     await expect(page.locator('.faq-list details').first()).toHaveAttribute('open', '');
     const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: /Download CLI package/ }).click()]);
-    expect(download.suggestedFilename()).toBe('agent-sightline-0.1.0.tgz');
+    expect(download.suggestedFilename()).toBe(`agent-sightline-${VERSION}.tgz`);
+    const legacy = await page.request.get(server.url + '/downloads/agent-sightline-0.1.0.tgz');
+    expect(legacy.ok()).toBeTruthy();
+    expect(createHash('sha256').update(await legacy.body()).digest('hex')).toBe('0cefb329bd544f0ce0275680b51e98fb059e6c895cef5f5d592639ad01740a4f');
     await page.getByRole('link', { name: /Installation guide/ }).click();
     await expect(page.getByRole('heading', { name: 'Install Sightline', exact: true })).toBeVisible();
     await page.getByRole('link', { name: 'Share a report', exact: true }).click();
