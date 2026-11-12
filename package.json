@@ -4,6 +4,9 @@
   "description": "See what your coding agent actually sees. Local, read-only configuration diagnostics.",
   "type": "module",
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/iamzwxyy/agent-sightline.git" },
+  "bugs": { "url": "https://github.com/iamzwxyy/agent-sightline/issues" },
+  "homepage": "https://github.com/iamzwxyy/agent-sightline#readme",
   "engines": {
     "node": ">=22"
   },
