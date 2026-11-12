@@ -46,7 +46,7 @@ test('profile file controls instruction budget, root markers and automatic trust
     '.codex/review.config.toml': 'project_doc_max_bytes = 6\nproject_root_markers = []\n',
   });
   t.after(() => rm(w.root, { recursive: true, force: true }));
-  await writeFile(path.join(w.home, '.codex/review.config.toml'), `project_doc_max_bytes = 6\nproject_root_markers = []\n[projects.${JSON.stringify(w.repo)}]\ntrust_level = "trusted"\n`);
+  await writeFile(path.join(w.home, '.codex/review.config.toml'), `project_doc_max_bytes = 6\nproject_root_markers = []\n[projects.${JSON.stringify(path.join(w.repo, 'src'))}]\ntrust_level = "trusted"\n`);
   const report = await scan({ ...w, clients: ['codex'], codexProfile: 'review', target: 'src/a.ts' });
   assert.equal(report.clients[0].instructions, 'Nested');
   assert.ok(report.findings.some(finding => finding.ruleId === 'instructions.truncated'));

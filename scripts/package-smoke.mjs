@@ -10,6 +10,7 @@ if (!npm) throw new Error('Run this script using npm run smoke.');
 const runNpm = args => execFileSync(process.execPath, [npm, ...args], { encoding: 'utf8' });
 try {
   const result = JSON.parse(runNpm(['pack', '--ignore-scripts', '--json', '--pack-destination', temp]));
+  if (result[0].files.some(file => /node_modules\/(?:@openai\/codex(?:[/-]|$)|typescript\/|@playwright\/|eslint\/|tsx\/|esbuild\/)/.test(file.path))) throw new Error('The production archive includes development tools.');
   const tarball = path.join(temp, result[0].filename);
   runNpm(['install', '--offline', '--cache', path.join(temp, 'empty-cache'), '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', path.join(temp, 'install'), tarball]);
   const cli = path.join(temp, 'install/node_modules/agent-sightline/dist/cli/index.js');
@@ -35,6 +36,7 @@ try {
   if (profiled.inputs?.codexProfile !== 'review' || profiled.clients[0].settings.find(setting => setting.key === 'model' && setting.status === 'active')?.value !== 'review-model') throw new Error('Installed profile resolution failed.');
   const demo = JSON.parse(execFileSync(process.execPath, [cli, 'demo', '--clients', 'codex,claude,copilot', '--json'], { encoding: 'utf8' }));
   if (new Set(demo.findings.map(f => f.ruleId)).size < 5) throw new Error('Bundled demo failed to demonstrate real findings.');
+  if (!demo.findings.some(finding => finding.ruleId === 'instructions.truncated') || demo.clients.find(client => client.client === 'codex')?.settings.find(setting => setting.key === 'project_doc_max_bytes' && setting.status === 'active')?.value !== 160) throw new Error('The installed Git-free sample lost its Codex byte-budget configuration.');
   const inspector = spawn(process.execPath, [cli, 'demo', '--ui', '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let startupTimer;
   try {

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { lstat, readFile } from 'node:fs/promises';
+import { lstat, readFile, realpath } from 'node:fs/promises';
 import { Ajv } from 'ajv';
 import type { AdapterMetadata, Context, Source, Status } from '../core/types.js';
 import { readUserTree } from '../core/discovery.js';
@@ -7,9 +7,9 @@ import { bytes, finding, locate } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, effectiveValue, finish, flatten, hooks, mcp, settings, skills, truncated } from './common.js';
 
 export const codexMetadata: AdapterMetadata = {
-  id: 'codex', name: 'OpenAI Codex CLI', maturity: 'verified', ruleVersion: '0.167.2', verifiedOn: '2026-11-12',
-  evidence: ['https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/core/src/agents_md.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/codex-home/src/instructions/mod.rs', 'https://developers.openai.com/codex/config-basic', 'https://developers.openai.com/codex/config-advanced#profiles', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/config/src/loader/mod.rs', 'https://developers.openai.com/codex/skills', 'https://learn.chatgpt.com/docs/hooks'],
-  limitations: ['Static single-directory session with explicit profile files. Other CLI overrides and managed/cloud requirements are not inferred.', 'Global instructions are separate from the project byte budget in 0.167.2; project empty overrides shadow the ordinary file.', 'Hook definition trust is reported as conditional. Bundled/plugin components and starlark exec-policy evaluation are not inspected.'],
+  id: 'codex', name: 'OpenAI Codex CLI', maturity: 'verified', ruleVersion: '0.167.2', verifiedOn: '2026-11-13',
+  evidence: ['https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/core/src/agents_md.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/codex-home/src/instructions/mod.rs', 'https://developers.openai.com/codex/config-basic', 'https://developers.openai.com/codex/config-advanced#profiles', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/config/src/loader/mod.rs', 'https://developers.openai.com/codex/skills', 'https://learn.chatgpt.com/docs/hooks', 'https://learn.chatgpt.com/docs/app-server'],
+  limitations: ['Static single-directory session with explicit profile files. Other CLI overrides and managed/cloud requirements are not inferred.', 'Base/project scalar and MCP values and winning files have real-client configuration API tests. Profiles, instruction bodies and line numbers use source/schema fixtures.', 'Global instructions are separate from the project byte budget in 0.167.2; project empty overrides shadow the ordinary file.', 'Hook definition trust is reported as conditional. Bundled/plugin components and starlark exec-policy evaluation are not inspected.'],
 };
 let validator: ReturnType<Ajv['compile']> | undefined;
 async function discover(ctx: Context): Promise<Source[]> {
@@ -77,15 +77,6 @@ export const codex = adapter(codexMetadata, discover, async ctx => {
   };
   const userLayers = [ctx.sources.find(s => s.path === '/etc/codex/config.toml'), user, profile].filter((s): s is Source => !!s);
   for (const s of userLayers) applyLayer(s, 'active');
-  let trust: 'trusted' | 'untrusted' | 'unknown' = ctx.options.trust === 'trusted' || ctx.options.trust === 'untrusted' ? ctx.options.trust : 'unknown';
-  if (trust === 'unknown') for (const d of [...ctx.dirs].reverse()) {
-    const configuredTrust = effectiveValue(e, `projects.${d}.trust_level`);
-    if (configuredTrust === 'trusted' || configuredTrust === 'untrusted') {
-      trust = configuredTrust;
-      break;
-    }
-  }
-  const status: Status = trust === 'trusted' ? 'active' : trust === 'untrusted' ? 'ignored' : 'conditional';
   let markers = effectiveValue(e, 'project_root_markers', ['.git']);
   if (!Array.isArray(markers)) markers = ['.git'];
   let rootIndex = -1;
@@ -94,10 +85,18 @@ export const codex = adapter(codexMetadata, discover, async ctx => {
     try { await lstat(path.join(ctx.dirs[i], marker)); rootIndex = i; break; } catch { /* missing marker */ }
   }
   const dirs = rootIndex < 0 ? [ctx.directory] : ctx.dirs.slice(rootIndex);
-  const layers = [...userLayers, ...ctx.dirs.map(d => ctx.sources.find(s => s.path === path.join(d, '.codex/config.toml'))).filter((s): s is Source => !!s)];
+  const projectRoot = dirs[0];
+  const canonicalRoot = await realpath(projectRoot).catch(() => projectRoot);
+  let trust: 'trusted' | 'untrusted' | 'unknown' = ctx.options.trust === 'trusted' || ctx.options.trust === 'untrusted' ? ctx.options.trust : 'unknown';
+  if (trust === 'unknown') {
+    const configuredTrust = effectiveValue(e, `projects.${canonicalRoot}.trust_level`) ?? effectiveValue(e, `projects.${projectRoot}.trust_level`);
+    if (configuredTrust === 'trusted' || configuredTrust === 'untrusted') trust = configuredTrust;
+  }
+  const status: Status = trust === 'trusted' ? 'active' : trust === 'untrusted' ? 'ignored' : 'conditional';
+  const layers = [...userLayers, ...dirs.map(d => ctx.sources.find(s => s.path === path.join(d, '.codex/config.toml'))).filter((s): s is Source => !!s)];
   for (const s of layers.slice(userLayers.length)) applyLayer(s, status);
   for (const s of ctx.sources.filter(s => s.kind === 'hooks' && s.owners.includes('codex'))) {
-    if (s.scope !== 'user' && s.scope !== 'system' && !ctx.dirs.some(d => s.path === path.join(d, '.codex/hooks.json'))) continue;
+    if (s.scope !== 'user' && s.scope !== 'system' && !dirs.some(d => s.path === path.join(d, '.codex/hooks.json'))) continue;
     const st = s.scope === 'user' || s.scope === 'system' ? 'active' : status;
     decision(e, s, st, 'Hooks discovered alongside an active config layer.');
     if (effectiveValue(e, 'features.hooks', true) !== false) hooks(e, s, s.data.hooks, st);

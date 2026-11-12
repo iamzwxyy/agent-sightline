@@ -1,5 +1,17 @@
 # Release validation
 
+## v0.2.3
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 105-case core suite completed with 104 passes and one Windows-only skip.
+* A pinned Codex 0.167.2 binary-version check and fifteen configuration comparisons run as part of the core suite. They compare selected base/project scalar/MCP values and winning source files through the native app-server configuration API. Each case uses an isolated home, disabled analytics and temporary repositories. The harness sends initialization and configuration reads without model turns or MCP startup.
+* The comparisons cover nested/root precedence, untrusted layers, ignored project-only fields, MCP field merging, nearest Git roots, marker-free directories, custom/disabled root markers, ancestor/intermediate trust, canonical/alias trust and conflicting alias entries. They exposed incorrect project-layer bounds and ancestor trust inheritance, which are corrected in this release.
+* All seventeen Chromium browser cases passed, including source navigation, settings, profiles, portable exports, accessibility, the public demonstration and phone layouts. The standalone report and product screenshots were regenerated and visually inspected.
+* Package smoke checks the installed Git-free sample's active 160-byte Codex budget and truncation finding. It rejects development tools in the archive, including the new development-only Codex binary, alongside existing CLI, malformed-extension, profile, HTML and browser-startup checks.
+* Production dependency audit reported zero vulnerabilities.
+* The runtime API exposes winning files. Instruction bodies, profiles and source line numbers retain version-pinned source/schema fixture coverage.
+
 ## v0.2.2
 
 Verified locally on macOS on 2026-11-13.

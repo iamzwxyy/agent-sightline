@@ -1,6 +1,6 @@
 {
   "name": "agent-sightline",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "See what your coding agent actually sees. Local, read-only configuration diagnostics.",
   "type": "module",
   "license": "MIT",
@@ -44,7 +44,8 @@
     "start": "tsx packages/cli/index.ts",
     "build:website": "npm run build && npm pack --ignore-scripts && node scripts/build-website.mjs",
     "pretest:web": "npm run build:website",
-    "preview": "node scripts/preview.mjs"
+    "preview": "node scripts/preview.mjs",
+    "test:codex": "tsx --test tests/codex-runtime.test.ts"
   },
   "dependencies": {
     "ajv": "8.20.0",
@@ -58,6 +59,7 @@
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
     "@eslint/js": "9.39.1",
+    "@openai/codex": "0.167.2",
     "@playwright/test": "1.65.0",
     "@types/cross-spawn": "6.0.6",
     "@types/node": "22.19.0",

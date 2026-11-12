@@ -38,5 +38,10 @@
     "filename": "agent-sightline-0.2.2.tgz",
     "url": "https://github.com/iamzwxyy/agent-sightline/releases/download/v0.2.2/agent-sightline-0.2.2.tgz",
     "sha256": "c20edd23194108a490423a7d871271532ebeeba795ab4a82389a6f887b515bce"
+  },
+  {
+    "filename": "agent-sightline-0.2.3.tgz",
+    "url": "https://github.com/iamzwxyy/agent-sightline/releases/download/v0.2.3/agent-sightline-0.2.3.tgz",
+    "sha256": "68c15ed0c15d945c16af4fef90648f6f4d22ded25bf80eea7849aea9ed48f6e6"
   }
 ]

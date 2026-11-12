@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3 — 2026-11-13
+
+* Compare effective base/project scalar and MCP configuration, including winning files, against the real Codex 0.167.2 configuration API in fifteen isolated scenarios.
+* Bound Codex project settings and standalone hooks to the selected project root. Marker-free sessions use their current directory.
+* Resolve automatic trust from the selected root's canonical key, followed by its logical-path key. Nested repositories and custom roots keep their own trust decisions.
+* Keep the bundled sample's Codex byte limit and MCP configuration active in Git-free installations. Package smoke checks the sample's exact byte limit and excludes development tools, including Codex binaries.
+
 ## 0.2.2 — 2026-11-13
 
 * Diagnose malformed MCP, hook and permission collections while retaining valid sibling definitions.
