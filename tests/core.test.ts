@@ -8,6 +8,7 @@ import { redact, redactText } from '../packages/core/redact.js';
 import { bytes, matches, prefix, slash, splitGlobs } from '../packages/core/utils.js';
 import type { Source } from '../packages/core/types.js';
 import { workspace } from './helpers.js';
+import { rootOf } from '../packages/adapters/common.js';
 
 function source(text: string, ext: string, kind: Source['kind'] = 'settings'): Source { return { id: 'test', path: '/fixture/test.' + ext, relativePath: 'test.' + ext, owners: ['codex'], scope: 'repository', kind, baseDir: '/fixture', text, body: text, bytes: bytes(text), bodyLine: 1, data: {}, lines: {}, invalid: false }; }
 test('JSON/JSONC duplicate keys and accurate parser locations', () => {
@@ -25,6 +26,7 @@ test('glob semantics preserve platform separators, braces and client matchBase d
   assert.deepEqual(splitGlobs('src/**/*.{ts,tsx}, docs/**/*.md'), ['src/**/*.{ts,tsx}', 'docs/**/*.md']);
   assert.ok(matches('src\\a.ts', ['src/**/*.ts'])); assert.ok(matches('src/nested/a.md', ['*.md'], true)); assert.ok(!matches('src/a.md', ['*.md'])); assert.ok(!matches('src/a.md', ['/*.md'], true));
   assert.equal(slash('C:\\repo\\a.ts'), 'C:/repo/a.ts'); assert.equal(prefix('a😀b', 3), 'a');
+  assert.equal(slash(rootOf({ ...source('', 'md'), path: 'C:\\repo\\.claude\\rules\\payments.md' }, '.claude')), 'C:/repo');
 });
 test('Codex project empty override shadows, global empty override falls back, global is not capped', async t => {
   const w = await workspace({ 'AGENTS.md': 'should be hidden', 'AGENTS.override.md': '', 'src/a.ts': '' }, { '.codex/AGENTS.md': 'Global content beyond budget', '.codex/AGENTS.override.md': ' \n', '.codex/config.toml': 'project_doc_max_bytes=1' }); t.after(() => rm(w.root, { recursive: true, force: true }));

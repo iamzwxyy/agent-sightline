@@ -1,7 +1,7 @@
 import path from 'node:path';
-import { stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import type { Context, Effective, Extension, Finding } from './types.js';
+import type { ClientId, Context, Effective, Extension, Finding } from './types.js';
 import { executable, finding, plainObject, within } from './utils.js';
 
 const mcpKeys = new Set(['command', 'args', 'env', 'env_vars', 'cwd', 'url', 'type', 'transport', 'headers', 'http_headers', 'env_http_headers', 'bearer_token_env_var', 'startup_timeout_sec', 'startup_timeout_ms', 'tool_timeout_sec', 'enabled', 'required', 'enabled_tools', 'disabled_tools', 'tools', 'timeout', 'description', 'name', 'oauth', 'headersHelper', 'output_token_budget', 'sandbox']);
@@ -76,10 +76,21 @@ export async function validateExtensions(ctx: Context, e: Effective): Promise<Fi
   return out;
 }
 
-export async function probeMcp(extension: Extension, ctx: Context): Promise<Finding[]> {
+export async function probeMcp(extension: Extension, ctx: Context, client?: ClientId): Promise<Finding[]> {
   if (extension.kind !== 'mcp' || extension.status !== 'active' || extension.config.url || typeof extension.config.command !== 'string') return [];
-  const x = extension; const cwd = x.config.cwd ? path.resolve(ctx.directory, x.config.cwd) : ctx.directory;
+  let x = extension;
+  if (client === 'claude' || client === 'copilot') {
+    const expand = (v: any): any => {
+      if (typeof v === 'string') return v.replace(/\$\{(?:env:)?([A-Za-z_][\w]*)(?:(:-|-)([^}]*))?\}/g, (_m, name, op, fallback) => { if (ctx.env[name] !== undefined) return ctx.env[name]; if (op) return fallback; throw new Error('Missing variable.'); });
+      if (Array.isArray(v)) return v.map(expand);
+      if (plainObject(v)) return Object.fromEntries(Object.entries(v).map(([k, value]) => [k, expand(value)]));
+      return v;
+    };
+    try { x = { ...extension, config: expand(extension.config) }; } catch { return [finding('probe.env-missing', 'error', extension.location, 'MCP startup probe has unresolved environment references.', 'The client would need these variables before starting the server.', 'Set the missing variables and retry the explicit probe.', client)]; }
+  }
+  const cwd = x.config.cwd ? path.resolve(ctx.directory, x.config.cwd) : ctx.directory;
   if (!within(ctx.repo, cwd)) return [finding('probe.outside-scope', 'warn', x.location, 'MCP probe skipped outside repository.', 'Probe execution is restricted to the inspected repository.', 'Use a working directory inside --repo.')];
+  try { if (!within(await realpath(ctx.repo), await realpath(cwd))) return [finding('probe.outside-scope', 'warn', x.location, 'MCP probe working directory resolves outside repository.', 'An external directory symlink is not an in-repository probe location.', 'Choose a working directory inside --repo.', client)]; } catch { return []; }
   const command = await executable(x.config.command, cwd, { ...ctx.env, ...x.config.env });
   if (!command) return [];
   return new Promise(resolve => {

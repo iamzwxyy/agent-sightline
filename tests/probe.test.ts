@@ -8,3 +8,8 @@ test('explicit stdio probe initializes and lists tools without invoking one', as
   const w = await workspace({ 'server.mjs': code, '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: ['server.mjs'] } } }) }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = await scan({ ...w, clients: ['claude'], trust: 'trusted', probe: true }); assert.ok(r.findings.some(f => f.ruleId === 'probe.mcp-ready'));
 });
+test('Claude stdio probe expands documented environment placeholders', async t => {
+  const code = `import readline from 'node:readline'; if(process.env.CHECK!=='fixture-value')process.exit(1);readline.createInterface({input:process.stdin}).on('line',l=>{const q=JSON.parse(l);if(q.id)console.log(JSON.stringify({jsonrpc:'2.0',id:q.id,result:q.id===1?{protocolVersion:'2024-11-05'}:{tools:[]}}));});`;
+  const w = await workspace({ 'server.mjs': code, '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: ['server.mjs'], env: { CHECK: '${SIGHTLINE_PROBE_FLAG}' } } } }) }); t.after(() => rm(w.root, { recursive: true, force: true }));
+  const r = await scan({ ...w, env: { ...w.env, SIGHTLINE_PROBE_FLAG: 'fixture-value' }, clients: ['claude'], trust: 'trusted', probe: true }); assert.ok(r.findings.some(f => f.ruleId === 'probe.mcp-ready')); assert.ok(!JSON.stringify(r).includes('fixture-value'));
+});

@@ -103,7 +103,7 @@ export function finish(e: Effective, ctx: Context): Effective {
   return e;
 }
 export function adapter(metadata: AdapterMetadata, discover: Adapter['discover'], resolve: Adapter['resolveForTarget']): Adapter {
-  return { metadata, detect: async ctx => { const e = await base(metadata, ctx); return { detected: e.detected, executable: e.executable }; }, discover, parse: s => s, resolveForTarget: resolve, validate: validateExtensions, probe: probeMcp, explain: e => e.notes };
+  return { metadata, detect: async ctx => { const e = await base(metadata, ctx); return { detected: e.detected, executable: e.executable }; }, discover, parse: s => s, resolveForTarget: resolve, validate: validateExtensions, probe: (x, ctx) => probeMcp(x, ctx, metadata.id), explain: e => e.notes };
 }
 
 /** @path imports outside code spans/fences; precise referring line survives expansion. */
@@ -149,4 +149,4 @@ export function truncated(e: Effective, s: Source, limit: number): string {
   e.findings.push(finding('instructions.truncated', 'warn', { path: s.path, line: s.text.slice(0, prefix(s.text, limit).length).split('\n').length, column: 1 }, `Instruction source is truncated at the configured byte budget (${limit} bytes remaining).`, 'Codex stops reading project instructions at project_doc_max_bytes; later sources receive no remaining budget.', 'Raise project_doc_max_bytes in an active config layer or shorten the instruction chain.', e.client));
   return content;
 }
-export function rootOf(s: Source, folder: string): string { const p = slash(s.path); const i = p.lastIndexOf(`/${folder}/`); return i >= 0 ? p.slice(0, i) : s.baseDir; }
+export function rootOf(s: Source, folder: string): string { const p = slash(s.path); const i = p.lastIndexOf(`/${folder}/`); return i >= 0 ? path.normalize(p.slice(0, i)) : s.baseDir; }
