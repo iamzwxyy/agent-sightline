@@ -9,7 +9,8 @@ export async function base(metadata: AdapterMetadata, ctx: Context): Promise<Eff
   return { client: metadata.id, metadata, detected: !!exec || ctx.sources.some(s => s.owners.includes(metadata.id)), executable: exec, decisions: [], instructions: '', instructionBytes: 0, estimatedTokens: 0, settings: [], extensions: [], findings: [], notes: [] };
 }
 export function decision(e: Effective, s: Source, status: Status, reason: string, content = '', importedFrom?: Decision['importedFrom']): Decision {
-  const d: Decision = { sourceId: s.id, path: s.path, line: s.bodyLine, kind: s.kind, scope: s.scope, status: s.invalid ? 'invalid' : status, reason: s.invalid ? 'Source has parse errors; no effective contribution can be proven.' : reason, order: status === 'active' || status === 'conditional' || status === 'truncated' ? e.decisions.filter(x => x.order !== null).length + 1 : null, bytes: s.bytes, loadedBytes: bytes(content), estimatedTokens: Math.ceil(bytes(content) / 4), content: s.invalid ? '' : content, ...(importedFrom ? { importedFrom } : {}) };
+  const invalidContribution = s.invalid && status !== 'ignored' && status !== 'shadowed';
+  const d: Decision = { sourceId: s.id, path: s.path, line: s.bodyLine, kind: s.kind, scope: s.scope, status: invalidContribution ? 'invalid' : status, reason: invalidContribution ? 'Source has parse errors; no effective contribution can be proven.' : reason, order: status === 'active' || status === 'conditional' || status === 'truncated' ? e.decisions.filter(x => x.order !== null).length + 1 : null, bytes: s.bytes, loadedBytes: bytes(content), estimatedTokens: Math.ceil(bytes(content) / 4), content: s.invalid ? '' : content, ...(importedFrom ? { importedFrom } : {}) };
   e.decisions.push(d); return d;
 }
 export function addInstruction(e: Effective, s: Source, reason: string, content = s.body, status: Status = 'active'): void {
@@ -98,7 +99,7 @@ export function pathPatterns(e: Effective, s: Source, key: string): string[] | n
   e.findings.push(finding('glob.type', 'error', locate(s, key), `"${key}" must be a string or an array of strings.`, 'The rule matcher cannot parse this value.', 'Use documented glob patterns.', e.client)); return [];
 }
 export function finish(e: Effective, ctx: Context): Effective {
-  for (const s of ctx.sources) if (!e.decisions.some(d => d.sourceId === s.id)) decision(e, s, 'ignored', s.owners.includes(e.client) ? 'Outside the client’s documented discovery scope for this target, or wrong configuration location.' : `This source belongs to ${s.owners.join(', ') || 'an unrecognized location'}; ${e.metadata.name} does not load it.`);
+  for (const s of ctx.sources) if (!e.decisions.some(d => d.sourceId === s.id)) decision(e, s, 'ignored', s.owners.includes(e.client) ? 'Outside the client’s documented discovery scope for this target.' : `This source belongs to ${s.owners.join(', ') || 'an unrecognized location'}; ${e.metadata.name} does not load it.`);
   e.detected = e.detected || e.decisions.some(d => d.status !== 'ignored');
   return e;
 }

@@ -7,6 +7,7 @@ Product experience update
 * Added a one-command browser demo and first-run guidance for unconfigured repositories.
 * Added exact effective-instruction reading, side-by-side client text comparison and a searchable resolved-settings browser with replaced-layer provenance.
 * Preserved inspected targets and trust across reloads, enabled browser navigation history and corrected stale startup reports on page reload.
+* Excluded ordinary application settings and Cargo configuration from agent discovery, kept subproject configuration outside the selected target informational, and preserved ignored status for malformed sources that a client never loads.
 * Rebuilt the browser inspector with a persistent workspace sidebar, grouped issue overview, finding-to-source navigation and redacted source previews with line numbers.
 * Added target-path suggestions, keyboard shortcuts, trust modeling, source filters, loading coverage comparison, extension details and responsive navigation.
 * Added a complete product website, installation guide, live example report, interactive client demo and downloadable CLI package.

@@ -9,7 +9,6 @@ import { html, json } from '../reporter/index.js';
 
 export async function serve(options: ScanOptions, port = 0): Promise<{ url: string; close: () => Promise<void> }> {
   const initial = await scan(options);
-  const targetPaths = listTargets(initial.repository);
   const server = createServer(async (req, res) => {
     const address = server.address() as AddressInfo;
     const expected = `127.0.0.1:${address.port}`;
@@ -35,7 +34,7 @@ export async function serve(options: ScanOptions, port = 0): Promise<{ url: stri
         const report = await scan({ ...options, trust: requestedTrust(url, options.trust), target: url.searchParams.get('target') ?? options.target });
         res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Content-Disposition', 'attachment; filename="agent-sightline-report.html"'); res.end(html(report));
       } else if (url.pathname === '/api/targets') {
-        res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ paths: await targetPaths }));
+        res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ paths: await listTargets(initial.repository) }));
       } else { res.writeHead(404); res.end('Not found.'); }
     } catch {
       res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Cannot inspect target. Choose a path inside the repository with an existing parent directory.' }));

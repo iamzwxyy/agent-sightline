@@ -7,7 +7,7 @@ import { parseSource } from './parse.js';
 
 const skip = new Set(['.git', 'node_modules', '.next', '.venv', 'venv', 'dist', 'build', 'coverage', 'vendor', 'target']);
 export function classify(file: string): { owners: ClientId[]; kind: Kind } | null {
-  const p = slash(file); const n = path.posix.basename(p);
+  const p = slash(file); const n = path.posix.basename(p); const parent = path.posix.basename(path.posix.dirname(p));
   if (/^AGENTS(?:\.override|\.local)?\.md$/.test(n)) return { owners: ['codex', 'claude', 'copilot', 'cursor', 'opencode'], kind: 'instructions' };
   if (/^CLAUDE(?:\.local)?\.md$/.test(n)) return { owners: ['claude', 'copilot', 'opencode'], kind: 'instructions' };
   if (n === 'GEMINI.md') return { owners: ['gemini', 'copilot'], kind: 'instructions' };
@@ -28,9 +28,13 @@ export function classify(file: string): { owners: ClientId[]; kind: Kind } | nul
   if (n === '.mcp.json') return { owners: ['claude', 'copilot'], kind: 'mcp' };
   if (n === 'mcp.json' && (p.includes('/.cursor/') || p.includes('/.github/') || p.includes('/.vscode/'))) return { owners: p.includes('/.cursor/') ? ['cursor'] : ['copilot'], kind: 'mcp' };
   if (n === 'mcp-config.json') return { owners: ['copilot'], kind: 'mcp' };
-  if (/^settings(?:\.local)?\.json$/.test(n)) return { owners: p.includes('/.gemini/') ? ['gemini'] : ['claude'], kind: 'settings' };
-  if (n === 'config.toml') return { owners: ['codex'], kind: 'settings' };
-  if (n === 'config.json' && p.includes('/.copilot/')) return { owners: ['copilot'], kind: 'settings' };
+  if (/^settings(?:\.local)?\.json$/.test(n)) {
+    const owner = parent === '.claude' ? 'claude' : parent === '.gemini' ? 'gemini' : parent === '.codex' ? 'codex' : null;
+    return owner ? { owners: [owner], kind: 'settings' } : null;
+  }
+  if (n === 'config.toml' && parent === '.codex') return { owners: ['codex'], kind: 'settings' };
+  if (n === 'config.json' && parent === '.copilot') return { owners: ['copilot'], kind: 'settings' };
+  if (n === 'config.json' && parent === '.claude') return { owners: ['claude'], kind: 'settings' };
   if (/^opencode\.jsonc?$/.test(n)) return { owners: ['opencode'], kind: 'settings' };
   if (n === 'hooks.json' && p.includes('/.codex/')) return { owners: ['codex'], kind: 'hooks' };
   if (p.includes('/.github/hooks/') && n.endsWith('.json')) return { owners: ['copilot'], kind: 'hooks' };

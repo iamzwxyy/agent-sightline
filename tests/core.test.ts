@@ -84,3 +84,45 @@ test('default scan does not execute declared hook/MCP commands', async t => {
   const w = await workspace({ '.mcp.json': '{"mcpServers":{"danger":{"command":"node","args":["evil.js"]}}}', 'evil.js': 'require("node:fs").writeFileSync("EXECUTED", "bad")' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   await scan({ ...w, clients: ['claude'], trust: 'trusted' }); await assert.rejects(readFile(path.join(w.repo, 'EXECUTED')));
 });
+
+test('ordinary application settings and Cargo configuration are excluded from agent discovery', async t => {
+  const w = await workspace({ '.vscode/settings.json': '{ // VS Code settings\n"editor.fontSize": 14\n}', '.cargo/config.toml': 'not a valid TOML file [', 'src/config.toml': 'application configuration [', 'src/settings.json': '{application data', '.claude/settings.json': '{"model":"sonnet"}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const r = await scan({ ...w, user: false, clients: ['claude'] });
+  assert.deepEqual(r.sources.map(source => source.relativePath), ['.claude/settings.json']);
+  assert.ok(!r.findings.some(finding => finding.severity !== 'info'));
+  assert.equal(r.clients[0].settings.find(setting => setting.key === 'model')?.value, 'sonnet');
+});
+
+test('subproject configurations remain discoverable without wrong-location warnings', async t => {
+  const w = await workspace({ 'app/.claude/settings.json': '{"model":"sonnet"}', 'app/.codex/config.toml': 'model="project"', 'app/.claude/skills/check/SKILL.md': '---\nname: check\ndescription: Check the app.\n---\nApp skill.' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const r = await scan({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  assert.equal(r.sources.length, 3);
+  assert.ok(!r.findings.some(finding => finding.severity !== 'info'));
+  assert.ok(r.findings.some(finding => finding.ruleId === 'source.outside-target'));
+  assert.ok(r.clients.every(client => client.settings.length === 0 && client.extensions.length === 0));
+  const app = await scan({ ...w, repo: path.join(w.repo, 'app'), user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  assert.ok(app.clients.every(client => client.settings.some(setting => setting.key === 'model')));
+});
+
+test('malformed sources do not turn an unrelated client into an invalid or detected client', async t => {
+  const w = await workspace({ '.claude/settings.json': '{ broken JSON' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const r = await scan({ ...w, env: { PATH: '' }, user: false, clients: ['claude', 'codex'] });
+  assert.ok(r.findings.some(finding => finding.ruleId === 'parse.json'));
+  const codex = r.clients.find(client => client.client === 'codex')!;
+  assert.equal(codex.detected, false);
+  assert.equal(codex.decisions[0].status, 'ignored');
+  assert.equal(r.clients.find(client => client.client === 'claude')!.decisions[0].status, 'invalid');
+});
+
+test('unsupported filenames inside agent configuration directories still report actionable placement errors', async t => {
+  const w = await workspace({ '.codex/settings.json': '{"model":"project"}', '.claude/config.json': '{"model":"sonnet"}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const r = await scan({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  const warnings = r.findings.filter(finding => finding.ruleId === 'source.wrong-location');
+  assert.equal(warnings.length, 2);
+  assert.ok(warnings.find(finding => finding.client === 'codex')!.suggestion.includes('.codex/config.toml'));
+  assert.ok(warnings.find(finding => finding.client === 'claude')!.suggestion.includes('.claude/settings.json'));
+});

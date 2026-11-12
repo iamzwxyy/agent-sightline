@@ -9,7 +9,12 @@ export function diagnose(ctx: Context, clients: Effective[]): Finding[] {
     for (const d of e.decisions) {
       const s = ctx.sources.find(s => s.id === d.sourceId)!;
       if (d.status === 'ignored' && s.scope !== 'user' && !s.owners.includes(e.client)) out.push(finding('source.client-ignored', 'info', locate(s), `${e.metadata.name} does not load ${s.relativePath}.`, d.reason, `Use ${e.client === 'codex' ? 'AGENTS.md or .codex/config.toml' : e.client === 'claude' ? 'CLAUDE.md, AGENTS.md fallback, or .claude/rules' : e.client === 'copilot' ? '.github/copilot-instructions.md or .github/instructions' : 'this client’s documented source locations'}, or keep this source for its intended client.`, e.client));
-      if (d.status === 'ignored' && s.owners.includes(e.client) && s.scope !== 'user' && /wrong configuration location/.test(d.reason) && ['settings', 'mcp', 'skill'].includes(s.kind)) out.push(finding('source.wrong-location', 'warn', locate(s), `${s.relativePath} is outside ${e.metadata.name}’s discovery scope.`, d.reason, 'Move it to a documented configuration location or choose the intended target directory.', e.client));
+      if (d.status === 'ignored' && s.owners.includes(e.client) && s.scope !== 'user' && d.reason === 'Outside the client’s documented discovery scope for this target.') {
+        const name = path.basename(s.path);
+        const wrongName = s.kind === 'settings' && (e.client === 'codex' && name !== 'config.toml' || e.client === 'claude' && !/^settings(?:\.local)?\.json$/.test(name) || e.client === 'gemini' && name !== 'settings.json');
+        if (wrongName) out.push(finding('source.wrong-location', 'warn', locate(s), `${e.metadata.name} does not read the configuration filename ${name}.`, 'This file is in an agent configuration directory with an unsupported configuration filename.', `Use ${e.client === 'codex' ? '.codex/config.toml' : e.client === 'claude' ? '.claude/settings.json or .claude/settings.local.json' : '.gemini/settings.json'} with the documented format.`, e.client));
+        else out.push(finding('source.outside-target', 'info', locate(s), `${s.relativePath} is outside this target’s ${e.metadata.name} configuration scope.`, d.reason, 'Inspect the owning project with --repo, or select its intended target.', e.client));
+      }
       if (d.status === 'ignored' && s.owners.includes(e.client) && /does not match|do not match/.test(d.reason)) out.push(finding('rule.target-unmatched', 'info', locate(s), 'Path-scoped rule does not match this target.', d.reason, 'Inspect a matching file or correct the rule’s glob.', e.client));
       const patterns = s.data.paths ?? s.data.applyTo ?? s.data.globs;
       if (patterns === undefined) continue;
