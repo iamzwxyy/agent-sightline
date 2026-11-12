@@ -1,4 +1,5 @@
 import { adapters } from '../adapters/index.js';
+import { finish } from '../adapters/common.js';
 import { discoverRepository, makeContext, selectedClients } from './discovery.js';
 import { diagnose } from './diagnostics.js';
 import { redact } from './redact.js';
@@ -33,6 +34,8 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
     if (options.probe) for (const x of e.extensions) e.findings.push(...await a.probe(x, ctx));
     clients.push(e);
   }
+  // Later adapters can discover imported files. Every client must explain those too.
+  for (const e of clients) finish(e, ctx);
   const findings = [...ctx.findings, ...clients.flatMap(e => e.findings), ...diagnose(ctx, clients)];
   const unique = [...new Map(findings.map(f => [f.id, f])).values()].sort((a, b) => ({ error: 0, warn: 1, info: 2 }[a.severity] - { error: 0, warn: 1, info: 2 }[b.severity] || cmp(a.location.path, b.location.path) || a.location.line - b.location.line || cmp(a.ruleId, b.ruleId) || cmp(a.client ?? '', b.client ?? '')));
   const diff = new Map<string, Report['diff'][number]>();

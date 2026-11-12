@@ -44,3 +44,7 @@ test('Codex global/project separator and bytes reflect versioned source', async 
   const r = await scan({ ...w, clients: ['codex'], trust: 'trusted' }); assert.equal(r.clients[0].instructions, 'global\n\n--- project-doc ---\n\nproject');
   await writeFile(path.join(w.repo, 'AGENTS.override.md'), ''); const empty = await scan({ ...w, clients: ['codex'], trust: 'trusted' }); assert.equal(empty.clients[0].instructions, 'global');
 });
+test('a later adapter import is still explained as ignored for earlier clients', async t => {
+  const w = await workspace({ 'AGENTS.md': 'codex', 'CLAUDE.md': '@policy.md', 'policy.md': 'imported policy' }); t.after(() => rm(w.root, { recursive: true, force: true }));
+  const r = await scan({ ...w, clients: ['codex', 'claude'], trust: 'trusted' }); assert.ok(r.clients[0].decisions.some(d => d.path === path.join(w.repo, 'policy.md') && d.status === 'ignored')); assert.ok(r.clients[1].instructions.includes('imported policy'));
+});
