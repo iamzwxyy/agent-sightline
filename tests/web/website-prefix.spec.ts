@@ -17,7 +17,9 @@ test('project-hosted website loads assets, demo, guide and the exact released pa
     // Keep the published package fixture independent of the development version.
     await mkdir(path.join(directory, 'website'), { recursive: true });
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ name: 'agent-sightline', version: '0.1.2' }));
-    for (const name of ['website/public', 'website/.openai', 'website/releases.json', 'examples/broken-agent-config', 'LICENSE']) await cp(name, path.join(directory, name), { recursive: true });
+    for (const name of ['website/public', 'website/.openai', 'examples/broken-agent-config', 'LICENSE']) await cp(name, path.join(directory, name), { recursive: true });
+    const releases = JSON.parse(await readFile('website/releases.json', 'utf8'));
+    await writeFile(path.join(directory, 'website/releases.json'), JSON.stringify(releases.filter((release: { filename: string }) => release.filename === 'agent-sightline-0.1.2.tgz')));
     execFileSync(process.execPath, [path.resolve('scripts/build-website.mjs'), '--site-url', publicUrl, '--released-package'], { cwd: directory, stdio: 'pipe' });
     server = await serveStatic(path.join(directory, 'website/dist'), 0, prefix);
     const failures: string[] = [];
