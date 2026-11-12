@@ -149,8 +149,8 @@ test('portable paths cover escaped configuration text, Windows spellings and fla
 test('portable paths preserve neighboring repositories and URLs while retaining legacy report support', () => {
   const report = reportWithFindings();
   report.repository = '/workspace/project';
-  report.assumptions = ['/workspace/project/config.json', '/workspace/project-backup/config.json', '/workspace/project.backup/config.json', 'https://example.test/workspace/project/config.json', 'file:///workspace/project/config.json', '/home/Example Person/.claude/CLAUDE.md'];
-  assert.deepEqual(portable(report).assumptions, ['<repo>/config.json', '/workspace/project-backup/config.json', '/workspace/project.backup/config.json', 'https://example.test/workspace/project/config.json', 'file://<repo>/config.json', '~/.claude/CLAUDE.md']);
+  report.assumptions = ['/workspace/project/config.json', '/workspace/project-backup/config.json', '/workspace/project.backup/config.json', 'https://example.test/workspace/project/config.json', 'file:///workspace/project/config.json', '/home/Example Person/.claude/CLAUDE.md', 'projects./workspace/project.backup.trust_level', 'projects./home/Example Person/project.backup.trust_level'];
+  assert.deepEqual(portable(report).assumptions, ['<repo>/config.json', '/workspace/project-backup/config.json', '/workspace/project.backup/config.json', 'https://example.test/workspace/project/config.json', 'file://<repo>/config.json', '~/.claude/CLAUDE.md', 'projects./workspace/project.backup.trust_level', 'projects.~/project.backup.trust_level']);
 });
 
 test('portable paths retain correct separators when the repository is a filesystem root', () => {

@@ -86,19 +86,21 @@ export function portable(report: Report): Report {
     return {
       exact: new RegExp('^(?:' + pattern + ')$', windows ? 'i' : ''),
       path: new RegExp(before + '(?:' + pattern + ')' + (trailingSeparator ? '' : after), windows ? 'gi' : 'g'),
-      project: new RegExp('^(projects\\.)(?:' + pattern + ')(?=\\.)', windows ? 'i' : ''),
       replacement: mapping.replacement,
       suffix: trailingSeparator ? '/' : '',
     };
   });
   const commonHome = new RegExp(before + "(?:/(?:Users|home)/[^/\"\\\\\\r\\n]+|[A-Za-z]:[/\\\\]+Users[/\\\\]+[^/\\\\\"\\r\\n]+)", 'g');
   const scrub = (text: string): string => {
+    // Flattened project keys keep their final setting name separate from the path.
+    const project = text.match(/^(projects\.)(.*)(\.[^.]+)$/);
+    if (project) text = project[2];
     for (const rule of replacements) {
       if (rule.exact.test(text)) { text = rule.replacement; continue; }
-      text = text.replace(rule.project, (_match, prefix: string) => prefix + rule.replacement);
       text = text.replace(rule.path, (_match, prefix: string) => prefix + rule.replacement + rule.suffix);
     }
-    return text.replace(commonHome, (_match, prefix: string) => prefix + '~');
+    text = text.replace(commonHome, (_match, prefix: string) => prefix + '~');
+    return project ? project[1] + text + project[3] : text;
   };
   const walk = (value: any): any => {
     if (typeof value === 'string') return scrub(value);

@@ -4,8 +4,8 @@
 
 Verified locally on macOS on 2026-11-13.
 
-* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 112-case core suite completed with 111 passes and one Windows-only skip.
-* Regression cases reproduced alias residue and unrelated-prefix/URL replacement before the fix. They now cover verified symlink/junction aliases, missing target files, assigned command arguments, custom homes, Windows escaping/separators/case, quoted and backslash-containing POSIX names, flattened project keys and filesystem-root separators.
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 113-case core suite completed with 112 passes and one Windows-only skip.
+* Regression cases reproduced alias residue and unrelated-prefix/URL replacement before the fix. They now cover verified symlink/junction aliases, missing target files, assigned command arguments, custom homes and broken user sources, Windows escaping/separators/case, quoted and backslash-containing POSIX names, flattened project keys and filesystem-root separators.
 * Privacy fixtures verify account-history privacy even when history contains an absolute path alias.
 * A serialized report retains its captured path context after its entire fixture filesystem is removed. Portable export removes that context, preserves private-value redaction, supports older reports and is idempotent.
 * An isolated CLI process retains an oversized configured argument within a bounded heap and timeout. Invalid or inaccessible filesystem paths end alias resolution for that path.

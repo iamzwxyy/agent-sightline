@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { workspace } from './helpers.js';
-import { html, json } from '../packages/reporter/index.js';
+import { html, json, portable } from '../packages/reporter/index.js';
 
 test('invalid environment and header containers keep nested string values private', async t => {
   const secrets = ['invalid-env-nested-sentinel', 'invalid-header-array-sentinel', 'invalid-env-string-sentinel'];
@@ -36,4 +36,16 @@ test('source previews redact credentials and omit private account/session state'
   assert.ok(!text.includes('private-history-alias'));
   assert.ok(report.sources.some(source => source.preview?.includes('REDACTED')));
   assert.ok(report.sources.filter(source => source.path.endsWith('.claude.json') || source.path.endsWith('config.json')).every(source => source.preview === undefined));
+});
+
+test('portable findings replace a custom home even when its only configuration source is broken', { skip: process.platform === 'win32' }, async t => {
+  const w = await workspace();
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  await mkdir(path.join(w.home, '.claude'));
+  await symlink(path.join(w.home, 'missing.md'), path.join(w.home, '.claude/CLAUDE.md'));
+  const report = await scan({ ...w, clients: ['claude'] });
+  const exported = portable(report);
+  const broken = exported.findings.find(finding => finding.ruleId === 'source.broken-symlink');
+  assert.equal(broken?.location.path, '~/.claude/CLAUDE.md');
+  assert.ok(!JSON.stringify(exported).includes(w.home));
 });

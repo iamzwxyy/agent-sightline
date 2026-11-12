@@ -62,7 +62,7 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
   };
   const privateValues = envValues(ctx);
   const result = redact(report, privateValues);
-  const configuration = result.clients.flatMap(client => [client.settings, client.extensions.map(extension => extension.config)]);
+  const configuration = [result.clients, result.findings];
   result.pathMappings = redact(await collectPathMappings(ctx, configuration), privateValues);
   return result;
 }
