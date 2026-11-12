@@ -13,6 +13,8 @@
 | `adapters --json` | Rule evidence/version/limitations |
 | `version` / `--version` | Package version |
 
+Implicit scans select the nearest enclosing Git root while keeping the current directory as the default target and session directory. Relative `explain` and `diff` targets resolve from the current directory. Git worktree `.git` files and nested repositories are recognized. A directory with no Git ancestor uses itself as the inspection boundary. An explicit `--repo` or positional repository selects the boundary and resolves relative targets from that directory. SDK calls with an omitted `ScanOptions.repo` use the same discovery behavior. The browser retains its selected boundary through target changes and reloads.
+
 Common flags: `--repo`, `--client` or `--clients`, `--profile` (Codex), `--no-user`, `--home` (isolated synthetic home), `--trust auto|trusted|untrusted`, `--system`, `--json`, `--format terminal|json|html`, `--severity error|warn|info`, `--fail-on error|warn|info|none`, `--output`.
 
 `--max-entries` sets the repository discovery budget, defaulting to 50,000 filesystem entries. `--max-user-files` sets the matching-file budget for each user instruction, rule, skill or hook root, defaulting to 4,000. Both accept non-negative safe integers. Zero prevents repository-entry processing or matching-file reads for the respective budget. Explicit target-chain files and user settings use their documented direct lookup paths. The file picker shares the repository entry budget.

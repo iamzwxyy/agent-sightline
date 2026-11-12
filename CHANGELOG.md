@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 — 2026-11-13
+
+* Find the nearest Git root for implicit scans launched from subdirectories, retaining working-directory-relative targets and inherited project configuration.
+* Recognize worktree marker files and nearest nested repositories, with explicit repository selection controlling the inspection boundary.
+* Retain the inspector’s filesystem boundary through target changes and reloads, including when configuration values cause report paths to be redacted.
+* Verify the nested-directory entry point in the installed-package smoke test.
+
 ## 0.2.0 — 2026-11-13
 
 * Add configurable repository-entry and user configuration file budgets with `--max-entries` and `--max-user-files`.

@@ -3,12 +3,15 @@ import { fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 import type { ScanOptions } from '../core/types.js';
 import { scan } from '../core/index.js';
+import { makeContext } from '../core/discovery.js';
 import { html, json } from '../reporter/index.js';
 import { redact } from '../core/redact.js';
 import { searchTargets } from './targets.js';
 
 export async function serve(options: ScanOptions, port = 0): Promise<{ url: string; close: () => Promise<void> }> {
-  const initial = await scan(options);
+  const { repo, target } = await makeContext(options);
+  options = { ...options, repo, target };
+  await scan(options);
   const server = createServer(async (req, res) => {
     const address = server.address() as AddressInfo;
     const expected = `127.0.0.1:${address.port}`;
@@ -43,7 +46,7 @@ export async function serve(options: ScanOptions, port = 0): Promise<{ url: stri
         if (query.length > 2048 || limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 1500)) throw new Error('Invalid file search.');
         const controller = new AbortController();
         res.once('close', () => controller.abort());
-        const result = await searchTargets(initial.repository, { query, limit, maxEntries: options.maxFiles, signal: controller.signal });
+        const result = await searchTargets(repo, { query, limit, maxEntries: options.maxFiles, signal: controller.signal });
         res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(result));
       } else { res.writeHead(404); res.end('Not found.'); }
     } catch {

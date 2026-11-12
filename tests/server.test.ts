@@ -22,6 +22,21 @@ test('read-only local UI serves, scans target, exports portable HTML and rejects
   const demo = await (await fetch(server.url + '/demo/')).text(); assert.ok(demo.includes('instructions.truncated')); assert.ok(!demo.includes(w.repo)); assert.ok(!demo.includes(w.home)); assert.ok(demo.includes('data-live="false"'));
 });
 
+test('server file search and scans retain filesystem paths when report paths are redacted', async t => {
+  const w = await workspace({ 'src/a.ts': '' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  await writeFile(path.join(w.repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { PROJECT_ROOT: w.repo } } } }));
+  const server = await serve({ ...w, user: false, clients: ['claude'] });
+  t.after(server.close);
+  const page = await fetch(server.url);
+  assert.equal(page.status, 200);
+  const report = await (await fetch(server.url + '/api/scan?target=src/a.ts')).json();
+  assert.equal(report.repository, '[REDACTED]');
+  const targets = await (await fetch(server.url + '/api/targets')).json();
+  assert.ok(targets.paths.includes('src/a.ts'));
+  assert.equal(targets.truncated, false);
+});
+
 test('profile selection and clearing survive local scans, reloads and portable exports', async t => {
   const w = await workspace({}, { '.codex/config.toml': 'model = "base"', '.codex/review.config.toml': 'model = "review"' });
   t.after(() => rm(w.root, { recursive: true, force: true }));

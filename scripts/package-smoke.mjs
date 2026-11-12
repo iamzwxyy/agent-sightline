@@ -16,6 +16,9 @@ try {
   const repo = path.join(temp, 'repository'); mkdirSync(path.join(repo, '.git'), { recursive: true }); writeFileSync(path.join(repo, 'AGENTS.md'), 'Installed package works.');
   const output = execFileSync(process.execPath, [cli, '--repo', repo, '--no-user', '--trust', 'trusted', '--client', 'codex', '--json'], { encoding: 'utf8' });
   const report = JSON.parse(output); if (report.clients[0].instructions !== 'Installed package works.') throw new Error('Installed resolver failed.');
+  const nested = path.join(repo, 'src'); mkdirSync(nested);
+  const inferred = JSON.parse(execFileSync(process.execPath, [cli, 'explain', 'new.ts', '--no-user', '--trust', 'trusted', '--client', 'codex', '--json'], { cwd: nested, encoding: 'utf8' }));
+  if (inferred.clients[0].instructions !== 'Installed package works.' || path.dirname(path.dirname(inferred.target)) !== inferred.repository) throw new Error('Installed nested-directory discovery failed.');
   const htmlFile = path.join(temp, 'report.html'); execFileSync(process.execPath, [cli, 'report', '--repo', repo, '--no-user', '--format', 'html', '--output', htmlFile]);
   if (!readFileSync(htmlFile, 'utf8').includes('Sightline — Agent configuration')) throw new Error('Installed HTML reporter failed.');
   const version = execFileSync(process.execPath, [cli, 'version'], { encoding: 'utf8' }).trim(); if (version !== pkg.version || report.tool.version !== pkg.version) throw new Error('Wrong package version.');

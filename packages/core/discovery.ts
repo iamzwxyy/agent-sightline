@@ -63,6 +63,23 @@ export function classify(file: string): { owners: ClientId[]; kind: Kind } | nul
   return null;
 }
 
+export async function findRepositoryRoot(directory: string, signal?: AbortSignal): Promise<string> {
+  let candidate = directory;
+  for (;;) {
+    signal?.throwIfAborted();
+    try {
+      const marker = await stat(path.join(candidate, '.git'));
+      if (marker.isDirectory() || marker.isFile()) return candidate;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw new Error('Cannot inspect an ancestor for a Git root. Use --repo <directory> to choose the inspection boundary.');
+    }
+    const parent = path.dirname(candidate);
+    if (parent === candidate) return directory;
+    candidate = parent;
+  }
+}
+
 export async function makeContext(options: ScanOptions): Promise<Context> {
   if (options.codexProfile !== undefined) {
     if (!/^[A-Za-z0-9_-]+$/.test(options.codexProfile)) throw new Error('Codex profile names must contain only letters, numbers, hyphens and underscores.');
@@ -70,9 +87,10 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
     if (options.clients && !options.clients.includes('codex')) throw new Error('A Codex profile requires Codex in the selected clients.');
   }
   const discovery = createDiscoveryState(options);
-  const repo = path.resolve(options.repo ?? process.cwd());
+  const cwd = process.cwd();
+  const repo = options.repo === undefined ? await findRepositoryRoot(cwd, options.signal) : path.resolve(options.repo);
   if (!(await stat(repo)).isDirectory()) throw new Error('Repository must be an existing directory. Use --repo <directory>.');
-  const target = path.resolve(repo, options.target ?? '.');
+  const target = path.resolve(options.repo === undefined ? cwd : repo, options.target ?? '.');
   if (!within(repo, target)) throw new Error('Target must be inside --repo. Choose a repository-relative path.');
   let directory = path.dirname(target);
   try { if ((await stat(target)).isDirectory()) directory = target; } catch { if (!path.extname(target) && options.target?.endsWith('/')) directory = target; }

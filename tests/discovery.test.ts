@@ -1,12 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
-import { makeContext, readUserTree } from '../packages/core/discovery.js';
+import { findRepositoryRoot, makeContext, readUserTree } from '../packages/core/discovery.js';
 import { filter, json, terminal } from '../packages/reporter/index.js';
 import { workspace } from './helpers.js';
 import { searchTargets } from '../packages/web/targets.js';
+
+test('implicit repository discovery selects the nearest Git directory or worktree marker', async t => {
+  const w = await workspace({ 'src/payments/refund.ts': '' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const directory = path.join(w.repo, 'src/payments');
+  assert.equal(await findRepositoryRoot(directory), w.repo);
+  await rm(path.join(w.repo, '.git'), { recursive: true });
+  await writeFile(path.join(w.repo, '.git'), 'gitdir: ../main/.git/worktrees/checkout\n');
+  assert.equal(await findRepositoryRoot(directory), w.repo);
+  await mkdir(path.join(w.repo, 'src/.git'));
+  assert.equal(await findRepositoryRoot(directory), path.join(w.repo, 'src'));
+});
+
+test('implicit repository discovery keeps a directory without a Git ancestor as its boundary', async t => {
+  const w = await workspace({ 'src/payments/refund.ts': '' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  await rm(path.join(w.repo, '.git'), { recursive: true });
+  const directory = path.join(w.repo, 'src/payments');
+  assert.equal(await findRepositoryRoot(directory), directory);
+});
 
 test('repository discovery reports its actual budget and preserves incomplete status after severity filtering', async t => {
   const w = await workspace({ 'AGENTS.md': 'Repository instructions.', 'other.md': '' });

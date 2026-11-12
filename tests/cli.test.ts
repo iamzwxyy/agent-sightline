@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { readFile, readdir, rm, watch } from 'node:fs/promises';
+import { readFile, readdir, realpath, rm, watch } from 'node:fs/promises';
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
@@ -11,6 +11,55 @@ test('no-argument CLI diagnoses repository and JSON is machine-readable without 
   const w = await workspace({ 'AGENTS.md': 'shared' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = run(['--no-user'], w.repo); assert.equal(r.status, 0); assert.ok(r.stdout.includes('Agent Sightline')); assert.ok(r.stdout.includes('sources')); assert.ok(!r.stdout.includes('\x1b'));
   const j = run(['--client', 'codex', '--no-user', '--trust', 'trusted', '--json'], w.repo); assert.equal(j.status, 0); assert.equal(JSON.parse(j.stdout).clients[0].instructions, 'shared');
+});
+test('implicit CLI scans inherit Git-root configuration while resolving targets from the working directory', async t => {
+  const w = await workspace({
+    'AGENTS.md': 'Root Codex instructions.',
+    'CLAUDE.md': 'Root Claude instructions.',
+    '.github/copilot-instructions.md': 'Root Copilot instructions.',
+    '.codex/config.toml': 'model = "repository-model"',
+    '.claude/settings.json': '{"model":"repository-model"}',
+    'src/payments/CLAUDE.md': 'Nested Claude instructions.',
+    'src/payments/refund.ts': '',
+    'src/shared.ts': '',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const repo = await realpath(w.repo);
+  const cwd = path.join(repo, 'src/payments');
+  const flags = ['--clients', 'codex,claude,copilot', '--no-user', '--trust', 'trusted', '--json'];
+  const initial = run(flags, cwd);
+  assert.equal(initial.status, 0, initial.stderr);
+  const report = JSON.parse(initial.stdout);
+  assert.equal(report.repository, repo);
+  assert.equal(report.target, cwd);
+  assert.equal(report.sessionDirectory, cwd);
+  assert.ok(report.clients[0].instructions.includes('Root Codex instructions.'));
+  assert.ok(report.clients[1].instructions.includes('Root Claude instructions.'));
+  assert.ok(report.clients[1].instructions.includes('Nested Claude instructions.'));
+  assert.ok(report.clients[2].instructions.includes('Root Copilot instructions.'));
+  for (const client of report.clients.slice(0, 2)) assert.equal(client.settings.find((setting: any) => setting.key === 'model' && setting.status === 'active').value, 'repository-model');
+  for (const target of ['refund.ts', '../shared.ts']) {
+    const explained = run(['explain', target, ...flags], cwd);
+    assert.equal(explained.status, 0, explained.stderr);
+    assert.equal(JSON.parse(explained.stdout).target, path.resolve(cwd, target));
+  }
+  const outside = run(['explain', '../../../outside', ...flags], cwd);
+  assert.equal(outside.status, 2);
+});
+test('explicit CLI repository boundaries retain their own relative target paths', async t => {
+  const w = await workspace({ 'AGENTS.md': 'Outer instructions.', 'src/CLAUDE.md': 'Selected project instructions.', 'src/a.ts': '' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const directory = path.join(w.repo, 'src');
+  const flags = ['--no-user', '--trust', 'trusted', '--client', 'claude', '--json'];
+  for (const args of [[directory, ...flags], ['--repo', directory, ...flags], ['explain', 'a.ts', '--repo', directory, ...flags]]) {
+    const result = run(args, w.repo);
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.repository, directory);
+    assert.ok(!report.sources.some((source: any) => source.path === path.join(w.repo, 'AGENTS.md')));
+    assert.equal(report.clients[0].instructions, 'Selected project instructions.');
+    assert.equal(report.target, args[0] === 'explain' ? path.join(directory, 'a.ts') : directory);
+  }
 });
 test('CLI explain/diff/adapters/help/version and options after commands', async t => {
   const w = await workspace({ 'src/a.ts': '', 'AGENTS.md': 'shared' }); t.after(() => rm(w.root, { recursive: true, force: true }));

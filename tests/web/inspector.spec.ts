@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { serve } from '../../packages/web/server.js';
@@ -7,6 +9,43 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
+
+test('an inspector launched from a subdirectory retains its Git-root scope through refresh and reload', async ({ page }) => {
+  const w = await workspace({ 'CLAUDE.md': 'Root project instructions.', 'src/payments/CLAUDE.md': 'Payment instructions.', 'src/payments/refund.ts': '', 'src/shared.ts': '' });
+  const child = spawn(process.execPath, ['--import', import.meta.resolve('tsx'), path.resolve('packages/cli/index.ts'), 'ui', '--no-open', '--no-user', '--client', 'claude'], { cwd: path.join(w.repo, 'src/payments'), stdio: ['ignore', 'pipe', 'pipe'] });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const url = await new Promise<string>((resolve, reject) => {
+      let output = '';
+      timer = setTimeout(() => reject(new Error('Nested inspector did not start.')), 15000);
+      child.once('error', reject);
+      child.once('exit', () => reject(new Error('Nested inspector exited before startup.')));
+      child.stdout.on('data', chunk => { output += chunk.toString(); const match = output.match(/http:\/\/127\.0\.0\.1:\d+/); if (match) resolve(match[0]); });
+    });
+    clearTimeout(timer);
+    await page.goto(url);
+    await expect(page.locator('#target')).toHaveValue('src/payments');
+    await page.getByRole('button', { name: 'Inspect Claude Code instructions', exact: true }).click();
+    await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+    await expect(page.locator('#effective-document')).toContainText('Root project instructions.');
+    await expect(page.locator('#effective-document')).toContainText('Payment instructions.');
+    const targets = await (await page.request.get(url + '/api/targets')).json();
+    expect(targets.paths).toContain('src/shared.ts');
+    await page.locator('#target').fill('src/shared.ts');
+    await page.locator('#inspect').click();
+    await expect(page.locator('#footer-target')).toHaveText('src/shared.ts');
+    await expect(page.locator('#effective-document')).toContainText('Root project instructions.');
+    await expect(page.locator('#effective-document')).not.toContainText('Payment instructions.');
+    await page.reload();
+    await expect(page.locator('#target')).toHaveValue('src/shared.ts');
+    await expect(page.locator('#effective-document')).toContainText('Root project instructions.');
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+  } finally {
+    clearTimeout(timer);
+    if (child.exitCode === null) { const closed = once(child, 'close'); child.kill(); await closed; }
+    await rm(w.root, { recursive: true, force: true });
+  }
+});
 
 test('finding → source line → client comparison → portable report', async ({ page }) => {
   const server = await serve({ ...sampleOptions, clients: [...sampleOptions.clients] });

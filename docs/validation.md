@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.2.1
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks and build passed. The 78-case core suite completed with 77 passes and one Windows-only skip.
+* CLI regressions start in a nested directory, load root Codex/Claude/Copilot instructions and project settings, resolve sibling targets from the working directory and reject targets outside the inferred repository. Explicit repository boundaries and their relative target paths are covered separately.
+* Discovery fixtures verify directory and worktree-file Git markers, nearest nested repositories and the working-directory fallback without a Git ancestor.
+* All sixteen Chromium browser cases passed. The new case starts the actual CLI inspector in a subdirectory, inspects inherited instructions, selects a repository-relative target and reloads the resulting page. Existing source, comparison, profile, export, accessibility and phone regressions remain included.
+* The server regression retains file-search and scan behavior when a configured environment value causes repository paths in the public report to be redacted.
+* Empty-cache offline installation passed with an installed nested-directory explanation, selected profile, version, HTML and browser startup checks. Production dependency audit reported zero vulnerabilities. The standalone example and product screenshot were regenerated and visually inspected.
+
 ## v0.2.0
 
 Verified locally on macOS on 2026-11-13.
