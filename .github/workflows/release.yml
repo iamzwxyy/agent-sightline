@@ -22,6 +22,8 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install -g npm@11.17.0
       - run: npm ci
-      - run: node scripts/check-release.mjs
+      - id: release
+        run: node scripts/check-release.mjs
       - run: npm run check
-      - run: npm publish --provenance --access public
+      - if: steps.release.outputs.publish == 'true'
+        run: npm publish --provenance --access public

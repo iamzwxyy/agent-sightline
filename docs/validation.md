@@ -1,14 +1,14 @@
 # v0.1.0 validation
 
-The product-experience revision was verified at commit `76c9043dc31859e9d9ebb90140d663514572a5ee` on 2026-11-12. The standalone example report was regenerated in `5017568`. The audit, reproducibility and performance measurements below were recorded during the initial implementation verification at `e8661e86640f3242f2e3c1aa5ec291593fcd51f1`.
+The first-use and configuration-inspection revision was verified at commit `72bc20be804dbb866bc51140ffc507fa39ec6a12` on 2026-11-12. The audit, reproducibility and performance measurements below were recorded during the initial implementation verification at `e8661e86640f3242f2e3c1aa5ec291593fcd51f1`.
 
 ## Executed locally
 
 * Lint and strict TypeScript checks passed.
-* 38 parser/resolver/compatibility/golden/CLI/privacy/report/server/probe tests passed locally. Hosted CI verifies the product-experience revision on Node 22.
-* Six Chromium browser tests passed, covering finding-to-source navigation, source provenance, comparison, portable HTML download/reopen, target suggestions and rejected targets, trust assumptions, keyboard shortcuts, mobile navigation, extension details, the website walkthrough, installation guide and package download.
-* Automated axe WCAG A/AA checks reported zero violations across the homepage, guide and five inspector views. Desktop and mobile screenshots were visually inspected.
-* Real tarball installation in an isolated prefix passed: installed CLI, effective Codex content, reporter assets, version and bundled demo with at least five distinct rule IDs.
+* 42 parser/resolver/compatibility/golden/CLI/privacy/report/server/probe tests passed locally. New regressions cover ordinary application and Cargo configuration, subproject scope, malformed sources ignored by unrelated clients, actual unsupported agent filenames and newly created target suggestions. Hosted CI verifies the implementation on Node 22.
+* Eight Chromium browser tests passed, covering finding-to-source navigation, source provenance, side-by-side effective text, setting precedence and replaced origins, browser navigation history, target/trust persistence, fresh page reloads, empty-repository onboarding, portable HTML, mobile navigation, extensions, the website walkthrough, guide and download.
+* Automated axe WCAG A/AA checks reported zero violations across the homepage, guide and seven inspector views, including effective text and settings. Desktop and mobile screenshots were visually inspected.
+* Real tarball installation in an isolated prefix passed, including installed CLI, effective Codex content, reporter assets, version and bundled demo. The installed `demo --ui --no-open` command started successfully and served the browser assets with personal configuration excluded.
 * One-command npm exec with the local tarball successfully ran the bundled demo and version.
 * Production dependency audit (`npm audit --omit=dev`) reported zero vulnerabilities. A full development dependency audit reports moderate advisories in the current TypeScript ESLint dependency tree; these tools are not runtime package dependencies.
 * Consecutive builds produced identical dist file-content hashes. The compiler/schema/browser assets are deterministic; the final tarball includes updated release documentation.
@@ -16,7 +16,7 @@ The product-experience revision was verified at commit `76c9043dc31859e9d9ebb901
 
 ## Hosted OS matrix
 
-The product-experience run [Verify 43153869201](https://github.com/iamzwxyy/agent-sightline/actions/runs/43153869201) passed on Linux, macOS and Windows with Node 22. The repository is private. The run includes npm ci, lint, typecheck, tests, build, real package installation, production audit, all six browser tests, packing and artifact upload.
+The implementation run [Verify 43182346305](https://github.com/iamzwxyy/agent-sightline/actions/runs/43182346305) passed on Linux, macOS and Windows with Node 22. The run includes npm ci, lint, typecheck, tests, build, real package installation, production audit, all eight browser tests, packing and artifact upload.
 
 Windows skips three POSIX-only symlink/permission fixtures. Platform-neutral path tests and Windows adapter golden fixtures run there.
 
@@ -24,6 +24,8 @@ The matrix exposed a Windows path-root mismatch affecting Claude/Cursor rules, p
 
 ## Publication state
 
-The product website was deployed successfully through Sites at https://agent-sightline.williamtse700.chatgpt.site with owner-only access. It includes the interactive `/demo/`, installation guide and downloadable v0.1.0 package. The native deployment result confirmed success for `appgdep_6af53ebb7e3c8191ac97210534006bd4`.
+The product website was deployed through Sites at https://agent-sightline.williamtse700.chatgpt.site and made public at the owner's explicit request. Anonymous HTTP requests to the homepage, interactive `/demo/`, guide, sitemap and package download returned 200. The downloaded package matched the local package's SHA-256 hash.
 
-The local npm tarball and reviewed private source repository are available. No public npm package has been published. The release workflow is prepared and requires final name/visibility review plus npm trusted-publisher configuration. Official-rule fixtures are not a claim of authenticated live-client/model conformance.
+The source repository https://github.com/iamzwxyy/agent-sightline is public and uses `main` as its default branch. A fresh-cache `npx` execution from the public tarball URL ran the bundled sample, reported 15 distinct diagnostic rule IDs and excluded personal configuration.
+
+Public npm-registry publication is pending account authentication. The website's package URL provides a working online installation route. Official-rule fixtures record static compatibility contracts.

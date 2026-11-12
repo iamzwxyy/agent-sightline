@@ -13,8 +13,8 @@ agent-sightline demo
 
 `npm ci` uses the committed lockfile. Build uses pinned TypeScript and copies static assets plus a version-pinned schema. `npm run smoke` packs to a temporary directory, performs a real isolated installation, executes the installed resolver/version, and writes an installed HTML report. It does not install globally.
 
-Before public release: host the reviewed source repository; enable private vulnerability reporting; run the Linux/macOS/Windows workflow and retain its results; recheck the package/name availability; configure npm trusted publishing for this repository and the `npm-release` environment. Create a `v0.1.0` tag only after those gates. The release workflow verifies the tag, waits for the OS matrix, and publishes with provenance.
+The public website distributes the tested tarball and the source repository is public. For the first npm publication, log in with the account that will own `agent-sightline` and publish the verified tarball with `npm publish ./agent-sightline-0.1.0.tgz --access public`. The initial package publication enables configuration of npm trusted publishing for this repository and the `npm-release` environment.
 
-No public repository, npm ownership or trusted publisher is assumed by this checkout. A local tarball is installable before public publication. Registry install commands should be promoted only after the package is actually published.
+The tag-triggered release workflow verifies the tag, waits for the OS matrix, and publishes new versions with provenance through the configured trusted publisher. An already-published version is detected and skipped, allowing verification of the initial tag and safe workflow retries. Promote registry install commands after confirming that the package is published.
 
 Reproducibility: `npm run build` creates deterministic compiler/static-asset output. Tarballs embed npm package metadata; compare file content hashes, not installation cache timestamps. The generated example HTML uses portable paths and no report timestamp.

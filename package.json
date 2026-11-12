@@ -11,7 +11,7 @@
   "bugs": {
     "url": "https://github.com/iamzwxyy/agent-sightline/issues"
   },
-  "homepage": "https://github.com/iamzwxyy/agent-sightline#readme",
+  "homepage": "https://agent-sightline.williamtse700.chatgpt.site",
   "engines": {
     "node": ">=22"
   },

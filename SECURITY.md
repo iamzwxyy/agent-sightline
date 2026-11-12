@@ -1,6 +1,6 @@
 # Security policy
 
-Supported release series: 0.1.x. Report a reproducible security issue privately using the repository's GitHub private vulnerability reporting after hosting is configured. Until then, do not post real credentials in a public issue; use synthetic sentinel values and describe the affected function.
+The supported release series is 0.1.x. Report a reproducible security issue through [GitHub private vulnerability reporting](https://github.com/iamzwxyy/agent-sightline/security/advisories/new). Use synthetic sentinel values and describe the affected function.
 
 The CLI reads documented local config paths. It does not collect telemetry, call models, sign in, upload files, fetch instruction URLs, or start configured processes during default scans. The local UI binds to 127.0.0.1 and rejects external Host/Origin values. Config content is inert text; scripts are protected by a hash-based CSP.
 
