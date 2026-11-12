@@ -1,5 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
+  const basePath = new URL('.', document.currentScript.src).pathname;
   let report;
   let clientId = 'codex';
   let selectedPath;
@@ -40,16 +41,16 @@
     $('demo-reason-title').textContent = selected.status === 'truncated' ? `Only ${selected.loadedBytes} of ${selected.bytes} bytes reach ${clientNames[clientId]}.` : selected.status === 'active' ? `This source reaches ${clientNames[clientId]}.` : `This source is ${statusNames[selected.status].toLowerCase()} for ${clientNames[clientId]}.`;
     $('demo-reason').textContent = selected.reason;
   }
-  if ($('demo-sources')) fetch('/demo-report.json').then(response => response.json()).then(data => { report = data; renderDemo(); }).catch(() => {
+  if ($('demo-sources')) fetch(basePath + 'demo-report.json').then(response => response.json()).then(data => { report = data; renderDemo(); }).catch(() => {
     $('demo-reason').textContent = 'Open the full bundled demo to inspect source loading and configuration findings.';
   });
   document.querySelectorAll('[data-demo-client]').forEach(button => {
     button.onclick = () => { if (!report) return; clientId = button.dataset.demoClient; selectedPath = null; renderDemo(); };
   });
   const workflows = {
-    trace: { image: '/images/instructions.png', alt: 'The instruction explorer shows a source file, its loading order and provenance', caption: 'Inspect a source, read its loaded content, and see why it applies to your target file.', link: '/demo/#view=effective&client=codex' },
-    find: { image: '/images/finding.png', alt: 'A finding explains the issue, exact source and suggested resolution', caption: 'A finding connects the problem, its source location and the next step in one place.', link: '/demo/#view=findings' },
-    compare: { image: '/images/compare.png', alt: 'Side-by-side effective instructions and source coverage across three clients', caption: 'Read the exact instructions side by side, then trace each loading difference to its source.', link: '/demo/#view=compare' },
+    trace: { image: basePath + 'images/instructions.png', alt: 'The instruction explorer shows a source file, its loading order and provenance', caption: 'Inspect a source, read its loaded content, and see why it applies to your target file.', link: basePath + 'demo/#view=effective&client=codex' },
+    find: { image: basePath + 'images/finding.png', alt: 'A finding explains the issue, exact source and suggested resolution', caption: 'A finding connects the problem, its source location and the next step in one place.', link: basePath + 'demo/#view=findings' },
+    compare: { image: basePath + 'images/compare.png', alt: 'Side-by-side effective instructions and source coverage across three clients', caption: 'Read the exact instructions side by side, then trace each loading difference to its source.', link: basePath + 'demo/#view=compare' },
   };
   document.querySelectorAll('[data-workflow]').forEach(button => {
     button.onclick = () => {
