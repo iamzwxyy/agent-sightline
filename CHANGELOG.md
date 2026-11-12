@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-11-12
+
+* Inspect explicit Codex profile files with `--profile`, including user-to-profile-to-project precedence and replaced source locations.
+* Select and clear Codex profiles in the local inspector, preserving the selection on reload and in exported reports.
+* Diagnose retired legacy profile selectors/tables and unavailable profile files.
+* Preserve user-level provider and routing settings when Codex ignores corresponding project-local definitions.
+
 ## 0.1.1 — 2026-11-12
 
 * Search repository targets by filename, path or fuzzy query, including results beyond the initial suggestion limit, with keyboard and touch selection.

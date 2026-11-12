@@ -5,7 +5,7 @@
 One file. Several agents. Different instructions. Sightline shows every discovered source, why it applies, what is shadowed or truncated, and the effective configuration—with source lines you can inspect.
 
 ```sh
-npm install -g https://agent-sightline.williamtse700.chatgpt.site/downloads/agent-sightline-0.1.1.tgz
+npm install -g https://agent-sightline.williamtse700.chatgpt.site/downloads/agent-sightline-0.1.2.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
@@ -32,6 +32,8 @@ Targets can be source files that do not yet exist if their parent directory exis
 * **Comparison:** instruction content grouped by receiving client, plus extension definitions for each client. No invented natural-language conflict scores.
 * **Shareable output:** terminal, stable JSON and a redacted standalone HTML inspector, plus CI finding thresholds.
 
+Select the same Codex profile used in your agent session with `agent-sightline explain src/payments/refund.ts --client codex --profile review --trust trusted`. This loads `$CODEX_HOME/review.config.toml` after user defaults and before project settings, with winning and replaced source lines. The browser inspector also supports selecting and clearing profiles.
+
 ## Local inspector
 
 ```sh
@@ -54,7 +56,7 @@ The companion website includes an interactive example, a complete installation g
 
 | Client | Rule target | Status | Focus |
 | --- | --- | --- | --- |
-| OpenAI Codex CLI | 0.167.2 source/schema | Fixture-verified | Instruction chain, trust, overrides, raw-byte budget, TOML layers, MCP, skill metadata, hook discovery |
+| OpenAI Codex CLI | 0.167.2 source/schema | Fixture-verified | Instruction chain, trust, overrides, raw-byte budget, TOML layers, selected profile files, MCP, skill metadata, hook discovery |
 | Claude Code | 2.1.322 official docs | Fixture-verified | CLAUDE/AGENTS fallback, imports, path rules, settings, MCP scope, skills, hooks, exact permissions |
 | GitHub Copilot CLI | 1.0.109 official docs | Fixture-verified | Combined instructions, applyTo, import bounds, JSONC user settings, workspace MCP, skills, hooks |
 | Gemini CLI | Docs snapshot 2026-11-12 | Experimental | Local settings and global/ancestor/JIT context files |
@@ -79,7 +81,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.1.1.tgz
+npm install -g ./agent-sightline-0.1.2.tgz
 agent-sightline demo
 ```
 
@@ -99,7 +101,7 @@ Interrupted scans exit with 130 for SIGINT or 143 for SIGTERM, after active prob
 
 Sightline diagnoses configuration; it does not synchronize it or switch API providers/models. Markdown guidance accumulates, so the tool does not guess which conflicting sentence an LLM will obey. Source-file diff groups identical bodies rather than doing semantic alignment.
 
-Static reports exclude session toggles, command-line/profile overrides, account/managed-cloud policy and bundled/plugin state unless expressly supported by an adapter. Experimental adapters describe their gaps rather than claiming complete resolution. The inspection cap is 2 MiB per file and 50,000 filesystem entries; these are Sightline limits.
+Static reports exclude session toggles, other command-line overrides, account/managed-cloud policy and bundled/plugin state unless expressly supported by an adapter. Experimental adapters describe their gaps rather than claiming complete resolution. The inspection cap is 2 MiB per file and 50,000 filesystem entries; these are Sightline limits.
 
 The most useful path to v1.0: a live client conformance harness, plugin/managed-policy provenance, and finer paragraph/span comparison. See [architecture](docs/architecture.md), [adapter guide](docs/adapters.md), [contributing](CONTRIBUTING.md), [release procedure](docs/release.md), [30-second demo](docs/demo.md), and [launch drafts](docs/launch-drafts.md).
 

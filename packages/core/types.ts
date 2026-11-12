@@ -39,6 +39,7 @@ export interface Effective {
 }
 export interface Report {
   schemaVersion: '1.0'; tool: { name: string; version: string };
+  inputs?: { codexProfile?: string };
   repository: string; target: string; sessionDirectory: string;
   assumptions: string[]; sources: (Omit<Source, 'text' | 'body' | 'data' | 'lines' | 'baseDir'> & { preview?: string })[];
   clients: Effective[]; findings: Finding[];
@@ -46,6 +47,7 @@ export interface Report {
 }
 export interface ScanOptions {
   repo?: string; target?: string; clients?: ClientId[]; home?: string; user?: boolean;
+  codexProfile?: string;
   trust?: 'auto' | 'trusted' | 'untrusted'; system?: boolean;
   env?: NodeJS.ProcessEnv; maxFiles?: number;
   signal?: AbortSignal;

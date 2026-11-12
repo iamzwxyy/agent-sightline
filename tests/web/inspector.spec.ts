@@ -221,3 +221,50 @@ test('an unconfigured repository leads to a working private-data-free sample wor
     await expect(page.locator('#effective-document')).toContainText('Payment override');
   } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
+
+test('Codex profile selection updates settings and persists through reload and export', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'Project instructions' }, {
+    '.codex/config.toml': 'model = "base-model"\nsandbox_mode = "read-only"\n',
+    '.codex/review.config.toml': 'model = "review-model"\nsandbox_mode = "workspace-write"\n',
+  });
+  const server = await serve({ ...w, clients: ['codex'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    await page.locator('#configuration-tab').click();
+    await page.getByLabel('Search settings').fill('model');
+    await expect(page.locator('#setting-list')).toContainText('base-model');
+    await page.getByLabel('Codex profile', { exact: true }).fill('review');
+    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await expect(page.locator('#setting-list')).toContainText('review-model');
+    await expect(page).toHaveURL(/profile=review/);
+    await page.reload();
+    await expect(page.getByLabel('Codex profile', { exact: true })).toHaveValue('review');
+    await page.getByLabel('Search settings').fill('model');
+    await page.getByRole('button', { name: 'model', exact: true }).click();
+    await expect(page.locator('#detail-dialog')).toContainText('review.config.toml · line 1');
+    await expect(page.locator('#detail-dialog')).toContainText('Replaces these definitions');
+    await page.keyboard.press('Escape');
+    expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: test.info().outputPath('profile-desktop.png'), fullPage: true });
+    const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /Export report/ }).click()]);
+    const file = test.info().outputPath('profile-report.html');
+    await download.saveAs(file);
+    await page.goto(pathToFileURL(file).href);
+    await expect(page.getByLabel('Codex profile', { exact: true })).toBeHidden();
+    await page.locator('#configuration-tab').click();
+    await page.getByLabel('Search settings').fill('model');
+    await expect(page.locator('#setting-list')).toContainText('review-model');
+    await page.goto(server.url + '/?profile=review#view=configuration');
+    await page.getByLabel('Codex profile', { exact: true }).fill('');
+    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await expect(page.locator('#setting-list')).toContainText('base-model');
+    await page.reload();
+    await expect(page.getByLabel('Codex profile', { exact: true })).toHaveValue('');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByLabel('Codex profile', { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  } finally {
+    await server.close();
+    await rm(w.root, { recursive: true, force: true });
+  }
+});

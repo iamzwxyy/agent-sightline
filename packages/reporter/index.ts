@@ -13,6 +13,7 @@ export function failed(report: Report, failOn: Severity | 'none'): boolean {
 }
 export function terminal(report: Report, mode = 'scan'): string {
   const lines = ['Agent Sightline', '────────────────────────────────────────────────────────', `Repository: ${report.repository}`, `Target:     ${report.target}`, ''];
+  if (report.inputs?.codexProfile) lines.push(`Codex profile: ${report.inputs.codexProfile}`, '');
   const detected = report.clients.filter(c => c.detected);
   lines.push(`Clients:    ${detected.map(c => c.metadata.name).join(', ') || '(no compatible configuration found)'}`, '');
   lines.push(`${detected.length} compatible clients · ${report.sources.length} sources · ${report.findings.length} findings`, '');

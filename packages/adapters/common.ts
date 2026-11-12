@@ -10,7 +10,7 @@ export async function base(metadata: AdapterMetadata, ctx: Context): Promise<Eff
 }
 export function decision(e: Effective, s: Source, status: Status, reason: string, content = '', importedFrom?: Decision['importedFrom']): Decision {
   const invalidContribution = s.invalid && status !== 'ignored' && status !== 'shadowed';
-  const d: Decision = { sourceId: s.id, path: s.path, line: s.bodyLine, kind: s.kind, scope: s.scope, status: invalidContribution ? 'invalid' : status, reason: invalidContribution ? 'Source has parse errors; no effective contribution can be proven.' : reason, order: status === 'active' || status === 'conditional' || status === 'truncated' ? e.decisions.filter(x => x.order !== null).length + 1 : null, bytes: s.bytes, loadedBytes: bytes(content), estimatedTokens: Math.ceil(bytes(content) / 4), content: s.invalid ? '' : content, ...(importedFrom ? { importedFrom } : {}) };
+  const d: Decision = { sourceId: s.id, path: s.path, line: s.bodyLine, kind: s.kind, scope: s.scope, status: invalidContribution ? 'invalid' : status, reason: invalidContribution ? 'Source has configuration errors; no effective contribution can be proven.' : reason, order: status === 'active' || status === 'conditional' || status === 'truncated' ? e.decisions.filter(x => x.order !== null).length + 1 : null, bytes: s.bytes, loadedBytes: bytes(content), estimatedTokens: Math.ceil(bytes(content) / 4), content: s.invalid ? '' : content, ...(importedFrom ? { importedFrom } : {}) };
   e.decisions.push(d); return d;
 }
 export function addInstruction(e: Effective, s: Source, reason: string, content = s.body, status: Status = 'active'): void {

@@ -13,9 +13,11 @@
 | `adapters --json` | Rule evidence/version/limitations |
 | `version` / `--version` | Package version |
 
-Common flags: `--repo`, `--client` or `--clients`, `--no-user`, `--home` (isolated synthetic home), `--trust auto|trusted|untrusted`, `--system`, `--json`, `--format terminal|json|html`, `--severity error|warn|info`, `--fail-on error|warn|info|none`, `--output`.
+Common flags: `--repo`, `--client` or `--clients`, `--profile` (Codex), `--no-user`, `--home` (isolated synthetic home), `--trust auto|trusted|untrusted`, `--system`, `--json`, `--format terminal|json|html`, `--severity error|warn|info`, `--fail-on error|warn|info|none`, `--output`.
 
 `--severity` filters displayed findings at or above that level. `--fail-on` always evaluates the unfiltered report. CI defaults to `--json --fail-on error`; other commands default to no threshold. Unknown/missing arguments, invalid targets, bad formats and write errors exit 2. Help/version exit 0. Non-interactive output has no ANSI or animations.
+
+`--profile review` models Codex with `$CODEX_HOME/review.config.toml`. Profile names use letters, numbers, hyphens and underscores. The selected file loads after base user configuration and before applicable project layers. It requires user configuration and Codex among the selected clients. JSON adds optional `inputs.codexProfile`. Omitting the flag loads the base configuration. Legacy `[profiles.*]` definitions and the retired `profile` selector receive migration diagnostics.
 
 SIGINT and SIGTERM interruptions stop active probes before returning exit code 130 or 143 respectively. SDK callers can pass `ScanOptions.signal` to cancel an inspection.
 

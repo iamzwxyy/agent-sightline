@@ -42,6 +42,11 @@ export function classify(file: string): { owners: ClientId[]; kind: Kind } | nul
 }
 
 export async function makeContext(options: ScanOptions): Promise<Context> {
+  if (options.codexProfile !== undefined) {
+    if (!/^[A-Za-z0-9_-]+$/.test(options.codexProfile)) throw new Error('Codex profile names must contain only letters, numbers, hyphens and underscores.');
+    if (options.user === false) throw new Error('Codex profiles are user configuration. Remove --no-user to inspect a profile.');
+    if (options.clients && !options.clients.includes('codex')) throw new Error('A Codex profile requires Codex in the selected clients.');
+  }
   const repo = path.resolve(options.repo ?? process.cwd());
   if (!(await stat(repo)).isDirectory()) throw new Error('Repository must be an existing directory. Use --repo <directory>.');
   const target = path.resolve(repo, options.target ?? '.');

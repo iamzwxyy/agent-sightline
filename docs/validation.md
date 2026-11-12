@@ -1,13 +1,13 @@
-# v0.1.1 validation
+# v0.1.2 validation
 
-The target-search and probe-lifecycle revision was verified at commit `339ba6306b6c1a8d68794508a1f649c6ffeee2c4` on 2026-11-12. The initial reproducibility and scan-performance measurements below were recorded at `e8661e86640f3242f2e3c1aa5ec291593fcd51f1`.
+Codex profile selection and project-local setting restrictions were verified locally on 2026-11-12. The previous target-search and probe-lifecycle revision was verified at commit `339ba6306b6c1a8d68794508a1f649c6ffeee2c4`. The initial reproducibility and scan-performance measurements below were recorded at `e8661e86640f3242f2e3c1aa5ec291593fcd51f1`.
 
 ## Executed locally
 
 * Lint and strict TypeScript checks passed.
-* The 50-case parser/resolver/compatibility/golden/CLI/privacy/report/server/probe/target-search suite completed locally on macOS with 49 passes and one Windows-only skip. New regressions cover file search beyond the initial 1,500 suggestions, ranking and hidden files, canceled probes, process-exit cleanup, runtime-wrapper children and shutdown escalation. Hosted CI verifies the implementation on Node 22.
-* Ten WebKit browser cases passed locally. Chromium flows passed locally before keyboard and touch selection were split into separate cases, and the final ten-case suite passed in hosted CI. Coverage includes finding-to-source navigation, source provenance, effective-text comparison, setting precedence and replaced origins, navigation history, target/trust persistence, fresh reloads, empty-repository onboarding, portable HTML, mobile navigation, extensions, the website walkthrough, guide, download, searchable target selection and manual clipboard fallback.
-* Automated axe WCAG A/AA checks reported zero violations across the homepage, guide and inspector routes, including the open target picker. Desktop and mobile screenshots were visually inspected.
+* The 58-case parser/resolver/compatibility/golden/CLI/privacy/report/server/probe/target-search/profile suite completed locally on macOS with 57 passes and one Windows-only skip. New regressions cover user-to-profile-to-project precedence, exact source locations, profile trust/root-marker/byte-budget inputs, ignored project-only settings, legacy profile migration, missing/malformed files, selected-source privacy and invalid CLI inputs. Existing target-search and probe cleanup regressions remain included. Hosted CI verifies the implementation on Node 22.
+* Eleven Chromium and eleven WebKit browser cases passed locally. Coverage includes finding-to-source navigation, source provenance, effective-text comparison, setting precedence and replaced origins, navigation history, target/trust persistence, fresh reloads, empty-repository onboarding, portable HTML, mobile navigation, extensions, the website walkthrough, guide, download, searchable target selection, manual clipboard fallback and profile selection/clearing through reloads and portable export.
+* Automated axe WCAG A/AA checks reported zero violations across the homepage, guide and inspector routes, including the open target picker and the profile controls. Desktop and mobile screenshots were visually inspected.
 * Native Firefox on this Mac failed before application navigation with a profile-folder launch error. Desktop Firefox browser cases passed on Linux CI.
 * Real tarball installation in an isolated prefix passed, including installed CLI, effective Codex content, reporter assets, version and bundled demo. The installed `demo --ui --no-open` command started successfully and served the browser assets with personal configuration excluded.
 * One-command npm exec with the local tarball successfully ran the bundled demo and version.
@@ -18,7 +18,7 @@ The target-search and probe-lifecycle revision was verified at commit `339ba6306
 
 ## Hosted OS matrix
 
-The implementation run [Verify 43200014479](https://github.com/iamzwxyy/agent-sightline/actions/runs/43200014479) passed on Linux, macOS and Windows with Node 22. The run includes npm ci, lint, typecheck, tests, build, real package installation, production audit, all ten Chromium browser cases, packing and artifact upload. Linux also passed the desktop Firefox suite.
+The previous v0.1.1 implementation run [Verify 43200014479](https://github.com/iamzwxyy/agent-sightline/actions/runs/43200014479) passed on Linux, macOS and Windows with Node 22. The run includes npm ci, lint, typecheck, tests, build, real package installation, production audit, all ten Chromium browser cases, packing and artifact upload. Linux also passed the desktop Firefox suite.
 
 Windows passed 44 of 50 core cases and skipped six POSIX-only symlink, permission and signal cases. It also passed the Windows command-shim probe fixture, platform-neutral path tests and Windows adapter golden fixtures. macOS passed 49 cases with one Windows-only skip. Linux may additionally skip the unreadable-file fixture when running as root.
 

@@ -17,7 +17,7 @@ export async function serve(options: ScanOptions, port = 0): Promise<{ url: stri
     const url = new URL(req.url ?? '/', `http://${expected}`);
     try {
       if (url.pathname === '/') {
-        const report = await scan({ ...options, target: url.searchParams.get('target') ?? options.target, trust: requestedTrust(url, options.trust) });
+        const report = await scan({ ...options, target: url.searchParams.get('target') ?? options.target, trust: requestedTrust(url, options.trust), codexProfile: requestedProfile(url, options.codexProfile) });
         res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(html(report, { live: true, portable: false }));
       }
       else if (url.pathname === '/demo/') {
@@ -28,9 +28,9 @@ export async function serve(options: ScanOptions, port = 0): Promise<{ url: stri
         const target = url.searchParams.get('target') ?? '.';
         if (target.length > 2048) throw new Error('Target path is too long.');
         const trust = requestedTrust(url, options.trust);
-        const report = await scan({ ...options, target, trust }); res.setHeader('Content-Type', 'application/json'); res.end(json(report));
+        const report = await scan({ ...options, target, trust, codexProfile: requestedProfile(url, options.codexProfile) }); res.setHeader('Content-Type', 'application/json'); res.end(json(report));
       } else if (url.pathname === '/api/export') {
-        const report = await scan({ ...options, trust: requestedTrust(url, options.trust), target: url.searchParams.get('target') ?? options.target });
+        const report = await scan({ ...options, trust: requestedTrust(url, options.trust), target: url.searchParams.get('target') ?? options.target, codexProfile: requestedProfile(url, options.codexProfile) });
         res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Content-Disposition', 'attachment; filename="agent-sightline-report.html"'); res.end(html(report));
       } else if (url.pathname === '/api/targets') {
         const query = url.searchParams.get('q') ?? '';
@@ -43,13 +43,17 @@ export async function serve(options: ScanOptions, port = 0): Promise<{ url: stri
         res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(result));
       } else { res.writeHead(404); res.end('Not found.'); }
     } catch {
-      const error = url.pathname === '/api/targets' ? 'Cannot search repository files. Use up to 2048 characters and a result limit from 1 to 1500.' : 'Cannot inspect target. Choose a path inside the repository with an existing parent directory.';
+      const error = url.pathname === '/api/targets' ? 'Cannot search repository files. Use up to 2048 characters and a result limit from 1 to 1500.' : 'Cannot inspect target or profile. Choose a path inside the repository with an existing parent directory. Profile names use letters, numbers, hyphens or underscores and require Codex user configuration.';
       res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error }));
     }
   });
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', () => resolve()); });
   const address = server.address() as AddressInfo;
   return { url: `http://127.0.0.1:${address.port}`, close: () => new Promise((resolve, reject) => { server.close(e => e ? reject(e) : resolve()); server.closeAllConnections(); }) };
+}
+
+function requestedProfile(url: URL, fallback: ScanOptions['codexProfile']): ScanOptions['codexProfile'] {
+  return url.searchParams.has('profile') ? url.searchParams.get('profile') || undefined : fallback;
 }
 
 function requestedTrust(url: URL, fallback: ScanOptions['trust']): ScanOptions['trust'] {

@@ -600,6 +600,8 @@
     $('workspace-name').textContent = project === '<repo>' ? 'Shared report' : project;
     $('repository').textContent = report.repository;
     $('target').value = short(report.target);
+    $('codex-profile').value = report.inputs?.codexProfile ?? '';
+    $('profile-form').hidden = !live || !report.clients.some(client => client.client === 'codex') || report.assumptions.includes('User configuration: excluded.');
     $('footer-target').textContent = short(report.target);
     const groups = groupFindings();
     $('finding-count').textContent = String(groups.length);
@@ -629,7 +631,7 @@
     $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', 'Inspecting…'));
     let succeeded = false;
     try {
-      const query = new URLSearchParams({ target, trust: $('trust').value });
+      const query = new URLSearchParams({ target, trust: $('trust').value, profile: $('codex-profile').value.trim() });
       const response = await fetch(`/api/scan?${query}`, { signal: scanController.signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
@@ -638,7 +640,7 @@
       if (!report.sources.some(source => source.path === state.source)) state.source = null;
       state.highlightLine = null;
       const address = new URL(location.href);
-      address.searchParams.set('target', short(report.target)); address.searchParams.set('trust', $('trust').value);
+      address.searchParams.set('target', short(report.target)); address.searchParams.set('trust', $('trust').value); address.searchParams.set('profile', report.inputs?.codexProfile ?? '');
       history.replaceState(null, '', address);
       render(); toast('Configuration updated');
       succeeded = true;
@@ -691,9 +693,10 @@
   document.addEventListener('pointerdown', event => { if (!$('target-form').contains(event.target)) closeTargetPicker(); });
   $('refresh').onclick = () => void refresh();
   $('trust').onchange = () => void refresh();
+  $('profile-form').onsubmit = event => { event.preventDefault(); void refresh(); };
   $('export').onclick = () => {
     if (live) {
-      const query = new URLSearchParams({ target: short(report.target), trust: $('trust').value });
+      const query = new URLSearchParams({ target: short(report.target), trust: $('trust').value, profile: report.inputs?.codexProfile ?? '' });
       const anchor = node('a'); anchor.href = `/api/export?${query}`; anchor.download = 'sightline-report.html'; anchor.click(); return;
     }
     const url = URL.createObjectURL(new Blob(['<!doctype html>\n' + originalDocument], { type: 'text/html' }));
@@ -726,7 +729,8 @@
       const params = new URLSearchParams(location.search);
       const target = params.get('target') ?? initialTarget;
       const trust = params.get('trust') ?? initialTrust;
-      if (target !== short(report.target) || trust !== $('trust').value) { $('trust').value = trust; void refresh(target); return; }
+      const profile = params.get('profile') ?? initialProfile;
+      if (target !== short(report.target) || trust !== $('trust').value || profile !== (report.inputs?.codexProfile ?? '')) { $('trust').value = trust; $('codex-profile').value = profile; void refresh(target); return; }
     }
     render();
   });
@@ -735,6 +739,8 @@
   if (trustAssumption.includes('trusted;')) $('trust').value = 'trusted';
   if (trustAssumption.includes('untrusted;')) $('trust').value = 'untrusted';
   const initialTrust = $('trust').value;
+  const initialProfile = report.inputs?.codexProfile ?? '';
+  $('codex-profile').value = initialProfile;
   if (!live) {
     $('target').readOnly = true; $('inspect').hidden = true; $('refresh').hidden = true;
     ['role', 'aria-autocomplete', 'aria-controls', 'aria-expanded'].forEach(attribute => $('target').removeAttribute(attribute));

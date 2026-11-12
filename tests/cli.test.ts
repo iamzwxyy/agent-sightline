@@ -31,6 +31,21 @@ test('HTML/JSON report writes only explicit output and redacts exported paths', 
   const broken = run(['report', '--output', 'missing-dir/report.json', '--json', '--no-user'], w.repo); assert.equal(broken.status, 2);
 });
 
+test('CLI profile selection resolves the named file and rejects incompatible inputs without output files', async t => {
+  const w = await workspace({}, { '.codex/config.toml': 'model = "base"', '.codex/review.config.toml': 'model = "review"' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const result = run(['--client', 'codex', '--home', w.home, '--profile', 'review', '--json'], w.repo);
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.inputs.codexProfile, 'review');
+  assert.equal(report.clients[0].settings.find((setting: any) => setting.key === 'model' && setting.status === 'active').value, 'review');
+  for (const args of [['--no-user', '--profile', 'review'], ['--client', 'claude', '--profile', 'review'], ['--profile', '../private']]) {
+    const invalid = run([...args, '--home', w.home, '--output', 'invalid.json'], w.repo);
+    assert.equal(invalid.status, 2);
+    assert.ok(!(await readdir(w.repo)).includes('invalid.json'));
+  }
+});
+
 test('interrupting a CLI probe terminates its server before exiting', { skip: process.platform === 'win32', timeout: 15000 }, async t => {
   const server = `import { writeFileSync, renameSync } from 'node:fs';
 writeFileSync('probe.pid.tmp', String(process.pid));

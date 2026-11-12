@@ -20,3 +20,21 @@ test('read-only local UI serves, scans target, exports portable HTML and rejects
   const output = await (await fetch(server.url + '/api/export?target=src/a.ts')).text(); assert.ok(!output.includes(w.repo)); assert.ok(output.includes('data-live="false"'));
   const demo = await (await fetch(server.url + '/demo/')).text(); assert.ok(demo.includes('instructions.truncated')); assert.ok(!demo.includes(w.repo)); assert.ok(!demo.includes(w.home)); assert.ok(demo.includes('data-live="false"'));
 });
+
+test('profile selection and clearing survive local scans, reloads and portable exports', async t => {
+  const w = await workspace({}, { '.codex/config.toml': 'model = "base"', '.codex/review.config.toml': 'model = "review"' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const server = await serve({ ...w, clients: ['codex'], codexProfile: 'review' });
+  t.after(server.close);
+  const selected = await (await fetch(server.url + '/api/scan')).json();
+  assert.equal(selected.inputs.codexProfile, 'review');
+  const cleared = await (await fetch(server.url + '/api/scan?profile=')).json();
+  assert.equal(cleared.inputs?.codexProfile, undefined);
+  assert.equal(cleared.clients[0].settings.find((setting: any) => setting.key === 'model').value, 'base');
+  const page = await (await fetch(server.url + '/?profile=')).text();
+  assert.ok(!page.includes('"codexProfile":"review"'));
+  const snapshot = await (await fetch(server.url + '/api/export?profile=review')).text();
+  assert.ok(snapshot.includes('"codexProfile":"review"'));
+  assert.ok(!snapshot.includes(w.home));
+  assert.equal((await fetch(server.url + '/api/scan?profile=..%2Fprivate')).status, 400);
+});

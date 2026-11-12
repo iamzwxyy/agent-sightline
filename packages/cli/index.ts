@@ -21,6 +21,7 @@ program.name('agent-sightline').description('See what your coding agent actually
   .option('--repo <directory>', 'inspection boundary / repository directory')
   .option('--client <client>', 'inspect one client', client)
   .option('--clients <list>', 'comma-separated client IDs')
+  .option('--profile <name>', 'inspect Codex with $CODEX_HOME/<name>.config.toml')
   .option('--json', 'stable, redacted JSON output')
   .option('--format <format>', 'terminal, json or html')
   .option('--output <file>', 'atomically write a report to this path')
@@ -40,7 +41,7 @@ function options(target?: string, repository?: string): ScanOptions & { probe?: 
   if (!['auto', 'trusted', 'untrusted'].includes(o.trust)) throw new Error('--trust must be auto, trusted or untrusted.');
   if (o.client && o.clients) throw new Error('Use either --client or --clients.');
   const clients = o.client ? [o.client] : o.clients ? [...new Set(String(o.clients).split(',').map(x => client(x.trim())))] : undefined;
-  return { repo: path.resolve(o.repo ?? repository ?? process.cwd()), target, clients, user: o.user, home: o.home ? path.resolve(o.home) : undefined, trust: o.trust, system: o.system, probe: o.probe };
+  return { repo: path.resolve(o.repo ?? repository ?? process.cwd()), target, clients, user: o.user, home: o.home ? path.resolve(o.home) : undefined, trust: o.trust, system: o.system, probe: o.probe, codexProfile: o.profile };
 }
 async function atomic(file: string, content: string): Promise<void> {
   const destination = path.resolve(file);
