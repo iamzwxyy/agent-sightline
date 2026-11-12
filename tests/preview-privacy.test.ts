@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rm } from 'node:fs/promises';
+import path from 'node:path';
+import { rm, symlink, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { workspace } from './helpers.js';
 import { html, json } from '../packages/reporter/index.js';
@@ -26,9 +27,13 @@ test('source previews redact credentials and omit private account/session state'
     '.copilot/config.json': JSON.stringify({ trusted_folders: [], session_history: ['private-session-sentinel'] }),
   });
   t.after(() => rm(w.root, { recursive: true, force: true }));
+  const privateAlias = path.join(w.root, 'private-history-alias');
+  await symlink(w.repo, privateAlias, process.platform === 'win32' ? 'junction' : 'dir');
+  await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ mcpServers: {}, projects: {}, account: { email: 'private-user-sentinel@example.test', lastDirectory: privateAlias } }));
   const report = await scan({ ...w, clients: ['claude', 'copilot'], trust: 'trusted' });
   const text = JSON.stringify(report);
   for (const secret of ['preview-env-sentinel', 'preview-header-sentinel', 'preview-markdown-sentinel', 'private-user-sentinel', 'private-session-sentinel']) assert.ok(!text.includes(secret), secret);
+  assert.ok(!text.includes('private-history-alias'));
   assert.ok(report.sources.some(source => source.preview?.includes('REDACTED')));
   assert.ok(report.sources.filter(source => source.path.endsWith('.claude.json') || source.path.endsWith('config.json')).every(source => source.preview === undefined));
 });

@@ -1,6 +1,6 @@
 {
   "name": "agent-sightline",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "See what your coding agent actually sees. Local, read-only configuration diagnostics.",
   "type": "module",
   "license": "MIT",

@@ -1,5 +1,19 @@
 # Release validation
 
+## v0.2.4
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 112-case core suite completed with 111 passes and one Windows-only skip.
+* Regression cases reproduced alias residue and unrelated-prefix/URL replacement before the fix. They now cover verified symlink/junction aliases, missing target files, assigned command arguments, custom homes, Windows escaping/separators/case, quoted and backslash-containing POSIX names, flattened project keys and filesystem-root separators.
+* Privacy fixtures verify account-history privacy even when history contains an absolute path alias.
+* A serialized report retains its captured path context after its entire fixture filesystem is removed. Portable export removes that context, preserves private-value redaction, supports older reports and is idempotent.
+* An isolated CLI process retains an oversized configured argument within a bounded heap and timeout. Invalid or inaccessible filesystem paths end alias resolution for that path.
+* The normal CLI entry point reads an isolated external CODEX_HOME and replaces its paths in HTML. JSON retains absolute diagnostic paths and additive path mappings.
+* All eighteen Chromium browser cases passed. The new export case checks initial and refreshed snapshots, verifies alias and custom-home replacement, parses the rewritten MCP source preview and opens the exported HTML for offline navigation. Existing accessibility, profile, comparison, source, scope and phone checks remain included.
+* Production dependency audit reported zero vulnerabilities.
+* Package smoke verifies alias replacement in the installed CLI's HTML, including an assigned command argument, alongside the existing offline installation, Git-free sample, development-tool exclusion, malformed-extension, profile and browser-startup checks.
+
 ## v0.2.3
 
 Verified locally on macOS on 2026-11-13.

@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 const temp = mkdtempSync(path.join(os.tmpdir(), 'sightline-install-'));
@@ -25,8 +25,15 @@ try {
   writeFileSync(path.join(invalidRepo, '.github/hooks/test.json'), JSON.stringify({ version: 1, hooks: { sessionStart: [{ type: 'command', bash: 'echo safe', powershell: 'echo safe', cwd: 42 }] } }));
   const malformed = JSON.parse(execFileSync(process.execPath, [cli, '--repo', invalidRepo, '--no-user', '--trust', 'trusted', '--clients', 'claude,copilot', '--json'], { encoding: 'utf8' }));
   if (!malformed.findings.some(finding => finding.ruleId === 'extension.cwd-type') || !malformed.findings.some(finding => finding.ruleId === 'mcp.env-type') || malformed.clients.some(client => client.extensions.find(extension => extension.name === 'valid')?.status !== 'active')) throw new Error('Installed malformed-extension diagnostics failed.');
+  const alias = path.join(temp, 'repository-alias');
+  symlinkSync(repo, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, cwd: alias, args: ['--root=' + alias] } } }));
   const htmlFile = path.join(temp, 'report.html'); execFileSync(process.execPath, [cli, 'report', '--repo', repo, '--no-user', '--format', 'html', '--output', htmlFile]);
-  if (!readFileSync(htmlFile, 'utf8').includes('Sightline — Agent configuration')) throw new Error('Installed HTML reporter failed.');
+  const exportedHtml = readFileSync(htmlFile, 'utf8');
+  if (!exportedHtml.includes('Sightline — Agent configuration')) throw new Error('Installed HTML reporter failed.');
+  const exportedReport = JSON.parse(exportedHtml.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)[1]);
+  const exportedMcp = exportedReport.clients.find(client => client.client === 'claude').extensions.find(extension => extension.name === 'fixture');
+  if (exportedMcp.config.cwd !== '<repo>' || exportedMcp.config.args[0] !== '--root=<repo>' || exportedReport.pathMappings !== undefined || exportedHtml.includes(JSON.stringify(alias).slice(1, -1))) throw new Error('Installed portable path replacement failed.');
   const version = execFileSync(process.execPath, [cli, 'version'], { encoding: 'utf8' }).trim(); if (version !== pkg.version || report.tool.version !== pkg.version) throw new Error('Wrong package version.');
   const profileHome = path.join(temp, 'profile-home');
   mkdirSync(path.join(profileHome, '.codex'), { recursive: true });

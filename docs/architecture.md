@@ -33,6 +33,8 @@ Extension validation checks field types before filesystem lookup and process pro
 
 Claude and Copilot MCP environment references are expanded privately for endpoint, working-directory and executable checks. Static validation retains unresolved references while checking independent fields. Explicit probes require complete expansion before startup. Public extension definitions retain their original references.
 
+The scanner captures logical/canonical repository and home roots plus filesystem-verified aliases from absolute structured configuration paths and assigned command-line arguments. Alias discovery uses the redacted diagnostic settings and extension definitions selected by the adapters. Path resolution checks directory metadata without reading additional configuration contents. Additive `Report.pathMappings` survives filtering and JSON serialization. The portable renderer applies those mappings to strings and keys, then removes the mappings. Export uses the context captured in the inspected report, preserving the snapshot through later filesystem edits.
+
 `scan()` returns only redacted public data. The renderers redact again. The report format avoids clocks/timestamps and sorts sources/findings so repeated scans of the same filesystem are stable. Finding IDs hash rule/client/location/message; they remain stable within the same repository path. Relocating a repository changes location-derived IDs.
 
 `ScanOptions.signal` supports cancellation. An interrupted probe finishes child-process cleanup before the scan rejects with the abort reason. POSIX probes own a process group, and Windows probes stop their process tree. Shutdown escalates after a one-second grace period and waits for process closure.

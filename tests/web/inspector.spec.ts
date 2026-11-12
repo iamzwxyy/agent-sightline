@@ -5,10 +5,49 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { serve } from '../../packages/web/server.js';
 import { workspace } from '../helpers.js';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
+
+test('report exports replace verified path aliases and custom home paths through refresh and offline navigation', async ({ page }) => {
+  const w = await workspace({ 'CLAUDE.md': 'Project instructions.', 'src/a.ts': '' }, { '.claude/CLAUDE.md': 'Personal instructions.' });
+  const repo = await realpath(w.repo);
+  const home = await realpath(w.home);
+  const alias = path.join(await realpath(w.root), 'workspace-alias');
+  await symlink(repo, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  await writeFile(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: [path.join(alias, 'server.mjs')], cwd: alias } } }, null, 2));
+  const server = await serve({ repo, home, env: w.env, clients: ['claude'], trust: 'trusted', target: 'src/a.ts' });
+  try {
+    await page.goto(server.url);
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+    for (const refresh of [false, true]) {
+      if (refresh) {
+        await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+        await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+      }
+      const pending = page.waitForEvent('download');
+      await page.getByRole('button', { name: /Export report/ }).click();
+      const file = test.info().outputPath(`portable-paths-${refresh}.html`);
+      await (await pending).saveAs(file);
+      const html = await readFile(file, 'utf8');
+      for (const directory of [repo, w.repo, home, w.home, alias]) expect(html).not.toContain(JSON.stringify(directory).slice(1, -1));
+      if (refresh) {
+        await page.goto(pathToFileURL(file).href);
+        const report = JSON.parse(await page.locator('#report-data').textContent() ?? 'null');
+        expect(report.repository).toBe('<repo>');
+        expect(report.pathMappings).toBeUndefined();
+        expect(report.clients[0].extensions.find((extension: any) => extension.name === 'fixture').config.cwd).toBe('<repo>');
+        const source = report.sources.find((source: any) => source.relativePath === '.mcp.json');
+        expect(JSON.parse(source.preview).mcpServers.fixture.cwd).toBe('<repo>');
+        await page.getByRole('button', { name: 'Inspect Claude Code instructions', exact: true }).click();
+        await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+        await expect(page.locator('#effective-document')).toContainText('Personal instructions.');
+        await expect(page.locator('#effective-document')).toContainText('Project instructions.');
+      }
+    }
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
 
 test('malformed extensions stay inspectable with exact source lines and portable findings', async ({ page }) => {
   const w = await workspace({

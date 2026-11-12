@@ -68,9 +68,47 @@ export function terminal(report: Report, mode = 'scan'): string {
   return redactText(lines.join('\n')) + '\n';
 }
 export function portable(report: Report): Report {
-  const escapedRepository = JSON.stringify(report.repository).slice(1, -1);
-  const serialized = JSON.stringify(redact(report)).split(escapedRepository).join('<repo>').replace(/(?:\/Users\/[^/"\\]+|\/home\/[^/"\\]+|[A-Za-z]:\\\\Users\\\\[^\\"/]+)/g, '~');
-  return JSON.parse(serialized);
+  const data = redact(report);
+  const mappings = [...data.pathMappings ?? [], { path: data.repository, replacement: '<repo>' }]
+    .filter(mapping => /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(mapping.path))
+    .sort((a, b) => b.path.length - a.path.length);
+  delete data.pathMappings;
+  const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const before = "(^|file:/+|[\\s\"'`=(:,;\\[{}<>])";
+  const after = "(?=$|[/\\\\\\s\"'`),;:\\]}<>])";
+  const replacements = mappings.map(mapping => {
+    const windows = /^(?:[A-Za-z]:[\\/]|\\\\)/.test(mapping.path);
+    const variants = new Set([mapping.path, JSON.stringify(mapping.path).slice(1, -1)]);
+    const pattern = windows
+      ? mapping.path.split(/[\\/]+/).map(escape).join('[/\\\\]+')
+      : [...variants].sort((a, b) => b.length - a.length).map(escape).join('|');
+    const trailingSeparator = windows ? /[\\/]$/.test(mapping.path) : mapping.path.endsWith('/');
+    return {
+      exact: new RegExp('^(?:' + pattern + ')$', windows ? 'i' : ''),
+      path: new RegExp(before + '(?:' + pattern + ')' + (trailingSeparator ? '' : after), windows ? 'gi' : 'g'),
+      project: new RegExp('^(projects\\.)(?:' + pattern + ')(?=\\.)', windows ? 'i' : ''),
+      replacement: mapping.replacement,
+      suffix: trailingSeparator ? '/' : '',
+    };
+  });
+  const commonHome = new RegExp(before + "(?:/(?:Users|home)/[^/\"\\\\\\r\\n]+|[A-Za-z]:[/\\\\]+Users[/\\\\]+[^/\\\\\"\\r\\n]+)", 'g');
+  const scrub = (text: string): string => {
+    for (const rule of replacements) {
+      if (rule.exact.test(text)) { text = rule.replacement; continue; }
+      text = text.replace(rule.project, (_match, prefix: string) => prefix + rule.replacement);
+      text = text.replace(rule.path, (_match, prefix: string) => prefix + rule.replacement + rule.suffix);
+    }
+    return text.replace(commonHome, (_match, prefix: string) => prefix + '~');
+  };
+  const walk = (value: any): any => {
+    if (typeof value === 'string') return scrub(value);
+    if (Array.isArray(value)) return value.map(walk);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, child]) => [scrub(key), walk(child)]));
+    return value;
+  };
+  const result = walk(data) as Report;
+  result.repository = '<repo>';
+  return result;
 }
 export function html(report: Report, options: { live?: boolean; portable?: boolean } = {}): string {
   const data = options.portable === false ? redact(report) : portable(report);

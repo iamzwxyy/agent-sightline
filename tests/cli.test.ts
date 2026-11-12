@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { readFile, readdir, realpath, rm, watch } from 'node:fs/promises';
+import { mkdir, readFile, readdir, realpath, rm, watch, writeFile } from 'node:fs/promises';
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
@@ -130,6 +130,38 @@ test('HTML/JSON report writes only explicit output and redacts exported paths', 
   const w = await workspace({ 'CLAUDE.md': 'API_KEY=secret-sentinel-value' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = run(['report', '--client', 'claude', '--no-user', '--format', 'html', '--output', 'report.html'], w.repo); assert.equal(r.status, 0); const html = await readFile(path.join(w.repo, 'report.html'), 'utf8'); assert.ok(html.startsWith('<!doctype html>')); assert.ok(!html.includes('secret-sentinel-value')); assert.ok(!html.includes(w.repo));
   const broken = run(['report', '--output', 'missing-dir/report.json', '--json', '--no-user'], w.repo); assert.equal(broken.status, 2);
+});
+
+test('CLI exports replace a configured agent home outside the user home while JSON keeps diagnostic paths', async t => {
+  const w = await workspace();
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const codexHome = path.join(w.root, 'external-codex-home');
+  await mkdir(codexHome);
+  await writeFile(path.join(codexHome, 'config.toml'), 'model="external-model"\n');
+  const env = { ...process.env, HOME: w.home, USERPROFILE: w.home, CODEX_HOME: codexHome };
+  const args = ['--import', import.meta.resolve('tsx'), cli, '--repo', w.repo, '--client', 'codex'];
+  const result = spawnSync(process.execPath, [...args, '--json'], { env, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.clients[0].settings.find((setting: any) => setting.key === 'model' && setting.status === 'active').value, 'external-model');
+  assert.ok(report.pathMappings.some((mapping: any) => mapping.path === codexHome && mapping.replacement === '<codex-home>'));
+  const exported = spawnSync(process.execPath, [...args, '--format', 'html'], { env, encoding: 'utf8' });
+  assert.equal(exported.status, 0, exported.stderr);
+  assert.ok(!exported.stdout.includes(JSON.stringify(codexHome).slice(1, -1)));
+  const snapshot = JSON.parse(exported.stdout.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
+  const model = snapshot.clients[0].settings.find((setting: any) => setting.key === 'model' && setting.status === 'active');
+  assert.equal(model.location.path.replace(/\\/g, '/'), '<codex-home>/config.toml');
+  assert.equal(snapshot.pathMappings, undefined);
+});
+
+test('CLI retains oversized configured arguments while bounded alias discovery handles filesystem path errors', async t => {
+  const argument = path.parse(process.cwd()).root + 'missing-sightline-directory/' + 'nested/'.repeat(10000);
+  const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: [argument] } } }) });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const result = spawnSync(process.execPath, ['--max-old-space-size=128', '--import', import.meta.resolve('tsx'), cli, '--repo', w.repo, '--client', 'claude', '--no-user', '--trust', 'trusted', '--json'], { encoding: 'utf8', timeout: 15000, maxBuffer: 2 * 1024 * 1024 });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.clients[0].extensions.find((extension: any) => extension.name === 'fixture').config.args[0], argument);
 });
 
 test('CLI profile selection resolves the named file and rejects incompatible inputs without output files', async t => {

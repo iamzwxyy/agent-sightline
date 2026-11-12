@@ -47,6 +47,7 @@ export interface Report {
   schemaVersion: '1.0'; tool: { name: string; version: string };
   inputs?: { codexProfile?: string };
   discovery?: Discovery;
+  pathMappings?: { path: string; replacement: string }[];
   repository: string; target: string; sessionDirectory: string;
   assumptions: string[]; sources: (Omit<Source, 'text' | 'body' | 'data' | 'lines' | 'baseDir'> & { preview?: string })[];
   clients: Effective[]; findings: Finding[];

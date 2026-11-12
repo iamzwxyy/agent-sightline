@@ -39,4 +39,7 @@ Sources may include an additive `preview` string containing the redacted source 
 
 The browser's Export report action saves the most recent successful inspection. Configuration edits appear after Refresh scan. Exports during an in-flight or failed refresh keep the last displayed report, including its target, trust and selected Codex profile.
 
-Use rule IDs for CI integrations; prose is not a compatibility API. JSON keeps absolute paths for diagnosis. HTML replaces the repo root with `<repo>` and common home paths with `~` for sharing.
+Use rule IDs for CI integrations; prose is not a compatibility API. JSON keeps absolute paths for diagnosis. HTML replaces captured repository paths with `<repo>`, home paths with `~` and external agent configuration roots with `<codex-home>`, `<claude-home>` or `<copilot-home>`. Filesystem-verified aliases from absolute structured values and `--option=path` arguments share those replacements. Unknown paths in prose or shell snippets can remain.
+
+
+JSON may include additive `pathMappings` entries with `path` and `replacement`. They retain the path spellings verified during inspection so a JSON round trip or a later offline HTML render can use the same context. JSON retains absolute diagnostic paths. Portable HTML replaces those paths and removes `pathMappings`. Source byte counts and line numbers describe the original files.

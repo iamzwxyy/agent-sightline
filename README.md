@@ -5,12 +5,12 @@
 One file. Several agents. Different instructions. Sightline shows every discovered source, why it applies, what is shadowed or truncated, and the effective configuration—with source lines you can inspect.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.2.3/agent-sightline-0.2.3.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.2.4/agent-sightline-0.2.4.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.2.3.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.2.4.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -73,7 +73,7 @@ Rules and known limits are visible through `agent-sightline adapters` and the [e
 
 Default operation is local, read-only, account-free, API-key-free and model-free. No telemetry or uploads. It reads the repository and explicit documented user config locations, marked `user`; use `--no-user` for repository-only CI. It skips external private trees and safely reports damaged config, broken symlinks and access errors.
 
-All public output redacts environment/header values, sensitive keys, common tokens, auth headers and URL credentials; renderers apply redaction again. HTML also replaces the repository root and common home paths. Unlabelled arbitrary prose cannot always be identified as a secret; review reports before sharing. See [security policy](SECURITY.md).
+All public output redacts environment/header values, sensitive keys, common tokens, auth headers and URL credentials; renderers apply redaction again. HTML also replaces captured repository/home paths and verified configuration aliases. Unrecognized paths in prose or shell snippets can remain. Unlabelled arbitrary prose cannot always be identified as a secret; review reports before sharing. See [security policy](SECURITY.md).
 
 Unknown workspace trust remains **conditional**. `--trust trusted` models a trusted session and approved Claude project MCP servers; it changes no real client settings. Default scans start no configured process. `agent-sightline doctor --probe --trust trusted` explicitly starts local stdio MCP servers for initialization/tools listing; startup code can have side effects, and no MCP tool is invoked.
 
@@ -85,7 +85,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.2.3.tgz
+npm install -g ./agent-sightline-0.2.4.tgz
 agent-sightline demo
 ```
 

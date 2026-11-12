@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rm } from 'node:fs/promises';
+import path from 'node:path';
+import { realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import type { Finding, Report } from '../packages/core/types.js';
 import { failed, html, json, portable, terminal } from '../packages/reporter/index.js';
@@ -80,20 +81,102 @@ test('terminal renders unique related source locations and gives an empty worksp
 });
 
 test('portable reports replace JSON-escaped Windows and POSIX repository paths', () => {
-  for (const repository of ['D:\\projects\\checkout', 'C:\\Users\\example\\checkout', '/tmp/quoted"project', '/tmp/back\\slash-project']) {
+  for (const repository of ['D:\\projects\\checkout', 'C:\\Users\\example\\checkout', '/tmp/quoted"project', '/tmp/back\\slash-project', '/tmp/ending\\']) {
     const filename = repository + '/instructions.md';
     const report = reportWithFindings([{ ...missingCommand, location: { ...missingCommand.location, path: filename } }]);
     report.repository = repository;
     report.target = filename;
     report.sessionDirectory = repository;
-    report.assumptions = [`Working tree at ${repository}`];
+    report.assumptions = [`Working tree at ${repository}`, JSON.stringify({ file: filename })];
     const exported = portable(report);
     assert.equal(exported.repository, '<repo>');
     assert.equal(exported.target, '<repo>/instructions.md');
     assert.equal(exported.sessionDirectory, '<repo>');
     assert.equal(exported.findings[0].location.path, '<repo>/instructions.md');
-    assert.deepEqual(exported.assumptions, ['Working tree at <repo>']);
+    assert.deepEqual(exported.assumptions, ['Working tree at <repo>', JSON.stringify({ file: '<repo>/instructions.md' })]);
   }
+});
+
+test('portable reports replace verified repository aliases and custom home paths after JSON serialization', async t => {
+  const w = await workspace({ 'CLAUDE.md': 'Read the local source.' }, { '.claude/CLAUDE.md': 'Personal instructions.' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const repo = await realpath(w.repo);
+  const home = await realpath(w.home);
+  const alias = path.join(await realpath(w.root), 'repository-alias');
+  const flagAlias = path.join(home, 'flag-alias');
+  await symlink(repo, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  await symlink(repo, flagAlias, process.platform === 'win32' ? 'junction' : 'dir');
+  await writeFile(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: [path.join(alias, 'missing-server.mjs'), '--root=' + flagAlias], cwd: alias } } }, null, 2));
+  const report = await scan({ ...w, repo, home, clients: ['claude'], trust: 'trusted' });
+  const original = JSON.stringify(report);
+  assert.ok(original.includes(JSON.stringify(alias).slice(1, -1)));
+  await rm(w.root, { recursive: true, force: true });
+  const exported = portable(JSON.parse(original));
+  const text = JSON.stringify(exported);
+  for (const root of [repo, w.repo, home, w.home, alias, flagAlias]) assert.ok(!text.includes(JSON.stringify(root).slice(1, -1)), root);
+  assert.equal(exported.repository, '<repo>');
+  assert.equal(exported.clients[0].extensions.find(extension => extension.name === 'fixture')?.config.cwd, '<repo>');
+  assert.ok(exported.clients[0].extensions.find(extension => extension.name === 'fixture')?.config.args.includes('--root=<repo>'));
+  assert.ok(exported.clients[0].decisions.some(decision => decision.path === '~/.claude/CLAUDE.md' || decision.path === '~\\.claude\\CLAUDE.md'));
+  assert.equal(exported.pathMappings, undefined);
+  assert.equal(JSON.stringify(report), original);
+  assert.deepEqual(portable(exported), exported);
+});
+
+test('portable paths cover escaped configuration text, Windows spellings and flattened project keys', () => {
+  const report = reportWithFindings();
+  report.repository = 'C:\\Users\\Private Person\\Checkout';
+  report.pathMappings = [
+    { path: report.repository, replacement: '<repo>' },
+    { path: 'D:\\Repository Alias', replacement: '<repo>' },
+    { path: 'Z:\\Custom Profile', replacement: '~' },
+  ];
+  report.assumptions = [
+    'command D:\\Repository Alias\\server.mjs',
+    JSON.stringify({ cwd: 'd:/repository alias/src', config: 'D:\\Repository Alias\\config.json' }),
+    'projects.C:\\Users\\Private Person\\Checkout.trust_level',
+    'Z:\\Custom Profile\\.codex\\config.toml',
+  ];
+  const exported = portable(report);
+  assert.deepEqual(exported.assumptions, [
+    'command <repo>\\server.mjs',
+    JSON.stringify({ cwd: '<repo>/src', config: '<repo>\\config.json' }),
+    'projects.<repo>.trust_level',
+    '~\\.codex\\config.toml',
+  ]);
+});
+
+test('portable paths preserve neighboring repositories and URLs while retaining legacy report support', () => {
+  const report = reportWithFindings();
+  report.repository = '/workspace/project';
+  report.assumptions = ['/workspace/project/config.json', '/workspace/project-backup/config.json', '/workspace/project.backup/config.json', 'https://example.test/workspace/project/config.json', 'file:///workspace/project/config.json', '/home/Example Person/.claude/CLAUDE.md'];
+  assert.deepEqual(portable(report).assumptions, ['<repo>/config.json', '/workspace/project-backup/config.json', '/workspace/project.backup/config.json', 'https://example.test/workspace/project/config.json', 'file://<repo>/config.json', '~/.claude/CLAUDE.md']);
+});
+
+test('portable paths retain correct separators when the repository is a filesystem root', () => {
+  for (const repository of ['/', 'C:\\', '\\\\server\\share\\']) {
+    const report = reportWithFindings();
+    report.repository = repository;
+    report.target = repository + 'src/file.ts';
+    report.sessionDirectory = repository;
+    const exported = portable(report);
+    assert.equal(exported.repository, '<repo>');
+    assert.equal(exported.sessionDirectory, '<repo>');
+    assert.equal(exported.target, '<repo>/src/file.ts');
+  }
+});
+
+test('path metadata preserves environment redaction and keeps private placeholders distinct from repository paths', async t => {
+  const w = await workspace({ 'CLAUDE.md': 'token=hidden-value' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  await writeFile(path.join(w.repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { ROOT: w.repo, PERSONAL: w.home } } } }));
+  const report = await scan({ ...w, clients: ['claude'], trust: 'trusted' });
+  const text = json(report);
+  for (const root of [w.repo, w.home]) assert.ok(!text.includes(JSON.stringify(root).slice(1, -1)));
+  const exported = portable(report);
+  assert.equal(exported.repository, '<repo>');
+  assert.ok(exported.clients[0].instructions.includes('[REDACTED]'));
+  assert.ok(!exported.clients[0].instructions.includes('token=<repo>'));
 });
 
 test('HTML is self-contained, inert against script injection, and redacted again at export', async t => {

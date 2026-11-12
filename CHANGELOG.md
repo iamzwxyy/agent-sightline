@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4 — 2026-11-13
+
+* Capture logical/canonical repository and home paths, plus filesystem-verified aliases found in structured configuration, for portable report export.
+* Replace verified aliases in MCP paths, command arguments, source previews and flattened project-setting keys. Handle JSON-escaped Windows paths, mixed separators, drive-letter case and custom user configuration directories.
+* Keep captured path context through JSON round trips and successful browser inspections. Portable HTML discards that context after replacing paths, so exported reports retain the inspected snapshot when files or aliases change later.
+* Preserve neighboring repository names and HTTP URLs when replacing paths. Keep support for reports created before path metadata was available.
+
 ## 0.2.3 — 2026-11-13
 
 * Compare effective base/project scalar and MCP configuration, including winning files, against the real Codex 0.167.2 configuration API in fifteen isolated scenarios.

@@ -3,6 +3,7 @@ import { finish } from '../adapters/common.js';
 import { discoverRepository, makeContext, selectedClients } from './discovery.js';
 import { diagnose } from './diagnostics.js';
 import { redact } from './redact.js';
+import { collectPathMappings } from './paths.js';
 import { cmp } from './utils.js';
 import { VERSION } from './version.js';
 import type { Context, Effective, Report, ScanOptions } from './types.js';
@@ -59,5 +60,9 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
     }),
     clients, findings: unique, diff: [...diff.values()],
   };
-  return redact(report, envValues(ctx));
+  const privateValues = envValues(ctx);
+  const result = redact(report, privateValues);
+  const configuration = result.clients.flatMap(client => [client.settings, client.extensions.map(extension => extension.config)]);
+  result.pathMappings = redact(await collectPathMappings(ctx, configuration), privateValues);
+  return result;
 }
