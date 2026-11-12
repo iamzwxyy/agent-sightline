@@ -5,12 +5,12 @@
 One file. Several agents. Different instructions. Sightline shows every discovered source, why it applies, what is shadowed or truncated, and the effective configuration—with source lines you can inspect.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.1.4/agent-sightline-0.1.4.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.2.0/agent-sightline-0.2.0.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.2.0.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -81,7 +81,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.1.4.tgz
+npm install -g ./agent-sightline-0.2.0.tgz
 agent-sightline demo
 ```
 
@@ -101,7 +101,7 @@ Interrupted scans exit with 130 for SIGINT or 143 for SIGTERM, after active prob
 
 Sightline diagnoses configuration; it does not synchronize it or switch API providers/models. Markdown guidance accumulates, so the tool does not guess which conflicting sentence an LLM will obey. Source-file diff groups identical bodies rather than doing semantic alignment.
 
-Static reports exclude session toggles, other command-line overrides, account/managed-cloud policy and bundled/plugin state unless expressly supported by an adapter. Experimental adapters describe their gaps rather than claiming complete resolution. The inspection cap is 2 MiB per file and 50,000 filesystem entries; these are Sightline limits.
+Static reports exclude session toggles, other command-line overrides, account/managed-cloud policy and bundled/plugin state unless expressly supported by an adapter. Experimental adapters describe their gaps rather than claiming complete resolution. Sightline inspects files up to 2 MiB each. Discovery defaults to 50,000 repository entries and 4,000 matching files per user configuration root. Adjust these budgets with `--max-entries` and `--max-user-files`. Reports retain an incomplete-discovery status when limits or inaccessible locations leave sources uninspected, including filtered and exported reports.
 
 The most useful path to v1.0: a live client conformance harness, plugin/managed-policy provenance, and finer paragraph/span comparison. See [architecture](docs/architecture.md), [adapter guide](docs/adapters.md), [contributing](CONTRIBUTING.md), [release procedure](docs/release.md), [30-second demo](docs/demo.md), and [launch drafts](docs/launch-drafts.md).
 

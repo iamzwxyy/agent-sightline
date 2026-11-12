@@ -1,11 +1,33 @@
 import path from 'node:path';
 import os from 'node:os';
 import { lstat, realpath, readdir, readFile, stat } from 'node:fs/promises';
-import { CLIENTS, type ClientId, type Context, type Kind, type ScanOptions, type Source } from './types.js';
+import { CLIENTS, type ClientId, type Context, type Discovery, type Kind, type ScanOptions, type Source } from './types.js';
 import { bytes, cmp, finding, hash, parents, slash, within } from './utils.js';
 import { parseSource } from './parse.js';
 
 export const excludedDirectories = new Set(['.git', 'node_modules', '.next', '.venv', 'venv', 'dist', 'build', 'coverage', 'vendor', 'target']);
+export const DEFAULT_ENTRY_LIMIT = 50_000;
+export const DEFAULT_USER_FILE_LIMIT = 4_000;
+
+export function discoveryLimit(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${name} must be a non-negative safe integer.`);
+  return value;
+}
+function createDiscoveryState(options: ScanOptions): Discovery {
+  return {
+    complete: true,
+    repositoryEntries: 0,
+    repositoryEntryLimit: discoveryLimit(options.maxFiles ?? DEFAULT_ENTRY_LIMIT, 'Repository entry limit'),
+    userFileLimit: discoveryLimit(options.maxUserFiles ?? DEFAULT_USER_FILE_LIMIT, 'User configuration file limit'),
+  };
+}
+function discoveryState(ctx: Context): Discovery {
+  return ctx.discovery ??= createDiscoveryState(ctx.options);
+}
+function unreadableDirectory(ctx: Context, directory: string, owner?: ClientId): void {
+  discoveryState(ctx).complete = false;
+  ctx.findings.push(finding('source.unreadable', 'warn', { path: directory, line: 1, column: 1 }, 'Directory cannot be inspected.', 'Some configuration sources may be hidden by filesystem access errors.', 'Check the directory and its read permissions, then rerun the inspection.', owner));
+}
 export function classify(file: string): { owners: ClientId[]; kind: Kind } | null {
   const p = slash(file); const n = path.posix.basename(p); const parent = path.posix.basename(path.posix.dirname(p));
   if (/^AGENTS(?:\.override|\.local)?\.md$/.test(n)) return { owners: ['codex', 'claude', 'copilot', 'cursor', 'opencode'], kind: 'instructions' };
@@ -47,6 +69,7 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
     if (options.user === false) throw new Error('Codex profiles are user configuration. Remove --no-user to inspect a profile.');
     if (options.clients && !options.clients.includes('codex')) throw new Error('A Codex profile requires Codex in the selected clients.');
   }
+  const discovery = createDiscoveryState(options);
   const repo = path.resolve(options.repo ?? process.cwd());
   if (!(await stat(repo)).isDirectory()) throw new Error('Repository must be an existing directory. Use --repo <directory>.');
   const target = path.resolve(repo, options.target ?? '.');
@@ -58,7 +81,7 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
   const env = options.env ?? process.env;
   const home = path.resolve(options.home ?? os.homedir());
   const ctx: Context = {
-    repo, target, directory, home, env, options, dirs: parents(repo, directory), sources: [], findings: [],
+    repo, target, directory, home, env, options, discovery, dirs: parents(repo, directory), sources: [], findings: [],
     codexHome: options.home ? path.join(home, '.codex') : path.resolve(env.CODEX_HOME ?? path.join(home, '.codex')),
     claudeHome: options.home ? path.join(home, '.claude') : path.resolve(env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude')),
     copilotHome: options.home ? path.join(home, '.copilot') : path.resolve(env.COPILOT_HOME ?? path.join(home, '.copilot')),
@@ -71,22 +94,27 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
     if (existing) { if (!existing.owners.includes(owner)) existing.owners.push(owner); return existing; }
     let info;
     try { info = await lstat(abs); } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') ctx.findings.push(finding('source.unreadable', 'error', { path: abs, line: 1, column: 1 }, 'Configuration cannot be read.', 'Filesystem access was denied.', 'Check file and parent-directory permissions.', owner));
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        discovery.complete = false;
+        ctx.findings.push(finding('source.unreadable', 'error', { path: abs, line: 1, column: 1 }, 'Configuration cannot be read.', 'Filesystem access was denied.', 'Check file and parent-directory permissions.', owner));
+      }
       return null;
     }
     try {
       const real = await realpath(abs);
       // Only explicitly selected config paths and imports are read outside the repo.
       if (!within(await realpath(repo), real) && scope !== 'user' && scope !== 'system') {
+        discovery.complete = false;
         ctx.findings.push(finding('source.external-symlink', 'warn', { path: abs, line: 1, column: 1 }, 'Symlink points outside the inspected repository.', 'The client may follow it; Sightline does not read unrelated private files.', 'Inspect that directory explicitly with --repo, or place the configuration inside this repository.', owner)); return null;
       }
       info = await stat(abs);
       if (!info.isFile()) return null;
-      if (info.size > 2 * 1024 * 1024) { ctx.findings.push(finding('source.read-limit', 'warn', { path: abs, line: 1, column: 1 }, 'Configuration exceeds the 2 MiB inspection limit.', 'This is a Sightline safety limit, not a client truncation rule.', 'Split the file into smaller instruction sources.', owner)); return null; }
+      if (info.size > 2 * 1024 * 1024) { discovery.complete = false; ctx.findings.push(finding('source.read-limit', 'warn', { path: abs, line: 1, column: 1 }, 'Configuration exceeds the 2 MiB inspection limit.', 'This is a Sightline safety limit, not a client truncation rule.', 'Split the file into smaller instruction sources.', owner)); return null; }
       const text = await readFile(abs, 'utf8');
       const s: Source = { id: hash(abs), path: abs, relativePath: within(repo, abs) ? slash(path.relative(repo, abs)) : abs, owners: [owner], kind, scope: scope ?? (path.dirname(abs) === repo ? 'repository' : 'directory'), baseDir: path.dirname(abs), bytes: bytes(text), text, body: text, bodyLine: 1, data: {}, lines: {}, invalid: false };
       ctx.findings.push(...parseSource(s)); ctx.sources.push(s); return s;
     } catch (error) {
+      discovery.complete = false;
       const code = (error as NodeJS.ErrnoException).code;
       ctx.findings.push(finding(code === 'ENOENT' ? 'source.broken-symlink' : 'source.unreadable', 'error', { path: abs, line: 1, column: 1 }, code === 'ENOENT' ? 'Broken configuration symlink.' : 'Configuration cannot be read.', 'The source exists but cannot be opened.', 'Repair the symlink or check file permissions.', owner)); return null;
     }
@@ -95,51 +123,76 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
 }
 
 export async function discoverRepository(ctx: Context): Promise<void> {
-  let count = 0; const seen = new Set<string>();
+  const coverage = discoveryState(ctx);
+  coverage.repositoryEntries = 0;
+  let stopped = false;
+  const seen = new Set<string>();
   const realRepo = await realpath(ctx.repo);
-  const walk = async (dir: string, depth: number): Promise<void> => {
+  const walk = async (dir: string): Promise<void> => {
     ctx.options.signal?.throwIfAborted();
-    if (depth > 48) return;
+    if (stopped) return;
     let real: string;
-    try { real = await realpath(dir); } catch { return; }
-    if (!within(realRepo, real)) { ctx.findings.push(finding('source.external-symlink', 'warn', { path: dir, line: 1, column: 1 }, 'Directory symlink points outside the repository.', 'External trees are not scanned.', 'Scan the destination explicitly if needed.')); return; }
+    try { real = await realpath(dir); } catch { unreadableDirectory(ctx, dir); return; }
+    if (!within(realRepo, real)) { coverage.complete = false; ctx.findings.push(finding('source.external-symlink', 'warn', { path: dir, line: 1, column: 1 }, 'Directory symlink points outside the repository.', 'External trees are not scanned.', 'Scan the destination explicitly if needed.')); return; }
     if (seen.has(real)) { ctx.findings.push(finding('source.symlink-cycle', 'info', { path: dir, line: 1, column: 1 }, 'Repeated or cyclic directory symlink skipped.', 'The same directory was already scanned.', 'Remove cyclic links or use the canonical directory.')); return; }
     seen.add(real);
     let entries;
-    try { entries = await readdir(dir, { withFileTypes: true }); } catch { ctx.findings.push(finding('source.unreadable', 'warn', { path: dir, line: 1, column: 1 }, 'Directory cannot be inspected.', 'Some configuration sources may be hidden by permissions.', 'Check directory read permissions.')); return; }
+    try { entries = await readdir(dir, { withFileTypes: true }); } catch { unreadableDirectory(ctx, dir); return; }
     for (const entry of entries.sort((a, b) => cmp(a.name, b.name))) {
-      if (++count > (ctx.options.maxFiles ?? 50000)) return;
+      if (stopped) return;
+      if (coverage.repositoryEntries >= coverage.repositoryEntryLimit) {
+        coverage.complete = false;
+        stopped = true;
+        const limit = coverage.repositoryEntryLimit;
+        ctx.findings.push(finding('source.scan-limit', 'warn', { path: ctx.repo, line: 1, column: 1 }, 'Repository discovery reached its entry limit.', `The discovery budget is ${limit.toLocaleString('en-US')} filesystem ${limit === 1 ? 'entry' : 'entries'}. Additional locations were left uninspected.`, 'Raise --max-entries to inspect more of this repository.'));
+        return;
+      }
+      coverage.repositoryEntries++;
       const p = path.join(dir, entry.name);
-      if (entry.isDirectory()) { if (!excludedDirectories.has(entry.name)) await walk(p, depth + 1); }
+      if (entry.isDirectory()) { if (!excludedDirectories.has(entry.name)) await walk(p); }
       else {
         const type = classify(p);
         if (type) { const s = await ctx.read(p, type.owners[0] ?? 'codex', type.kind); if (s) s.owners = type.owners; }
-        else if (entry.isSymbolicLink()) { try { if ((await stat(p)).isDirectory()) await walk(p, depth + 1); } catch { /* unrelated broken link */ } }
+        else if (entry.isSymbolicLink()) { try { if ((await stat(p)).isDirectory()) await walk(p); } catch { /* unrelated broken link */ } }
       }
     }
   };
-  await walk(ctx.repo, 0);
-  if (count > (ctx.options.maxFiles ?? 50000)) ctx.findings.push(finding('source.scan-limit', 'warn', { path: ctx.repo, line: 1, column: 1 }, 'Repository scan reached its entry limit.', 'Discovery is incomplete after 50,000 filesystem entries.', 'Inspect a smaller directory using --repo.'));
+  await walk(ctx.repo);
 }
 
 export async function readUserTree(ctx: Context, dir: string, owner: ClientId, kind: Kind, suffix: string): Promise<void> {
+  const coverage = discoveryState(ctx);
   const seen = new Set<string>();
-  let realRoot: string; try { realRoot = await realpath(dir); } catch { return; }
-  const walk = async (d: string, depth: number): Promise<void> => {
+  let files = 0;
+  let stopped = false;
+  let realRoot: string;
+  try { realRoot = await realpath(dir); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') unreadableDirectory(ctx, dir, owner); return; }
+  const walk = async (d: string): Promise<void> => {
     ctx.options.signal?.throwIfAborted();
-    if (depth > 8 || ctx.sources.length > 4000) return;
-    let real: string; try { real = await realpath(d); } catch { return; }
+    if (stopped) return;
+    let real: string; try { real = await realpath(d); } catch { unreadableDirectory(ctx, d, owner); return; }
     // User skill/rule symlinks can lead to private unrelated trees. Report instead.
-    if (!within(realRoot, real)) { ctx.findings.push(finding('source.external-symlink', 'warn', { path: d, line: 1, column: 1 }, 'User configuration directory points outside its declared root.', 'Sightline keeps user scans within documented configuration directories.', 'Inspect the destination explicitly.', owner)); return; }
+    if (!within(realRoot, real)) { coverage.complete = false; ctx.findings.push(finding('source.external-symlink', 'warn', { path: d, line: 1, column: 1 }, 'User configuration directory points outside its declared root.', 'Sightline keeps user scans within documented configuration directories.', 'Inspect the destination explicitly.', owner)); return; }
     if (seen.has(real)) return; seen.add(real);
-    let entries; try { entries = await readdir(d, { withFileTypes: true }); } catch { return; }
+    let entries; try { entries = await readdir(d, { withFileTypes: true }); } catch { unreadableDirectory(ctx, d, owner); return; }
     for (const e of entries.sort((a, b) => cmp(a.name, b.name))) {
+      if (stopped) return;
       const p = path.join(d, e.name);
-      if (e.isDirectory() || (e.isSymbolicLink() && !e.name.endsWith(suffix))) await walk(p, depth + 1);
-      else if (e.name.endsWith(suffix)) await ctx.read(p, owner, kind, 'user');
+      if (e.isDirectory() || (e.isSymbolicLink() && !e.name.endsWith(suffix))) await walk(p);
+      else if (e.name.endsWith(suffix)) {
+        if (files >= coverage.userFileLimit) {
+          coverage.complete = false;
+          stopped = true;
+          ctx.findings.push(finding('source.user-file-limit', 'warn', { path: p, line: 1, column: 1 }, 'User configuration discovery reached its file limit.', `The discovery budget is ${coverage.userFileLimit.toLocaleString('en-US')} matching files per user configuration root. Additional files were left uninspected.`, 'Raise --max-user-files to inspect the remaining configuration files.', owner));
+          return;
+        }
+        files++;
+        await ctx.read(p, owner, kind, 'user');
+      }
     }
   };
-  await walk(dir, 0);
+  await walk(dir);
 }
 
 export const selectedClients = (options: ScanOptions): ClientId[] => options.clients ?? [...CLIENTS];

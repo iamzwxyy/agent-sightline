@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 — 2026-11-13
+
+* Add configurable repository-entry and user configuration file budgets with `--max-entries` and `--max-user-files`.
+* Report accurate entry counts and incomplete discovery across JSON, terminal, browser refreshes and portable exports, including severity-filtered reports.
+* Discover deeply nested repository instructions and personal rules, and keep user discovery independent of the repository source count.
+* Apply user file limits within flat directories and surface inaccessible discovery locations.
+* Bundle the production dependency tree and its license files, and verify installation offline with an empty npm cache.
+
 ## 0.1.4 — 2026-11-13
 
 * Export the most recent successful browser inspection, preserving its configuration content across disk edits and pending or failed refreshes.

@@ -32,6 +32,7 @@ export function terminal(report: Report, mode = 'scan'): string {
   const clientNames = detected.map(client => client.metadata.name + (client.metadata.maturity === 'experimental' ? ' (experimental)' : ''));
   lines.push(`Clients:    ${clientNames.join(', ') || '(no compatible configuration found)'}`, '');
   lines.push(`${detected.length} compatible clients · ${report.sources.length} sources · ${summaryFindings.length} findings`, `Errors ${counts.error} · Warnings ${counts.warn} · Info ${counts.info}`, '');
+  if (report.discovery?.complete === false) lines.push('Configuration discovery is incomplete.', 'Use --severity warn to review skipped locations and discovery limits.', '');
   if (mode === 'explain') for (const e of report.clients) {
     lines.push(`${e.metadata.name} · ${e.metadata.maturity} rules ${e.metadata.ruleVersion}`, '');
     for (const d of e.decisions.sort((a, b) => (a.order ?? 999999) - (b.order ?? 999999))) {
@@ -56,7 +57,7 @@ export function terminal(report: Report, mode = 'scan'): string {
     for (const location of related.values()) lines.push(`      Related ${location.path}:${location.line}:${location.column}`);
     lines.push(`      ${finding.why}`, `      Next: ${finding.suggestion}`, '');
   }
-  if (!report.findings.length) {
+  if (!report.findings.length && report.discovery?.complete !== false) {
     if (mode === 'scan' && !report.sources.length) lines.push('No agent configuration was discovered in this scan.', 'Explore the bundled example with agent-sightline demo', '');
     else lines.push('No deterministic configuration problems found.', '');
   }

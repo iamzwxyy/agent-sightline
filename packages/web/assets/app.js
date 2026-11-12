@@ -209,13 +209,18 @@
     const detected = report.clients.filter(client => client.detected);
     $('overview-heading').textContent = actionable.length ? `${actionable.length} configuration issues found.` : 'No configuration issues found.';
     $('overview-description').textContent = `We traced ${report.sources.length} sources across ${detected.length} clients. ${actionable.length ? 'Start with a finding, or follow a client’s instruction chain.' : 'Choose a client to see its loaded instructions and configuration sources.'}`;
-    const noConfiguration = !report.sources.length;
+    const incomplete = report.discovery?.complete === false;
+    const noConfiguration = !report.sources.length && !incomplete;
     if (noConfiguration) {
       $('overview-heading').textContent = 'Your first configuration starts here.';
       $('overview-description').textContent = 'No agent configuration was discovered in this scan. Explore the sample workspace, or add an instruction file in a supported location.';
     }
+    if (incomplete) {
+      $('overview-heading').textContent = 'Configuration discovery is incomplete.';
+      $('overview-description').textContent = 'Some locations could not be fully inspected. Review discovery findings and scan scope before relying on these results.';
+    }
     const starting = $('getting-started');
-    starting.hidden = !noConfiguration && (!live || short(report.target) !== '.');
+    starting.hidden = incomplete || !noConfiguration && (!live || short(report.target) !== '.');
     starting.replaceChildren();
     if (!starting.hidden) {
       const description = node('div');
@@ -239,7 +244,8 @@
       return element;
     }));
     $('priority-findings').replaceChildren(...actionable.slice(0, 5).map(issueRow));
-    if (!actionable.length) $('priority-findings').append(empty(noConfiguration ? 'No configuration to diagnose yet' : 'No errors or warnings found', noConfiguration ? 'Codex reads AGENTS.md, Claude Code reads CLAUDE.md, and Copilot reads .github/copilot-instructions.md. Refresh after adding your configuration.' : 'You can still inspect information notices and source loading decisions.'));
+    if (!actionable.length && incomplete) $('priority-findings').append(empty('Review discovery limits', 'The displayed findings may be filtered. Open scan scope for the inspection budgets.', button('Review scan scope', () => $('scope-dialog').showModal(), 'button')));
+    if (!actionable.length && !incomplete) $('priority-findings').append(empty(noConfiguration ? 'No configuration to diagnose yet' : 'No errors or warnings found', noConfiguration ? 'Codex reads AGENTS.md, Claude Code reads CLAUDE.md, and Copilot reads .github/copilot-instructions.md. Refresh after adding your configuration.' : 'You can still inspect information notices and source loading decisions.'));
     $('client-overview').replaceChildren(...detected.map(client => {
       const element = button('', () => { state.source = null; navigate('effective', client.client); }, 'client-card');
       const heading = node('div', undefined, 'client-card-heading');
@@ -585,7 +591,14 @@
     $('extension-list').replaceChildren(extensions.length ? list : empty('No extensions in this view', 'Choose another type or client to see its discovered definitions.'));
   }
   function renderScope() {
-    $('assumptions').replaceChildren(...report.assumptions.map(assumption => node('li', assumption)));
+    const notes = [...report.assumptions];
+    if (report.discovery) {
+      const entryUnit = report.discovery.repositoryEntries === 1 ? 'entry' : 'entries';
+      notes.push(`Repository discovery examined ${report.discovery.repositoryEntries.toLocaleString()} filesystem ${entryUnit} with a budget of ${report.discovery.repositoryEntryLimit.toLocaleString()}.`);
+      if (!report.assumptions.includes('User configuration: excluded.')) notes.push(`User configuration discovery allows ${report.discovery.userFileLimit.toLocaleString()} matching files per root.`);
+      if (!report.discovery.complete) notes.push('Run the CLI with --severity warn to review skipped locations and discovery limits.');
+    }
+    $('assumptions').replaceChildren(...notes.map(assumption => node('li', assumption)));
     $('adapter-details').replaceChildren(...report.clients.map(client => {
       const details = node('details', undefined, 'adapter-detail');
       details.append(node('summary', `${names[client.client]} · ${client.metadata.maturity === 'verified' ? 'Fixture verified' : 'Experimental'} · ${client.metadata.ruleVersion}`));
@@ -623,12 +636,21 @@
     if (state.view === 'compare') renderCompare();
     if (state.view === 'extensions') renderExtensions();
   }
+  function renderScanStatus(succeeded = true) {
+    const incomplete = report.discovery?.complete === false;
+    const completedLabel = incomplete ? 'Discovery incomplete' : 'Scan complete';
+    const label = succeeded ? completedLabel : 'Scan failed';
+    $('scan-status').classList.remove('scanning');
+    $('scan-status').classList.toggle('failed', !succeeded);
+    $('scan-status').classList.toggle('partial', succeeded && incomplete);
+    $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', label));
+  }
   async function refresh(target = short(report.target)) {
     if (!live) return;
     const request = ++state.request;
     scanController?.abort(); scanController = new AbortController();
     $('error').hidden = true; $('inspect').disabled = true; $('refresh').disabled = true;
-    $('scan-status').classList.remove('failed'); $('scan-status').classList.add('scanning');
+    $('scan-status').classList.remove('failed', 'partial'); $('scan-status').classList.add('scanning');
     $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', 'Inspecting…'));
     let succeeded = false;
     try {
@@ -651,8 +673,7 @@
     } finally {
       if (request === state.request) {
         $('inspect').disabled = false; $('refresh').disabled = false;
-        $('scan-status').classList.remove('scanning'); $('scan-status').classList.toggle('failed', !succeeded);
-        $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', succeeded ? 'Scan complete' : 'Scan failed'));
+        renderScanStatus(succeeded);
       }
     }
   }
@@ -745,5 +766,6 @@
     $('target-shortcut').hidden = true; $('trust-control').hidden = true; $('snapshot-label').hidden = false;
     $('mode-label').textContent = 'Report snapshot'; $('project-caption').textContent = 'Shared configuration report';
   }
+  renderScanStatus();
   render();
 })();

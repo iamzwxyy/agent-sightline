@@ -11,7 +11,7 @@ const runNpm = args => execFileSync(process.execPath, [npm, ...args], { encoding
 try {
   const result = JSON.parse(runNpm(['pack', '--ignore-scripts', '--json', '--pack-destination', temp]));
   const tarball = path.join(temp, result[0].filename);
-  runNpm(['install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', path.join(temp, 'install'), tarball]);
+  runNpm(['install', '--offline', '--cache', path.join(temp, 'empty-cache'), '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', path.join(temp, 'install'), tarball]);
   const cli = path.join(temp, 'install/node_modules/agent-sightline/dist/cli/index.js');
   const repo = path.join(temp, 'repository'); mkdirSync(path.join(repo, '.git'), { recursive: true }); writeFileSync(path.join(repo, 'AGENTS.md'), 'Installed package works.');
   const output = execFileSync(process.execPath, [cli, '--repo', repo, '--no-user', '--trust', 'trusted', '--client', 'codex', '--json'], { encoding: 'utf8' });
@@ -47,5 +47,5 @@ try {
     clearTimeout(startupTimer);
     if (inspector.exitCode === null) { const stopped = once(inspector, 'exit'); inspector.kill(); await stopped; }
   }
-  console.log(`Installed ${result[0].filename}: CLI, Codex resolution, HTML assets, version and browser demo startup passed (${result[0].size} compressed bytes).`);
+  console.log(`Installed ${result[0].filename} offline with an empty cache: CLI, Codex resolution, HTML assets, version and browser demo startup passed (${result[0].size} compressed bytes).`);
 } finally { rmSync(temp, { recursive: true, force: true }); }

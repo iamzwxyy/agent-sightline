@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.2.0
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks and build passed. The 73-case core suite completed with 72 passes and one Windows-only skip.
+* Discovery regressions cover accurate custom budgets, exact and zero entry limits, invalid numeric inputs, severity-filtered completeness, repository paths below 48 directory levels, personal rules below eight directory levels and per-root user file counting in flat directories.
+* All fifteen Chromium browser cases passed, including incomplete-discovery status through refresh and portable export, automated WCAG AA checks, source navigation, profiles, comparison and phone layouts.
+* The package includes nineteen production dependency packages with their license files. Archive inspection found no bundled TypeScript, esbuild, Playwright, ESLint or tsx packages. Production dependency audit reported zero vulnerabilities.
+* A real isolated installation used offline mode and an empty npm cache. The installed CLI resolved instructions and a selected Codex profile, produced HTML, reported the release version, ran the bundled sample and served the browser inspector with paired scan/export responses.
+* The standalone example and product screenshots were regenerated and visually inspected.
+
 ## v0.1.4
 
 Verified locally on macOS on 2026-11-13.

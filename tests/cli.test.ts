@@ -34,6 +34,30 @@ test('CLI summary keeps same-name MCP failures at separate sources and labels ex
   assert.ok(result.stdout.includes(path.join(w.repo, '.mcp.json') + ':1:1'));
   assert.ok(result.stdout.includes('[claude, copilot]'));
 });
+test('CLI discovery budgets report partial results and reject invalid counts without output files', async t => {
+  const w = await workspace({ 'AGENTS.md': 'Repository instructions.' }, { '.claude/rules/a.md': 'First personal rule.', '.claude/rules/b.md': 'Second personal rule.' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const partial = run(['--client', 'codex', '--no-user', '--max-entries', '0', '--severity', 'error'], w.repo);
+  assert.equal(partial.status, 0, partial.stderr);
+  assert.ok(partial.stdout.includes('Configuration discovery is incomplete.'));
+  assert.ok(!partial.stdout.includes('No deterministic configuration problems found.'));
+  const user = run(['--client', 'claude', '--home', w.home, '--max-user-files', '1', '--json'], w.repo);
+  assert.equal(user.status, 0, user.stderr);
+  const report = JSON.parse(user.stdout);
+  assert.equal(report.discovery.complete, false);
+  assert.equal(report.discovery.userFileLimit, 1);
+  assert.ok(report.clients[0].instructions.includes('First personal rule.'));
+  assert.ok(!report.clients[0].instructions.includes('Second personal rule.'));
+  const strict = run(['ci', '--client', 'codex', '--no-user', '--max-entries', '0', '--fail-on', 'warn'], w.repo);
+  assert.equal(strict.status, 1);
+  for (const option of ['--max-entries', '--max-user-files']) {
+    for (const count of ['-1', '1.5', 'NaN', 'Infinity']) {
+      const invalid = run([option, count, '--no-user', '--output', 'invalid.json'], w.repo);
+      assert.equal(invalid.status, 2, `${option} ${count}`);
+    }
+  }
+  assert.ok(!(await readdir(w.repo)).includes('invalid.json'));
+});
 test('CI threshold uses unfiltered findings; errors return 2 and write no partial output', async t => {
   const w = await workspace({ '.mcp.json': '{"mcpServers":{"db":{"command":"missing-sightline-executable"}}}' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = run(['ci', '--client', 'claude', '--no-user', '--fail-on', 'error'], w.repo); assert.equal(r.status, 1); assert.ok(JSON.parse(r.stdout).findings.some((f: any) => f.ruleId === 'mcp.command-missing'));

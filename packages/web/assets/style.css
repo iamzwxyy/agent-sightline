@@ -108,6 +108,8 @@ h3 { font-size: 14px; font-weight: 600; }
 .target-option-path { display: block; color: #626b59; font: 11px/1.7 var(--mono); overflow-wrap: anywhere; }
 .target-picker-help { margin: 0; padding: 10px 14px; font-size: 11px; color: #626b59; border-top: 1px solid var(--line); background: #fafbf7; }
 #scan-status.failed .connection { background: var(--red); }
+#scan-status.partial { color: var(--amber); }
+#scan-status.partial .connection { background: var(--amber); }
 kbd { border: 1px solid #dfe2d8; border-radius: 3px; background: #f9faf7; padding: 1px 4px; font: 11px var(--sans); color: #626b59; white-space: nowrap; }
 .trust-control { display: flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 12px; color: #626b59; }
 select { background: white; border: 1px solid #dfe2d9; border-radius: 4px; font-size: 12px; color: #5f6b54; padding: 5px 22px 5px 8px; max-width: 100%; }

@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Command, CommanderError, InvalidArgumentError } from 'commander';
 import { scan, adapters } from '../core/index.js';
+import { DEFAULT_ENTRY_LIMIT, DEFAULT_USER_FILE_LIMIT } from '../core/discovery.js';
 import { CLIENTS, type ClientId, type Report, type ScanOptions, type Severity } from '../core/types.js';
 import { failed, filter, html, json, terminal } from '../reporter/index.js';
 import { redactText } from '../core/redact.js';
@@ -30,6 +31,8 @@ program.name('agent-sightline').description('See what your coding agent actually
   .option('--trust <state>', 'auto, trusted or untrusted; trusted assumes project/server approval', 'auto')
   .option('--no-user', 'exclude user configuration')
   .option('--home <directory>', 'explicit user home for reproducible isolated scans')
+  .option('--max-entries <count>', 'repository filesystem entry budget', Number, DEFAULT_ENTRY_LIMIT)
+  .option('--max-user-files <count>', 'matching files per user configuration root', Number, DEFAULT_USER_FILE_LIMIT)
   .option('--system', 'also inspect documented system configuration')
   .option('--probe', 'doctor only: launch local stdio MCP servers and test initialize/tools-list')
   .option('--port <port>', 'ui only: loopback port; 0 chooses a free port', '0')
@@ -41,7 +44,7 @@ function options(target?: string, repository?: string): ScanOptions & { probe?: 
   if (!['auto', 'trusted', 'untrusted'].includes(o.trust)) throw new Error('--trust must be auto, trusted or untrusted.');
   if (o.client && o.clients) throw new Error('Use either --client or --clients.');
   const clients = o.client ? [o.client] : o.clients ? [...new Set(String(o.clients).split(',').map(x => client(x.trim())))] : undefined;
-  return { repo: path.resolve(o.repo ?? repository ?? process.cwd()), target, clients, user: o.user, home: o.home ? path.resolve(o.home) : undefined, trust: o.trust, system: o.system, probe: o.probe, codexProfile: o.profile };
+  return { repo: path.resolve(o.repo ?? repository ?? process.cwd()), target, clients, user: o.user, home: o.home ? path.resolve(o.home) : undefined, trust: o.trust, system: o.system, probe: o.probe, codexProfile: o.profile, maxFiles: o.maxEntries, maxUserFiles: o.maxUserFiles };
 }
 async function atomic(file: string, content: string): Promise<void> {
   const destination = path.resolve(file);

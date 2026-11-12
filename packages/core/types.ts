@@ -37,9 +37,16 @@ export interface Effective {
   decisions: Decision[]; instructions: string; instructionBytes: number; estimatedTokens: number;
   settings: Setting[]; extensions: Extension[]; findings: Finding[]; notes: string[];
 }
+export interface Discovery {
+  complete: boolean;
+  repositoryEntries: number;
+  repositoryEntryLimit: number;
+  userFileLimit: number;
+}
 export interface Report {
   schemaVersion: '1.0'; tool: { name: string; version: string };
   inputs?: { codexProfile?: string };
+  discovery?: Discovery;
   repository: string; target: string; sessionDirectory: string;
   assumptions: string[]; sources: (Omit<Source, 'text' | 'body' | 'data' | 'lines' | 'baseDir'> & { preview?: string })[];
   clients: Effective[]; findings: Finding[];
@@ -49,13 +56,14 @@ export interface ScanOptions {
   repo?: string; target?: string; clients?: ClientId[]; home?: string; user?: boolean;
   codexProfile?: string;
   trust?: 'auto' | 'trusted' | 'untrusted'; system?: boolean;
-  env?: NodeJS.ProcessEnv; maxFiles?: number;
+  env?: NodeJS.ProcessEnv; maxFiles?: number; maxUserFiles?: number;
   signal?: AbortSignal;
 }
 export interface Context {
   repo: string; target: string; directory: string; home: string; codexHome: string;
   claudeHome: string; copilotHome: string; dirs: string[]; sources: Source[];
   findings: Finding[]; options: ScanOptions; env: NodeJS.ProcessEnv;
+  discovery?: Discovery;
   read: (path: string, owner: ClientId, kind: Kind, scope?: Source['scope']) => Promise<Source | null>;
 }
 export interface Adapter {

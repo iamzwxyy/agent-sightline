@@ -15,6 +15,10 @@
 
 Common flags: `--repo`, `--client` or `--clients`, `--profile` (Codex), `--no-user`, `--home` (isolated synthetic home), `--trust auto|trusted|untrusted`, `--system`, `--json`, `--format terminal|json|html`, `--severity error|warn|info`, `--fail-on error|warn|info|none`, `--output`.
 
+`--max-entries` sets the repository discovery budget, defaulting to 50,000 filesystem entries. `--max-user-files` sets the matching-file budget for each user instruction, rule, skill or hook root, defaulting to 4,000. Both accept non-negative safe integers. Zero prevents repository-entry processing or matching-file reads for the respective budget. Explicit target-chain files and user settings use their documented direct lookup paths. The file picker shares the repository entry budget.
+
+Reports add optional `discovery` metadata with `complete`, `repositoryEntries`, `repositoryEntryLimit` and `userFileLimit`. Limits and inaccessible locations produce an incomplete-discovery status that survives severity filtering and portable export. The terminal and browser keep that status visible. Use `--severity warn` to inspect the reasons, and `--fail-on warn` when CI should reject partial results.
+
 `--severity` filters displayed findings at or above that level. `--fail-on` always evaluates the unfiltered report. CI defaults to `--json --fail-on error`; other commands default to no threshold. Unknown/missing arguments, invalid targets, bad formats and write errors exit 2. Help/version exit 0. Non-interactive output has no ANSI or animations.
 
 The terminal scan summary groups identical diagnostics across clients at the same source location and shows severity totals for the complete grouped list after severity filtering. It displays up to 12 findings and reports the full count when the list continues. Findings at different files, lines, columns or configuration keys stay separate. Each displayed finding includes its source line and column plus related locations. Use `explain` for all client-specific findings or `--json` for machine-readable records. Experimental clients carry an explicit label in the summary. Empty scans include the bundled demo command.

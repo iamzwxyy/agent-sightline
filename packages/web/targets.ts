@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { readdir } from 'node:fs/promises';
-import { excludedDirectories } from '../core/discovery.js';
+import { DEFAULT_ENTRY_LIMIT, discoveryLimit, excludedDirectories } from '../core/discovery.js';
 import { cmp, slash, within } from '../core/utils.js';
 
 interface SearchOptions {
@@ -36,7 +36,7 @@ export async function searchTargets(repository: string, options: SearchOptions =
   const query = slash(rawQuery).replace(/^\.\//, '').replace(/\/$/, '').toLowerCase();
   const terms = query.split(/\s+/);
   const limit = options.limit ?? (query ? 60 : 1500);
-  const maxEntries = options.maxEntries ?? 50000;
+  const maxEntries = discoveryLimit(options.maxEntries ?? DEFAULT_ENTRY_LIMIT, 'Repository entry limit');
   const matches: { path: string; score: number }[] = [];
   let visited = 0;
   let stopped = false;
@@ -48,9 +48,8 @@ export async function searchTargets(repository: string, options: SearchOptions =
   };
   add('.');
 
-  async function walk(directory: string, depth: number): Promise<void> {
+  async function walk(directory: string): Promise<void> {
     if (stopped || options.signal?.aborted) return;
-    if (depth > 48) { truncated = true; return; }
     let entries;
     try { entries = await readdir(directory, { withFileTypes: true }); }
     catch { truncated = true; return; }
@@ -63,12 +62,12 @@ export async function searchTargets(repository: string, options: SearchOptions =
       const relative = slash(path.relative(repository, absolute));
       if (entry.isDirectory()) {
         add(relative + '/');
-        await walk(absolute, depth + 1);
+        await walk(absolute);
       } else if (entry.isFile()) add(relative);
     }
   }
 
-  await walk(repository, 0);
+  await walk(repository);
   matches.sort((a, b) => a.score - b.score || cmp(a.path, b.path));
   return { paths: matches.slice(0, limit).map(match => match.path), hasMore: matches.length > limit, truncated };
 }

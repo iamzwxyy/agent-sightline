@@ -123,6 +123,30 @@ test('export preserves the inspected configuration through disk edits and an in-
   }
 });
 
+test('incomplete discovery remains visible through refresh and a portable export', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'Known repository instructions.', 'src/a.ts': '' });
+  const server = await serve({ ...w, user: false, clients: ['codex'], trust: 'trusted', maxFiles: 0 });
+  try {
+    await page.goto(server.url);
+    await expect(page.locator('#scan-status')).toHaveText('Discovery incomplete');
+    await expect(page.getByRole('heading', { name: 'Configuration discovery is incomplete.', exact: true })).toBeVisible();
+    await page.locator('#target').fill('src/a.ts');
+    await page.locator('#inspect').click();
+    await expect(page.locator('#footer-target')).toHaveText('src/a.ts');
+    await expect(page.locator('#scan-status')).toHaveText('Discovery incomplete');
+    await page.locator('#scope-button').click();
+    await expect(page.locator('#scope-dialog')).toContainText('budget of 0');
+    await page.keyboard.press('Escape');
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const filename = test.info().outputPath('partial-report.html');
+    await (await pending).saveAs(filename);
+    await page.goto(pathToFileURL(filename).href);
+    await expect(page.locator('#scan-status')).toHaveText('Discovery incomplete');
+    await expect(page.getByRole('heading', { name: 'Configuration discovery is incomplete.', exact: true })).toBeVisible();
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('target suggestions, rejected target, trust assumptions and keyboard navigation', async ({ page }) => {
   const server = await serve({ ...sampleOptions, clients: [...sampleOptions.clients], target: 'src/payments/refund.ts' });
   try {

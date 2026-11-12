@@ -52,6 +52,7 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
   const report: Report = {
     schemaVersion: '1.0', tool: { name: 'Agent Sightline', version: VERSION }, repository: ctx.repo, target: ctx.target, sessionDirectory: ctx.directory,
     ...(options.codexProfile ? { inputs: { codexProfile: options.codexProfile } } : {}),
+    discovery: ctx.discovery,
     assumptions: ['Fresh session launched in sessionDirectory, with target opened for path matching.', `User configuration: ${options.user === false ? 'excluded' : 'documented locations only (marked user)'}.`, `Trust: ${options.trust ?? 'auto'}; unknown trust remains conditional. --trust trusted also assumes project MCP approval for Claude.`, 'Only sources within --repo and explicit user/system configuration locations are read; external ancestors/imports may add context.', 'Token estimates use UTF-8 bytes / 4, not a model tokenizer. No model call or telemetry.', ...(options.codexProfile ? [`Codex profile ${options.codexProfile} loads after user defaults and before applicable project layers.`] : [])],
     sources: ctx.sources.sort((a, b) => cmp(a.path, b.path)).map(source => {
       const { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid } = source;
