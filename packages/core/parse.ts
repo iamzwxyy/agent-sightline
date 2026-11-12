@@ -53,7 +53,11 @@ export function parseSource(s: Source): Finding[] {
             // A recovered JSON tree can retain a property whose value is missing.
             if (p.children?.[1]) visit(p.children[1], [...keys, name]);
           }
-        } else if (n.type === 'array') (n.children ?? []).forEach((x, i) => visit(x, [...keys, String(i)]));
+        } else if (n.type === 'array') (n.children ?? []).forEach((x, i) => {
+          const elementKeys = [...keys, String(i)];
+          s.lines[elementKeys.join('.')] = lineAt(s.text, x.offset);
+          visit(x, elementKeys);
+        });
       };
       if (tree) { visit(tree, []); const v = getNodeValue(tree); if (!plainObject(v)) issue('parse.structure', 'Expected an object at the top level.'); else s.data = v; }
     } else if (s.path.endsWith('.toml')) {

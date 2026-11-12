@@ -21,4 +21,6 @@ Sources: [custom instructions](https://docs.github.com/en/copilot/how-tos/copilo
 
 Fixture: `fixtures/copilot/chain.json`. Tests distinguish JSONC personal settings, imports, applyTo and CLI-specific limits from other products.
 
+Structural validation was reviewed against the official MCP and hook references on 2026-11-13. Malformed MCP collections retain diagnostics and valid definitions from adjacent workspace files. Hook working directories require path strings, and hook environments map names to strings. Static executable checks use the configured hook environment. Regression fixtures cover invalid collections, field types, platform command locations and an explicit probe that skips invalid definitions while initializing a valid sibling.
+
 Not resolved: enterprise allowlists, runtime /instructions toggles, plugin priority, added/custom roots, all saved permission rules and ignoredSkillsLocations. These limitations are visible in adapter metadata.

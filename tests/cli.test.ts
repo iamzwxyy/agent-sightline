@@ -114,6 +114,18 @@ test('CI threshold uses unfiltered findings; errors return 2 and write no partia
   for (const args of [['--client', 'wrong'], ['--unknown'], ['explain'], ['explain', '../outside'], ['report', '--format', 'wrong', '--output', 'bad.html'], ['scan', '--probe']]) assert.equal(run(args, w.repo).status, 2, args.join(' '));
   assert.ok(!(await readdir(w.repo)).some(x => x === 'bad.html' || x.endsWith('.tmp')));
 });
+test('CI reports malformed extensions as findings and retains valid sibling definitions', async t => {
+  const w = await workspace({
+    '.mcp.json': JSON.stringify({ mcpServers: { invalid: { command: 'node', env: { PATH: 42 } }, valid: { command: process.execPath } } }),
+    '.github/hooks/test.json': JSON.stringify({ version: 1, hooks: { sessionStart: [{ type: 'command', bash: 'echo safe', powershell: 'echo safe', cwd: 42 }] } }),
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const result = run(['ci', '--clients', 'claude,copilot', '--no-user', '--trust', 'trusted'], w.repo);
+  assert.equal(result.status, 1, result.stderr);
+  const report = JSON.parse(result.stdout);
+  for (const rule of ['mcp.env-type', 'extension.cwd-type']) assert.ok(report.findings.some((finding: any) => finding.ruleId === rule));
+  for (const client of report.clients) assert.equal(client.extensions.find((extension: any) => extension.name === 'valid').status, 'active');
+});
 test('HTML/JSON report writes only explicit output and redacts exported paths', async t => {
   const w = await workspace({ 'CLAUDE.md': 'API_KEY=secret-sentinel-value' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = run(['report', '--client', 'claude', '--no-user', '--format', 'html', '--output', 'report.html'], w.repo); assert.equal(r.status, 0); const html = await readFile(path.join(w.repo, 'report.html'), 'utf8'); assert.ok(html.startsWith('<!doctype html>')); assert.ok(!html.includes('secret-sentinel-value')); assert.ok(!html.includes(w.repo));

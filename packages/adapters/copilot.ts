@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { AdapterMetadata, Context, Source, Status } from '../core/types.js';
 import { readUserTree } from '../core/discovery.js';
-import { cmp, finding, locate, matches, slash, within } from '../core/utils.js';
+import { cmp, finding, locate, matches, plainObject, slash, within } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, expand, finish, hooks, mcp, pathPatterns, settings, skills } from './common.js';
 
 export const copilotMetadata: AdapterMetadata = {
@@ -54,7 +54,7 @@ export const copilot = adapter(copilotMetadata, discover, async ctx => {
   for (const d of ctx.dirs) {
     const files = ['.mcp.json', '.github/mcp.json'].map(n => ctx.sources.find(s => s.path === path.join(d, n))).filter((s): s is Source => !!s);
     for (const s of files) { decision(e, s, status, 'Workspace MCP loads from cwd to Git root, after workspace trust; closer definitions win.'); mcp(e, s, s.data.mcpServers, 'mcpServers', status); }
-    if (files.length === 2) {
+    if (files.length === 2 && plainObject(files[0].data.mcpServers) && plainObject(files[1].data.mcpServers)) {
       const names = Object.keys(files[0].data.mcpServers ?? {}).filter(n => n in (files[1].data.mcpServers ?? {}));
       for (const n of names) {
         e.extensions.filter(x => x.kind === 'mcp' && x.name === n && files.some(s => s.path === x.location.path)).forEach(x => { x.status = 'conditional'; x.reason = 'Same-directory workspace source tie; authoritative ordering is not documented.'; });

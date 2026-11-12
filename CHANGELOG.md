@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2 — 2026-11-13
+
+* Diagnose malformed MCP, hook and permission collections while retaining valid sibling definitions.
+* Validate extension field types before filesystem checks and explicit probes, including malformed PATH values and working directories.
+* Expand MCP environment references before endpoint and executable checks, preserving independent diagnostics when another variable is missing.
+* Keep private string values redacted inside malformed environment and header containers.
+* Locate extension errors and permission precedence findings at their individual JSON fields or array entries.
+* Resolve Claude exec-form hooks as literal executables, distinguish documented client fields and retain MCP-tool hook metadata. Use configured Copilot hook environments for executable checks.
+
 ## 0.2.1 — 2026-11-13
 
 * Find the nearest Git root for implicit scans launched from subdirectories, retaining working-directory-relative targets and inherited project configuration.

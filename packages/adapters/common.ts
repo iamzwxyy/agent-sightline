@@ -41,7 +41,8 @@ export function settings(e: Effective, s: Source, status: Status, mergeArrays = 
 }
 export function effectiveValue(e: Effective, key: string, fallback?: any): any { return e.settings.findLast(x => x.key === key && x.status === 'active')?.value ?? fallback; }
 export function mcp(e: Effective, s: Source, servers: unknown, key: string, status: Status, merge = false): void {
-  if (s.invalid || !plainObject(servers)) return;
+  if (s.invalid || servers === undefined) return;
+  if (!plainObject(servers)) { e.findings.push(finding('mcp.servers-type', 'error', locate(s, key), 'MCP servers must be an object keyed by server name.', 'The server collection cannot be resolved from this value.', 'Use an object containing named server definitions.', e.client)); return; }
   for (const [name, data] of Object.entries(servers)) {
     const old = e.extensions.find(x => x.kind === 'mcp' && x.name === name && x.status === 'active');
     if (old && status === 'active') {
@@ -56,22 +57,30 @@ function mergeTables(a: Record<string, any>, b: Record<string, any>): Record<str
   const result = { ...a }; for (const [k, v] of Object.entries(b)) result[k] = plainObject(v) && plainObject(a[k]) ? mergeTables(a[k], v) : v; return result;
 }
 export function hooks(e: Effective, s: Source, value: unknown, status: Status): void {
-  if (s.invalid || !plainObject(value)) return;
+  if (s.invalid || value === undefined) return;
+  if (!plainObject(value)) { e.findings.push(finding('hook.type', 'error', locate(s, 'hooks'), 'Hooks must map event names to handler arrays.', 'The hook collection has an invalid structure.', 'Use an object with an array for each hook event.', e.client)); return; }
   for (const [event, groups] of Object.entries(value)) {
     if (!Array.isArray(groups)) { e.findings.push(finding('hook.type', 'error', locate(s, `hooks.${event}`), `Hook event "${event}" must be an array.`, 'The event does not use the documented schema.', 'Wrap hook entries in an array.', e.client)); continue; }
     groups.forEach((g, i) => {
+      if (plainObject(g) && g.hooks !== undefined && !Array.isArray(g.hooks)) { e.findings.push(finding('hook.type', 'error', locate(s, `hooks.${event}.${i}.hooks`), 'Hook handlers must be an array.', 'The matcher group cannot supply handlers from this value.', 'Use an array of hook handler objects.', e.client)); return; }
       const handlers = plainObject(g) && Array.isArray(g.hooks) ? g.hooks : [g];
-      handlers.forEach((h: any, j: number) => e.extensions.push({ kind: 'hook', name: event, config: plainObject(h) ? { ...h, matcher: g?.matcher ?? '', _index: `${i}.${j}` } : { _invalid: true }, status: e.client === 'codex' && status === 'active' ? 'conditional' : status, location: locate(s, `hooks.${event}.${i}${g?.hooks ? `.hooks.${j}` : ''}.${e.client === 'copilot' ? 'bash' : 'command'}`), reason: e.client === 'codex' ? 'Discovered hook; exact-definition trust and event/matcher runtime state are not inferred.' : 'Discovered hook; runs only when its event and matcher trigger.' }));
+      handlers.forEach((h: any, j: number) => {
+        const platformField = process.platform === 'win32' ? 'powershell' : 'bash';
+        const defaultField = e.client === 'copilot' ? platformField : 'command';
+        const commandField = process.platform === 'win32' && e.client === 'codex' && h?.commandWindows !== undefined ? 'commandWindows' : defaultField;
+        e.extensions.push({ kind: 'hook', name: event, config: plainObject(h) ? { ...h, matcher: g?.matcher ?? '', _index: `${i}.${j}` } : { _invalid: true }, status: e.client === 'codex' && status === 'active' ? 'conditional' : status, location: locate(s, `hooks.${event}.${i}${g?.hooks ? `.hooks.${j}` : ''}.${commandField}`), reason: e.client === 'codex' ? 'Discovered hook; exact-definition trust and event/matcher runtime state are not inferred.' : 'Discovered hook; runs only when its event and matcher trigger.' });
+      });
     });
   }
 }
 export function permissions(e: Effective, s: Source, status: Status): void {
   const p = s.data.permissions;
-  if (!plainObject(p)) return;
+  if (s.invalid || p === undefined) return;
+  if (!plainObject(p)) { e.findings.push(finding('permission.type', 'error', locate(s, 'permissions'), 'Permissions must be an object.', 'Permission lists cannot be read from this value.', 'Use an object containing allow, ask or deny arrays.', e.client)); return; }
   for (const action of ['allow', 'deny', 'ask']) {
     if (p[action] === undefined) continue;
     if (!Array.isArray(p[action]) || p[action].some((x: unknown) => typeof x !== 'string')) { e.findings.push(finding('permission.type', 'error', locate(s, `permissions.${action}`), `permissions.${action} must contain strings.`, 'Invalid permission rules cannot be applied.', 'Use an array of permission rule strings.', e.client)); continue; }
-    for (const rule of p[action]) e.extensions.push({ kind: 'permission', name: rule, config: { action }, status, location: locate(s, `permissions.${action}`), reason: 'Permission lists accumulate; deny precedes ask, which precedes allow.' });
+    p[action].forEach((rule: string, index: number) => e.extensions.push({ kind: 'permission', name: rule, config: { action }, status, location: locate(s, `permissions.${action}.${index}`), reason: 'Permission lists accumulate; deny precedes ask, which precedes allow.' }));
   }
 }
 export async function skills(e: Effective, ctx: Context, roots: string[], behavior: 'coexist' | 'first'): Promise<void> {

@@ -19,6 +19,11 @@ try {
   const nested = path.join(repo, 'src'); mkdirSync(nested);
   const inferred = JSON.parse(execFileSync(process.execPath, [cli, 'explain', 'new.ts', '--no-user', '--trust', 'trusted', '--client', 'codex', '--json'], { cwd: nested, encoding: 'utf8' }));
   if (inferred.clients[0].instructions !== 'Installed package works.' || path.dirname(path.dirname(inferred.target)) !== inferred.repository) throw new Error('Installed nested-directory discovery failed.');
+  const invalidRepo = path.join(temp, 'invalid-repository'); mkdirSync(path.join(invalidRepo, '.github/hooks'), { recursive: true });
+  writeFileSync(path.join(invalidRepo, '.mcp.json'), JSON.stringify({ mcpServers: { invalid: { command: 'node', env: { PATH: 42 } }, valid: { command: process.execPath } } }));
+  writeFileSync(path.join(invalidRepo, '.github/hooks/test.json'), JSON.stringify({ version: 1, hooks: { sessionStart: [{ type: 'command', bash: 'echo safe', powershell: 'echo safe', cwd: 42 }] } }));
+  const malformed = JSON.parse(execFileSync(process.execPath, [cli, '--repo', invalidRepo, '--no-user', '--trust', 'trusted', '--clients', 'claude,copilot', '--json'], { encoding: 'utf8' }));
+  if (!malformed.findings.some(finding => finding.ruleId === 'extension.cwd-type') || !malformed.findings.some(finding => finding.ruleId === 'mcp.env-type') || malformed.clients.some(client => client.extensions.find(extension => extension.name === 'valid')?.status !== 'active')) throw new Error('Installed malformed-extension diagnostics failed.');
   const htmlFile = path.join(temp, 'report.html'); execFileSync(process.execPath, [cli, 'report', '--repo', repo, '--no-user', '--format', 'html', '--output', htmlFile]);
   if (!readFileSync(htmlFile, 'utf8').includes('Sightline — Agent configuration')) throw new Error('Installed HTML reporter failed.');
   const version = execFileSync(process.execPath, [cli, 'version'], { encoding: 'utf8' }).trim(); if (version !== pkg.version || report.tool.version !== pkg.version) throw new Error('Wrong package version.');

@@ -1,9 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { scan } from '../packages/core/index.js';
 import { workspace } from './helpers.js';
+test('an explicit probe skips invalid definitions and initializes a valid sibling', async t => {
+  const code = `import {writeFileSync} from 'node:fs';
+import readline from 'node:readline';
+if(process.argv[2]==='invalid')writeFileSync('INVALID_EXECUTED','invalid');
+readline.createInterface({input:process.stdin}).on('line',line=>{const request=JSON.parse(line);if(request.id)console.log(JSON.stringify({jsonrpc:'2.0',id:request.id,result:request.id===1?{protocolVersion:'2024-11-05'}:{tools:[]}}));});`;
+  const w = await workspace({ 'server.mjs': code, '.mcp.json': JSON.stringify({ mcpServers: {
+    invalid: { command: process.execPath, args: ['server.mjs', 'invalid'], cwd: 42 },
+    valid: { command: process.execPath, args: ['server.mjs'] },
+  } }) });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['claude'], trust: 'trusted', probe: true });
+  assert.ok(report.findings.some(finding => finding.ruleId === 'extension.cwd-type'));
+  assert.ok(report.findings.some(finding => finding.ruleId === 'probe.mcp-ready' && finding.message.includes('"valid"')));
+  assert.ok(!(await readdir(w.repo)).includes('INVALID_EXECUTED'));
+});
 test('explicit stdio probe initializes and lists tools without invoking one', async t => {
   const code = `import readline from 'node:readline';\nconst r=readline.createInterface({input:process.stdin}); r.on('line',l=>{ const q=JSON.parse(l);if(q.method==='initialize')console.log(JSON.stringify({jsonrpc:'2.0',id:q.id,result:{protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}}));if(q.method==='tools/list')console.log(JSON.stringify({jsonrpc:'2.0',id:q.id,result:{tools:[]}}));if(q.method==='tools/call')process.exit(99);});`;
   const w = await workspace({ 'server.mjs': code, '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: ['server.mjs'] } } }) }); t.after(() => rm(w.root, { recursive: true, force: true }));

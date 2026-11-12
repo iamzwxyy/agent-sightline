@@ -21,4 +21,6 @@ Sources: [memory/instructions](https://code.claude.com/docs/en/memory), [setting
 
 Fixture: `fixtures/claude/chain.json`. Tests also cover AGENTS fallback modes, imports, cycles, depth, exclusions, raw Markdown and permission masking.
 
+Structural validation was reviewed against the official MCP, hooks and permissions references on 2026-11-13. Fixtures now cover malformed server/handler collections, typed extension fields, individual permission-entry locations and private strings inside invalid environment/header containers. Command hooks with `args` use literal executable resolution. The documented command handler fields exclude per-handler `cwd`, `env` and `commandWindows`, which receive warnings. The current hooks reference also lists `mcp_tool`; Sightline retains its declaration as hook metadata. Runtime dispatch and MCP-tool invocation remain outside this inspection.
+
 Not resolved: filesystem ancestors outside --repo, session switches, account-synced/bundled/plugin components, worktree main-checkout fallback, full managed exceptions and all settings-specific scope/environment pairs. The tool does not claim to observe a running session.

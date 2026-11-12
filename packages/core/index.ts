@@ -11,13 +11,10 @@ export { adapters } from '../adapters/index.js';
 
 function envValues(ctx: Context): string[] {
   const values = new Set<string>();
-  const walk = (v: any, parent = '') => {
+  const walk = (v: unknown, sensitive = false) => {
+    if (typeof v === 'string') { if (sensitive) values.add(v); return; }
     if (!v || typeof v !== 'object') return;
-    for (const [k, value] of Object.entries(v)) {
-      if (['env', 'headers', 'http_headers'].includes(parent) && typeof value === 'string') values.add(value);
-      if (/secret|token|password|api[_-]?key|cookie|authorization|credential/i.test(k) && typeof value === 'string') values.add(value);
-      walk(value, k);
-    }
+    for (const [key, value] of Object.entries(v)) walk(value, sensitive || ['env', 'headers', 'http_headers'].includes(key) || /secret|token|password|api[_-]?key|cookie|authorization|credential/i.test(key));
   };
   for (const s of ctx.sources) walk(s.data);
   return [...values].filter(v => v && !v.startsWith('${'));

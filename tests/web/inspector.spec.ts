@@ -10,6 +10,34 @@ import AxeBuilder from '@axe-core/playwright';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('malformed extensions stay inspectable with exact source lines and portable findings', async ({ page }) => {
+  const w = await workspace({
+    '.mcp.json': JSON.stringify({ mcpServers: { invalid: { command: 'node', env: { PATH: 42 } }, valid: { command: process.execPath } } }, null, 2),
+    '.github/hooks/test.json': JSON.stringify({ version: 1, hooks: { sessionStart: [{ type: 'command', bash: 'echo safe', powershell: 'echo safe', cwd: 42 }] } }, null, 2),
+  });
+  const server = await serve({ ...w, user: false, clients: ['copilot'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+    await page.locator('#findings-tab').click();
+    await page.locator('#findings-list .finding').filter({ hasText: 'Hook working directory must be a string.' }).click();
+    await page.getByRole('button', { name: /Inspect source/ }).click();
+    await expect(page.locator('#source-title')).toContainText('.github/hooks/test.json');
+    await expect(page.locator('.code-line.highlight')).toContainText('"cwd": 42');
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const filename = test.info().outputPath('malformed-extensions.html');
+    await (await pending).saveAs(filename);
+    await page.goto(pathToFileURL(filename).href);
+    await page.locator('#findings-tab').click();
+    await expect(page.locator('#findings-list')).toContainText('env must map names to strings.');
+    await expect(page.locator('#findings-list')).toContainText('Hook working directory must be a string.');
+    const report = JSON.parse(await page.locator('#report-data').textContent() ?? 'null');
+    expect(report.clients[0].extensions.find((extension: any) => extension.name === 'valid').status).toBe('active');
+    expect(report.clients[0].extensions.find((extension: any) => extension.name === 'invalid').status).toBe('invalid');
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('an inspector launched from a subdirectory retains its Git-root scope through refresh and reload', async ({ page }) => {
   const w = await workspace({ 'CLAUDE.md': 'Root project instructions.', 'src/payments/CLAUDE.md': 'Payment instructions.', 'src/payments/refund.ts': '', 'src/shared.ts': '' });
   const child = spawn(process.execPath, ['--import', import.meta.resolve('tsx'), path.resolve('packages/cli/index.ts'), 'ui', '--no-open', '--no-user', '--client', 'claude'], { cwd: path.join(w.repo, 'src/payments'), stdio: ['ignore', 'pipe', 'pipe'] });

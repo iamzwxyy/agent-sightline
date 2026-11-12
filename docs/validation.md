@@ -1,5 +1,17 @@
 # Release validation
 
+## v0.2.2
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 89-case core suite completed with 88 passes and one Windows-only skip.
+* Regression fixtures cover malformed MCP collections and fields, invalid hook handlers and working directories, hook and permission collection types, adjacent valid definitions, precise permission-array locations and nested private strings in malformed environment/header containers.
+* MCP environment-reference fixtures verify full-URL and path expansion, command lookup after expansion, missing-variable diagnostics, supported defaults and preservation of independent command/directory findings. Expanded endpoint values stay outside public reports.
+* Claude exec-form hooks receive literal executable checks. Client-specific hook fields, MCP-tool metadata and configured Copilot hook environments have dedicated fixtures. The official structural references were reviewed on 2026-11-13.
+* An explicit probe skips an invalid server definition, initializes a valid sibling and leaves the invalid server’s execution marker absent. Existing process cleanup and interruption regressions remain included.
+* All seventeen Chromium browser cases passed. The new case navigates from a malformed hook finding to its exact source line and verifies invalid/valid sibling states in the portable export. Existing accessibility, source, comparison, profile, scope and phone checks remain included.
+* The installed package diagnoses malformed MCP and hook fields while retaining valid servers, alongside the existing nested-directory, profile, version, HTML and browser startup checks. Production dependency audit reported zero vulnerabilities.
+
 ## v0.2.1
 
 Verified locally on macOS on 2026-11-13.
