@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { serve } from '../../packages/web/server.js';
 
 test('target explanation, source provenance, comparison, filters and portable export', async ({ page }) => {
@@ -16,7 +17,7 @@ test('target explanation, source provenance, comparison, filters and portable ex
     await page.locator('#finding-client').selectOption('claude'); await expect(page.locator('#findings-list')).toContainText('Imported instruction file does not exist');
     const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export HTML' }).click()]);
     const file = test.info().outputPath('report.html'); await download.saveAs(file);
-    await page.goto('file://' + file); await expect(page.getByRole('heading', { name: 'Configuration, in focus.' })).toBeVisible(); await expect(page.locator('#inspect')).toBeDisabled();
+    await page.goto(pathToFileURL(file).href); await expect(page.getByRole('heading', { name: 'Configuration, in focus.' })).toBeVisible(); await expect(page.locator('#inspect')).toBeDisabled();
     expect(errors).toEqual([]);
   } finally { await server.close(); }
 });

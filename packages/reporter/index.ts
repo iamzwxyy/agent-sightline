@@ -48,8 +48,9 @@ export function portable(report: Report): Report {
 }
 export function html(report: Report, options: { live?: boolean; portable?: boolean } = {}): string {
   const data = options.portable === false ? redact(report) : portable(report);
-  const script = readFileSync(new URL('../web/assets/app.js', import.meta.url), 'utf8');
-  const style = readFileSync(new URL('../web/assets/style.css', import.meta.url), 'utf8');
+  // HTML parsing normalizes CRLF before CSP hashing; Windows checkouts must agree.
+  const script = readFileSync(new URL('../web/assets/app.js', import.meta.url), 'utf8').replace(/\r\n?/g, '\n');
+  const style = readFileSync(new URL('../web/assets/style.css', import.meta.url), 'utf8').replace(/\r\n?/g, '\n');
   const sha = (s: string) => createHash('sha256').update(s).digest('base64');
   const safeJson = JSON.stringify(data).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const csp = `default-src 'none'; script-src 'sha256-${sha(script)}'; style-src 'sha256-${sha(style)}'; connect-src ${options.live ? "'self'" : "'none'"}; img-src data:; base-uri 'none'; form-action 'none'`;

@@ -6,7 +6,7 @@
   const $ = id => document.getElementById(id);
   const node = (tag, text, cls) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (cls) el.className = cls; return el; };
   const badge = status => node('span', status, `status ${status}`);
-  const short = path => path.startsWith(report.repository) ? path.slice(report.repository.length + 1) || '.' : path;
+  const short = path => path.startsWith(report.repository) ? path.slice(report.repository.length + 1).replace(/\\/g, '/') || '.' : path;
   function why(d) {
     $('why').replaceChildren(badge(d.status), node('h3', d.kind), node('p', `${d.path}:${d.line}`, 'path'), node('p', d.reason), node('p', `Scope: ${d.scope}. Load position: ${d.order ?? 'not loaded'}.`), node('p', `${d.loadedBytes} loaded bytes / ${d.bytes} source bytes. ~${d.estimatedTokens} tokens.`));
     if (d.importedFrom) $('why').append(node('p', `Imported from ${d.importedFrom.path}:${d.importedFrom.line}`, 'path'));
