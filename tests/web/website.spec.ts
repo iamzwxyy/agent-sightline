@@ -9,6 +9,15 @@ test('website connects the real client demo, workflow walkthrough, guide and dow
     page.on('pageerror', error => errors.push(error.message));
     page.on('response', response => { if (response.status() >= 400) failedResponses.push(response.url()); });
     await page.goto(server.url);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://agent-sightline.williamtse700.chatgpt.site/');
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', 'https://agent-sightline.williamtse700.chatgpt.site/social.png');
+    const robots = await page.request.get(server.url + '/robots.txt');
+    expect(robots.ok()).toBeTruthy();
+    expect(await robots.text()).toContain('Sitemap: https://agent-sightline.williamtse700.chatgpt.site/sitemap.xml');
+    const sitemap = await page.request.get(server.url + '/sitemap.xml');
+    expect(sitemap.ok()).toBeTruthy();
+    expect(sitemap.headers()['content-type']).toContain('application/xml');
+    expect(await sitemap.text()).toContain('/guide.html</loc>');
     await expect(page.getByRole('heading', { name: /Know what your agent/ })).toBeVisible();
     await expect(page.locator('#demo-status')).toHaveText('Truncated');
     await page.getByRole('tab', { name: /Claude Code/ }).click();

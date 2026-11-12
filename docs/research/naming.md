@@ -10,4 +10,4 @@ The core product is distinguished by static effective configuration with provena
 
 No user counts, hosted benchmark claims or compatibility claims from other tools are used as evidence for this project.
 
-An exact-name web/trademark search did not establish an Agent Sightline registration. The base word Sightline is widely used, including software/security brands and a Mac capture app; the compound name remains provisional and requires final brand review before public publication.
+An exact-name web/trademark search did not establish an Agent Sightline registration. The base word Sightline is widely used, including software/security brands and a Mac capture app. Agent Sightline is the selected product name. This preliminary search records the naming decision and its evidence.

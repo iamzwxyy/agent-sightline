@@ -4,7 +4,7 @@ import path from 'node:path';
 
 export async function serveStatic(root, port = 0) {
   const directory = path.resolve(root);
-  const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2', '.txt': 'text/plain', '.tgz': 'application/gzip' };
+  const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.xml': 'application/xml; charset=utf-8', '.png': 'image/png', '.woff2': 'font/woff2', '.txt': 'text/plain', '.tgz': 'application/gzip' };
   const server = createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
     let file;

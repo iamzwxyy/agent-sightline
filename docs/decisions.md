@@ -9,4 +9,4 @@ See what your coding agent actually sees. A local configuration inspector with f
 * Natural-language instructions accumulate. Later placement is not proof of semantic replacement. Only file selection, structured overrides and other deterministic rules are diagnosed.
 * Reports are redacted at the public API boundary and again at every renderer. Environment values are never returned.
 * Codex, Claude and Copilot are the priority; experimental adapters describe their partial scope explicitly.
-* Working name Agent X-Ray conflicts with existing session viewers and a PyPI package. Agent Sightline is the selected compound name after registry/search checks; public brand/visibility review remains a publication decision.
+* Working name Agent X-Ray conflicts with existing session viewers and a PyPI package. Agent Sightline is the selected compound name after registry/search checks.
