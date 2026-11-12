@@ -17,6 +17,8 @@ Common flags: `--repo`, `--client` or `--clients`, `--profile` (Codex), `--no-us
 
 `--severity` filters displayed findings at or above that level. `--fail-on` always evaluates the unfiltered report. CI defaults to `--json --fail-on error`; other commands default to no threshold. Unknown/missing arguments, invalid targets, bad formats and write errors exit 2. Help/version exit 0. Non-interactive output has no ANSI or animations.
 
+The terminal scan summary groups identical diagnostics across clients at the same source location and shows severity totals for the complete grouped list after severity filtering. It displays up to 12 findings and reports the full count when the list continues. Findings at different files, lines, columns or configuration keys stay separate. Each displayed finding includes its source line and column plus related locations. Use `explain` for all client-specific findings or `--json` for machine-readable records. Experimental clients carry an explicit label in the summary. Empty scans include the bundled demo command.
+
 `--profile review` models Codex with `$CODEX_HOME/review.config.toml`. Profile names use letters, numbers, hyphens and underscores. The selected file loads after base user configuration and before applicable project layers. It requires user configuration and Codex among the selected clients. JSON adds optional `inputs.codexProfile`. Omitting the flag loads the base configuration. Legacy `[profiles.*]` definitions and the retired `profile` selector receive migration diagnostics.
 
 SIGINT and SIGTERM interruptions stop active probes before returning exit code 130 or 143 respectively. SDK callers can pass `ScanOptions.signal` to cancel an inspection.

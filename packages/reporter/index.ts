@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import type { Report, Severity } from '../core/types.js';
+import type { Finding, Report, Severity } from '../core/types.js';
 import { redact, redactText } from '../core/redact.js';
 export function json(report: Report): string { return JSON.stringify(redact(report), null, 2) + '\n'; }
 export function filter(report: Report, severity?: Severity): Report {
@@ -12,11 +12,26 @@ export function failed(report: Report, failOn: Severity | 'none'): boolean {
   return failOn !== 'none' && filter(report, failOn).findings.length > 0;
 }
 export function terminal(report: Report, mode = 'scan'): string {
+  const grouped = new Map<string, { item: Finding; clients: string[] }>();
+  for (const finding of report.findings) {
+    const key = JSON.stringify([finding.ruleId, finding.severity, finding.message, finding.location, finding.why, finding.suggestion, finding.related]);
+    let group = grouped.get(key);
+    if (!group) {
+      group = { item: finding, clients: [] };
+      grouped.set(key, group);
+    }
+    if (finding.client && !group.clients.includes(finding.client)) group.clients.push(finding.client);
+  }
+  const groups = [...grouped.values()];
+  const summaryFindings = mode === 'scan' ? groups.map(group => group.item) : report.findings;
+  const counts = { error: 0, warn: 0, info: 0 };
+  for (const finding of summaryFindings) counts[finding.severity]++;
   const lines = ['Agent Sightline', '────────────────────────────────────────────────────────', `Repository: ${report.repository}`, `Target:     ${report.target}`, ''];
   if (report.inputs?.codexProfile) lines.push(`Codex profile: ${report.inputs.codexProfile}`, '');
   const detected = report.clients.filter(c => c.detected);
-  lines.push(`Clients:    ${detected.map(c => c.metadata.name).join(', ') || '(no compatible configuration found)'}`, '');
-  lines.push(`${detected.length} compatible clients · ${report.sources.length} sources · ${report.findings.length} findings`, '');
+  const clientNames = detected.map(client => client.metadata.name + (client.metadata.maturity === 'experimental' ? ' (experimental)' : ''));
+  lines.push(`Clients:    ${clientNames.join(', ') || '(no compatible configuration found)'}`, '');
+  lines.push(`${detected.length} compatible clients · ${report.sources.length} sources · ${summaryFindings.length} findings`, `Errors ${counts.error} · Warnings ${counts.warn} · Info ${counts.info}`, '');
   if (mode === 'explain') for (const e of report.clients) {
     lines.push(`${e.metadata.name} · ${e.metadata.maturity} rules ${e.metadata.ruleVersion}`, '');
     for (const d of e.decisions.sort((a, b) => (a.order ?? 999999) - (b.order ?? 999999))) {
@@ -33,12 +48,20 @@ export function terminal(report: Report, mode = 'scan'): string {
     for (const d of report.diff) lines.push(`  ${d.clients.join(', ')}${d.clients.length === report.clients.length ? ' · shared by all' : ''}`, `  ${d.sources.map(s => `${s.path}:${s.line}`).join(', ')}`, ...d.content.split('\n').map(l => `    ${l}`), '');
     for (const e of report.clients) { lines.push(`${e.metadata.name} extensions`); for (const x of e.extensions) lines.push(`  ${x.kind} ${x.name} [${x.status}] ${JSON.stringify(x.config)} ← ${x.location.path}:${x.location.line}`); lines.push(''); }
   }
-  const grouped = new Map<string, { item: Report['findings'][number]; clients: string[] }>();
-  for (const f of report.findings) { const key = `${f.ruleId}:${f.message}`; const g = grouped.get(key) ?? { item: f, clients: [] }; if (f.client && !g.clients.includes(f.client)) g.clients.push(f.client); grouped.set(key, g); }
-  const findings = mode === 'scan' ? [...grouped.values()].slice(0, 12).map(g => ({ ...g.item, clientLabel: g.clients.join(', ') })) : report.findings.map(f => ({ ...f, clientLabel: f.client }));
-  for (const f of findings) lines.push(`${f.severity.toUpperCase().padEnd(5)} ${f.message}${f.clientLabel ? ` [${f.clientLabel}]` : ''}`, `      ${f.location.path}:${f.location.line} · ${f.ruleId}`, `      ${f.why}`, `      Next: ${f.suggestion}`, '');
-  if (!report.findings.length) lines.push('No deterministic configuration problems found.', '');
-  if (mode === 'scan' && report.findings.length > findings.length) lines.push('Repeated client findings are grouped. Use --json or explain for every source location.', '');
+  const findings = mode === 'scan' ? groups.slice(0, 12).map(group => ({ ...group.item, clientLabel: group.clients.join(', ') })) : report.findings.map(f => ({ ...f, clientLabel: f.client }));
+  for (const finding of findings) {
+    lines.push(`${finding.severity.toUpperCase().padEnd(5)} ${finding.message}${finding.clientLabel ? ` [${finding.clientLabel}]` : ''}`, `      ${finding.location.path}:${finding.location.line}:${finding.location.column} · ${finding.ruleId}`);
+    const related = new Map(finding.related.map(location => [JSON.stringify(location), location]));
+    related.delete(JSON.stringify(finding.location));
+    for (const location of related.values()) lines.push(`      Related ${location.path}:${location.line}:${location.column}`);
+    lines.push(`      ${finding.why}`, `      Next: ${finding.suggestion}`, '');
+  }
+  if (!report.findings.length) {
+    if (mode === 'scan' && !report.sources.length) lines.push('No agent configuration was discovered in this scan.', 'Explore the bundled example with agent-sightline demo', '');
+    else lines.push('No deterministic configuration problems found.', '');
+  }
+  if (mode === 'scan' && groups.length > findings.length) lines.push(`Showing ${findings.length} of ${groups.length} distinct findings. Use --json or explain to inspect the rest.`, '');
+  if (mode === 'scan' && report.findings.length > groups.length) lines.push('Identical findings at the same source are grouped across clients.', '');
   if (mode === 'scan') lines.push('Inspect a target: agent-sightline explain <file> --client codex', 'Compare clients:  agent-sightline diff <file> --clients codex,claude,copilot', 'Browse locally:   agent-sightline ui', '');
   lines.push('Local · read-only · no model calls · no telemetry');
   return redactText(lines.join('\n')) + '\n';

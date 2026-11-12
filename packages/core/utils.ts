@@ -25,7 +25,7 @@ export function locate(s: Source, key?: string): Location {
   return { path: s.path, line, column: 1, ...(key ? { key } : {}) };
 }
 export function finding(ruleId: string, severity: Severity, location: Location, message: string, why: string, suggestion: string, client?: ClientId, related: Location[] = []): Finding {
-  return { id: hash(`${ruleId}:${client ?? ''}:${location.path}:${location.line}:${location.key ?? ''}:${message}`), ruleId, severity, client, message, location, related, why, suggestion };
+  return { id: hash(`${ruleId}:${client ?? ''}:${location.path}:${location.line}:${location.column}:${location.key ?? ''}:${message}`), ruleId, severity, client, message, location, related, why, suggestion };
 }
 export function splitGlobs(s: string): string[] {
   const result: string[] = []; let start = 0; let depth = 0;

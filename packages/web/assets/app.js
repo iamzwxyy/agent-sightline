@@ -137,7 +137,7 @@
   function groupFindings() {
     const groups = new Map();
     for (const finding of report.findings) {
-      const key = [finding.ruleId, finding.location.path, finding.location.line, finding.message].join('|');
+      const key = JSON.stringify([finding.ruleId, finding.severity, finding.message, finding.location, finding.why, finding.suggestion, finding.related]);
       if (!groups.has(key)) groups.set(key, { ...finding, clients: [], originals: [] });
       const group = groups.get(key);
       group.originals.push(finding);
@@ -194,7 +194,7 @@
     const severity = node('span', finding.severity === 'error' ? '!' : finding.severity === 'warn' ? '!' : 'i', `severity-icon ${finding.severity}`);
     severity.setAttribute('aria-label', finding.severity);
     const title = node('div');
-    title.append(node('h3', finding.message), node('span', `${short(finding.location.path)} · line ${finding.location.line}`, 'finding-location'));
+    title.append(node('h3', finding.message), node('span', `${short(finding.location.path)} · line ${finding.location.line}, column ${finding.location.column}`, 'finding-location'));
     const recipients = node('span', undefined, 'finding-clients');
     finding.clients.forEach(client => recipients.append(avatar(client)));
     element.append(severity, title, recipients, node('span', '›', 'row-arrow'));
@@ -255,14 +255,14 @@
   function showFinding(finding) {
     $('detail-category').textContent = finding.ruleId;
     const content = node('div', undefined, 'dialog-content');
-    content.append(badge(finding.severity), node('h2', finding.message), node('p', `${short(finding.location.path)} · line ${finding.location.line}`, 'path'));
+    content.append(badge(finding.severity), node('h2', finding.message), node('p', `${short(finding.location.path)} · line ${finding.location.line}, column ${finding.location.column}`, 'path'));
     content.querySelector('h2').id = 'detail-title';
     content.append(node('h3', 'Why this happens'), node('p', finding.why), node('h3', 'How to resolve it'), node('p', finding.suggestion, 'fix-suggestion'));
-    const related = [...new Map(finding.originals.flatMap(item => item.related).map(location => [location.path + location.line, location])).values()];
+    const related = [...new Map(finding.originals.flatMap(item => item.related).map(location => [JSON.stringify(location), location])).values()];
     if (related.length) {
       content.append(node('h3', 'Related sources'));
       const list = node('ul', undefined, 'related-list');
-      related.forEach(location => list.append(node('li', `${short(location.path)} · line ${location.line}`)));
+      related.forEach(location => list.append(node('li', `${short(location.path)} · line ${location.line}, column ${location.column}`)));
       content.append(list);
     }
     const actions = node('div', undefined, 'dialog-actions');
@@ -273,7 +273,7 @@
       $('source-search').value = '';
       state.highlightLine = finding.location.line;
       navigate('effective', client, finding.location.path);
-    }, 'button button-primary'), button('Copy location', () => copy(`${finding.location.path}:${finding.location.line}`), 'button'));
+    }, 'button button-primary'), button('Copy location', () => copy(`${finding.location.path}:${finding.location.line}:${finding.location.column}`), 'button'));
     content.append(actions);
     $('detail-body').replaceChildren(content);
     if (!$('detail-dialog').open) $('detail-dialog').showModal();

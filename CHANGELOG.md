@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 — 2026-11-12
+
+* Preserve separate source locations when the terminal groups repeated client findings, show severity totals and disclose the summary limit.
+* Include related source locations and columns in terminal findings, label experimental clients and guide empty scans to the bundled demo.
+* Explain JSON syntax errors in readable language with accurate columns and prevent incomplete JSON values from producing unrelated YAML errors.
+* Include source columns in diagnostic IDs so JSON reports and the browser preserve separate same-line errors, and copy full line/column locations from the inspector.
+
 ## 0.1.2 — 2026-11-12
 
 * Inspect explicit Codex profile files with `--profile`, including user-to-profile-to-project precedence and replaced source locations.

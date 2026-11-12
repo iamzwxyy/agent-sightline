@@ -1,6 +1,6 @@
 {
   "name": "agent-sightline",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "See what your coding agent actually sees. Local, read-only configuration diagnostics.",
   "type": "module",
   "license": "MIT",
@@ -11,7 +11,7 @@
   "bugs": {
     "url": "https://github.com/iamzwxyy/agent-sightline/issues"
   },
-  "homepage": "https://agent-sightline.williamtse700.chatgpt.site",
+  "homepage": "https://iamzwxyy.github.io/agent-sightline/",
   "engines": {
     "node": ">=22"
   },

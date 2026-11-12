@@ -52,6 +52,26 @@ test('finding → source line → client comparison → portable report', async 
   } finally { await server.close(); }
 });
 
+test('JSON errors at separate columns remain visible with readable messages and precise copied locations', async ({ page }) => {
+  const w = await workspace({ '.claude/settings.local.json': '{ "model": ?, "model": ? }' });
+  const server = await serve({ ...w, user: false, clients: ['claude'] });
+  try {
+    await page.goto(server.url);
+    await page.locator('#findings-tab').click();
+    await page.locator('#severity').selectOption('error');
+    await expect(page.locator('#findings-list .finding')).toHaveCount(5);
+    const missingValues = page.locator('#findings-list .finding').filter({ hasText: 'Expected a JSON value.' });
+    await expect(missingValues).toHaveCount(2);
+    await expect(missingValues.nth(0)).toContainText('line 1, column 13');
+    await expect(missingValues.nth(1)).toContainText('line 1, column 26');
+    await missingValues.nth(1).click();
+    await expect(page.locator('#detail-dialog')).toContainText('line 1, column 26');
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('Clipboard permission denied.'); } }, configurable: true }));
+    await page.getByRole('button', { name: 'Copy location', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Text to copy' })).toHaveValue(path.join(w.repo, '.claude/settings.local.json') + ':1:26');
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('target suggestions, rejected target, trust assumptions and keyboard navigation', async ({ page }) => {
   const server = await serve({ ...sampleOptions, clients: [...sampleOptions.clients], target: 'src/payments/refund.ts' });
   try {

@@ -5,7 +5,7 @@
 One file. Several agents. Different instructions. Sightline shows every discovered source, why it applies, what is shadowed or truncated, and the effective configuration—with source lines you can inspect.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.1.2/agent-sightline-0.1.2.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.1.3/agent-sightline-0.1.3.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
@@ -81,7 +81,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.1.2.tgz
+npm install -g ./agent-sightline-0.1.3.tgz
 agent-sightline demo
 ```
 

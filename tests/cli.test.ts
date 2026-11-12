@@ -18,6 +18,22 @@ test('CLI explain/diff/adapters/help/version and options after commands', async 
   const d = run(['diff', 'src/a.ts', '--clients', 'codex,copilot', '--no-user', '--trust', 'trusted', '--json'], w.repo); assert.equal(d.status, 0); assert.deepEqual(JSON.parse(d.stdout).diff[0].clients, ['codex', 'copilot']);
   for (const args of [['--help'], ['explain', '--help'], ['version'], ['--version'], ['adapters', '--json']]) assert.equal(run(args, w.repo).status, 0, args.join(' '));
 });
+test('CLI summary keeps same-name MCP failures at separate sources and labels experimental clients', async t => {
+  const w = await workspace({
+    '.codex/config.toml': '[mcp_servers.db]\ncommand="missing-sightline-runtime"',
+    '.mcp.json': '{"mcpServers":{"db":{"command":"missing-sightline-runtime"}}}',
+    '.cursor/rules/check.mdc': '---\nalwaysApply: true\n---\nCheck changes.',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const result = run(['--clients', 'codex,claude,copilot,cursor', '--no-user', '--trust', 'trusted', '--severity', 'error'], w.repo);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.stdout.includes('Cursor (experimental)'));
+  assert.match(result.stdout, /2 findings\nErrors 2 · Warnings 0 · Info 0/);
+  assert.equal(result.stdout.match(/^ERROR MCP command/gm)?.length, 2);
+  assert.ok(result.stdout.includes(path.join(w.repo, '.codex/config.toml') + ':1:1'));
+  assert.ok(result.stdout.includes(path.join(w.repo, '.mcp.json') + ':1:1'));
+  assert.ok(result.stdout.includes('[claude, copilot]'));
+});
 test('CI threshold uses unfiltered findings; errors return 2 and write no partial output', async t => {
   const w = await workspace({ '.mcp.json': '{"mcpServers":{"db":{"command":"missing-sightline-executable"}}}' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = run(['ci', '--client', 'claude', '--no-user', '--fail-on', 'error'], w.repo); assert.equal(r.status, 1); assert.ok(JSON.parse(r.stdout).findings.some((f: any) => f.ruleId === 'mcp.command-missing'));

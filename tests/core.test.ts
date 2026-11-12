@@ -13,9 +13,28 @@ import { rootOf } from '../packages/adapters/common.js';
 function source(text: string, ext: string, kind: Source['kind'] = 'settings'): Source { return { id: 'test', path: '/fixture/test.' + ext, relativePath: 'test.' + ext, owners: ['codex'], scope: 'repository', kind, baseDir: '/fixture', text, body: text, bytes: bytes(text), bodyLine: 1, data: {}, lines: {}, invalid: false }; }
 test('JSON/JSONC duplicate keys and accurate parser locations', () => {
   const s = source('{\n "model": "one",\n "model": "two"\n}', 'json');
-  const findings = parseSource(s); assert.equal(findings[0].ruleId, 'parse.duplicate-key'); assert.equal(findings[0].location.line, 3); assert.equal(s.invalid, true);
+  const findings = parseSource(s); assert.equal(findings[0].ruleId, 'parse.duplicate-key'); assert.equal(findings[0].location.line, 3); assert.equal(findings[0].location.column, 2); assert.equal(s.invalid, true);
   const c = source('{ // comment\n"model":"one",}', 'jsonc'); assert.deepEqual(parseSource(c), []); assert.equal(c.data.model, 'one');
   const strict = source('{ // comment\n"model":"one"}', 'json'); assert.ok(parseSource(strict).length);
+});
+test('incomplete JSON values keep their parser identity and point to the actual column', () => {
+  for (const extension of ['json', 'jsonc']) {
+    for (const newline of ['\n', '\r\n']) {
+      const input = source(`{${newline}  "model": }`, extension);
+      const findings = parseSource(input);
+      assert.equal(input.invalid, true);
+      assert.deepEqual(findings.map(finding => finding.ruleId), ['parse.json']);
+      assert.equal(findings[0].message, 'Expected a JSON value.');
+      assert.equal(findings[0].location.line, 2);
+      assert.equal(findings[0].location.column, 12);
+    }
+  }
+  const unclosed = parseSource(source('{ "model": "private-sentinel"', 'json'));
+  assert.ok(unclosed.some(finding => finding.message === "Expected '}' to close the object."));
+  assert.ok(!JSON.stringify(unclosed).includes('private-sentinel'));
+  const repeated = parseSource(source('{ "model": ?, "model": ? }', 'json'));
+  assert.equal(repeated.length, 5);
+  assert.equal(new Set(repeated.map(finding => finding.id)).size, 5);
 });
 test('TOML/YAML/frontmatter reject syntax and duplicate keys', () => {
   for (const [text, ext, kind] of [['model="x"\nmodel="y"', 'toml', 'settings'], ['x: 1\nx: 2', 'yaml', 'settings'], ['---\npaths: [unterminated\n---\nbody', 'md', 'rules']] as const) { const s = source(text, ext, kind); assert.ok(parseSource(s).length); assert.ok(s.invalid); }

@@ -41,7 +41,7 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
   // Later adapters can discover imported files. Every client must explain those too.
   for (const e of clients) finish(e, ctx);
   const findings = [...ctx.findings, ...clients.flatMap(e => e.findings), ...diagnose(ctx, clients)];
-  const unique = [...new Map(findings.map(f => [f.id, f])).values()].sort((a, b) => ({ error: 0, warn: 1, info: 2 }[a.severity] - { error: 0, warn: 1, info: 2 }[b.severity] || cmp(a.location.path, b.location.path) || a.location.line - b.location.line || cmp(a.ruleId, b.ruleId) || cmp(a.client ?? '', b.client ?? '')));
+  const unique = [...new Map(findings.map(f => [f.id, f])).values()].sort((a, b) => ({ error: 0, warn: 1, info: 2 }[a.severity] - { error: 0, warn: 1, info: 2 }[b.severity] || cmp(a.location.path, b.location.path) || a.location.line - b.location.line || a.location.column - b.location.column || cmp(a.ruleId, b.ruleId) || cmp(a.client ?? '', b.client ?? '')));
   const diff = new Map<string, Report['diff'][number]>();
   for (const e of clients) for (const d of e.decisions) if (['active', 'truncated'].includes(d.status) && d.content.trim()) {
     const key = d.content.trim(); const entry = diff.get(key) ?? { content: key, clients: [], sources: [] };
