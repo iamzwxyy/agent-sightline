@@ -45,7 +45,7 @@
     $('demo-reason').textContent = 'Open the full bundled demo to inspect source loading and configuration findings.';
   });
   document.querySelectorAll('[data-demo-client]').forEach(button => {
-    button.onclick = () => { if (!report) return; clientId = button.dataset.demoClient; selectedPath = null; renderDemo(); };
+    button.onclick = () => { clientId = button.dataset.demoClient; selectedPath = null; if (report) renderDemo(); };
   });
   const workflows = {
     trace: { image: basePath + 'images/instructions.png', alt: 'The instruction explorer shows a source file, its loading order and provenance', caption: 'Inspect a source, read its loaded content, and see why it applies to your target file.', link: basePath + 'demo/#view=effective&client=codex' },

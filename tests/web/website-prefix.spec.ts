@@ -12,6 +12,7 @@ const publicUrl = 'https://iamzwxyy.github.io/agent-sightline/';
 test('project-hosted website loads assets, demo, guide and the exact released package', async ({ page }) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'sightline-pages-'));
   let server: Awaited<ReturnType<typeof serveStatic>> | undefined;
+  const dataGate = Promise.withResolvers<void>();
   try {
     // Keep the published package fixture independent of the development version.
     await mkdir(path.join(directory, 'website'), { recursive: true });
@@ -22,11 +23,13 @@ test('project-hosted website loads assets, demo, guide and the exact released pa
     const failures: string[] = [];
     page.on('pageerror', error => failures.push(error.message));
     page.on('response', response => { if (response.status() >= 400) failures.push(response.url()); });
+    await page.route('**/demo-report.json', async route => { await dataGate.promise; await route.continue(); });
     await page.goto(server.url + prefix);
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', publicUrl);
     await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', publicUrl + 'social.png');
     await expect(page.locator('#demo-status')).toHaveText('Truncated');
     await page.getByRole('tab', { name: /Claude Code/ }).click();
+    dataGate.resolve();
     await expect(page.locator('#demo-file')).toHaveText('CLAUDE.md');
     await page.getByRole('tab', { name: 'Compare perspectives Understand what each client receives.' }).click();
     await expect(page.locator('#workflow-image')).toHaveAttribute('src', prefix + 'images/compare.png');
@@ -48,6 +51,7 @@ test('project-hosted website loads assets, demo, guide and the exact released pa
     expect(await sitemap.text()).toContain(publicUrl + 'guide.html</loc>');
     expect(failures).toEqual([]);
   } finally {
+    dataGate.resolve();
     await server?.close();
     await rm(directory, { recursive: true, force: true });
   }
