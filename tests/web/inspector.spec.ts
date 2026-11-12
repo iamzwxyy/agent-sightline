@@ -9,6 +9,7 @@ test('target explanation, source provenance, comparison, filters and portable ex
     await page.goto(server.url); await expect(page.getByRole('heading', { name: 'Configuration, in focus.' })).toBeVisible();
     await page.getByLabel('Target file or directory').fill('src/payments/refund.ts'); await page.getByRole('button', { name: 'Inspect target' }).click();
     await expect(page.locator('#target')).toHaveValue('src/payments/refund.ts');
+    await expect(page.locator('#sources .status.truncated')).toBeVisible();
     await page.locator('.source').filter({ hasText: 'AGENTS.override.md' }).click(); await expect(page.locator('#why')).toContainText('byte budget');
     await page.getByRole('button', { name: 'Compare clients' }).click(); await expect(page.locator('#compare')).toContainText('Extensions by client');
     await page.getByRole('button', { name: /^Findings/ }).click(); await page.locator('#severity').selectOption('error'); await expect(page.locator('.finding').first()).toBeVisible();
