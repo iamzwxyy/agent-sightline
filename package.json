@@ -4,8 +4,13 @@
   "description": "See what your coding agent actually sees. Local, read-only configuration diagnostics.",
   "type": "module",
   "license": "MIT",
-  "repository": { "type": "git", "url": "git+https://github.com/iamzwxyy/agent-sightline.git" },
-  "bugs": { "url": "https://github.com/iamzwxyy/agent-sightline/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iamzwxyy/agent-sightline.git"
+  },
+  "bugs": {
+    "url": "https://github.com/iamzwxyy/agent-sightline/issues"
+  },
   "homepage": "https://github.com/iamzwxyy/agent-sightline#readme",
   "engines": {
     "node": ">=22"
@@ -35,7 +40,10 @@
     "smoke": "node scripts/package-smoke.mjs",
     "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run smoke",
     "prepack": "npm run build",
-    "start": "tsx packages/cli/index.ts"
+    "start": "tsx packages/cli/index.ts",
+    "build:website": "npm run build && npm pack --ignore-scripts && node scripts/build-website.mjs",
+    "pretest:web": "npm run build:website",
+    "preview": "node scripts/preview.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",
@@ -46,6 +54,7 @@
     "yaml": "2.9.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@eslint/js": "9.39.1",
     "@playwright/test": "1.65.0",
     "@types/node": "22.19.0",

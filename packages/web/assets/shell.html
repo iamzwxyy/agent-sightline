@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+  <meta name="theme-color" content="#f7f7f5">
+  <title>Sightline — Agent configuration</title>
+  <style>{{STYLE}}</style>
+</head>
+<body data-live="{{LIVE}}">
+  <a class="skip-link" href="#main-content">Skip to workspace</a>
+  <div class="app-layout">
+    <button id="navigation-scrim" aria-label="Close navigation" hidden></button>
+    <aside class="sidebar" aria-label="Workspace navigation">
+      <a class="brand" href="#overview" aria-label="Sightline overview"><span class="brand-mark" aria-hidden="true"></span><span>Sightline</span><span class="version">0.1</span></a>
+      <div class="project-switcher"><span class="project-icon" aria-hidden="true">/</span><div><strong id="project-name"></strong><span id="project-caption">Local workspace</span></div><span class="connection" title="Local, read-only"></span></div>
+      <nav id="main-navigation" class="main-navigation">
+        <button data-view="overview" id="overview-tab"><span class="nav-symbol" aria-hidden="true">◫</span>Overview<span id="overview-count" class="nav-count"></span></button>
+        <button data-view="effective" id="effective-tab"><span class="nav-symbol" aria-hidden="true">≡</span>Instructions</button>
+        <button data-view="compare" id="compare-tab"><span class="nav-symbol" aria-hidden="true">⇄</span>Compare clients</button>
+        <button data-view="extensions" id="extensions-tab"><span class="nav-symbol" aria-hidden="true">⊞</span>Extensions<span id="extension-count" class="nav-count"></span></button>
+        <button data-view="findings" id="findings-tab"><span class="nav-symbol" aria-hidden="true">◇</span>Findings<span id="finding-count" class="nav-count"></span></button>
+      </nav>
+      <div class="sidebar-section"><span class="section-label">Clients</span><div id="clients"></div></div>
+      <div class="sidebar-bottom"><button id="scope-button"><span aria-hidden="true">ⓘ</span> Scan scope & rule versions</button><div class="local-note"><span class="connection"></span><span id="mode-label">Running locally</span><span>Read only</span></div></div>
+    </aside>
+    <div class="workspace-shell">
+      <header class="topbar">
+        <button id="mobile-menu" class="icon-button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+        <div class="breadcrumb"><span id="workspace-name"></span><span aria-hidden="true">/</span><strong id="view-label">Overview</strong></div>
+        <div class="top-actions"><span id="scan-status" role="status"><span class="connection"></span>Scan complete</span><button id="refresh" class="icon-button" aria-label="Refresh scan" title="Refresh scan">↻</button><button id="export" class="button button-small">Export report <span aria-hidden="true">↗</span></button></div>
+      </header>
+      <div class="target-toolbar">
+        <form id="target-form"><span class="file-symbol" aria-hidden="true">⌕</span><label for="target" class="sr-only">Target file or directory</label><input id="target" list="target-options" spellcheck="false" autocomplete="off" placeholder="Choose a file or directory…"><datalist id="target-options"></datalist><kbd id="target-shortcut">⌘ K</kbd><button id="inspect" type="submit">Inspect <span aria-hidden="true">↵</span></button></form>
+        <label class="trust-control" id="trust-control">Workspace trust<select id="trust"><option value="auto">Auto</option><option value="trusted">Trusted</option><option value="untrusted">Untrusted</option></select></label>
+        <span id="snapshot-label" hidden>Report snapshot</span>
+      </div>
+      <p id="error" class="error-banner" role="alert" hidden></p>
+      <main id="main-content" tabindex="-1">
+        <section id="overview" class="page-view">
+          <div class="page-heading"><div><p class="overline" id="overview-eyebrow">Workspace health</p><h1 id="overview-heading">A clear view of your configuration.</h1><p id="overview-description" class="page-description"></p></div><button id="review-findings" class="button button-primary">Review findings <span aria-hidden="true">→</span></button></div>
+          <div id="stats" class="stats-row"></div>
+          <div class="section-heading"><h2>Needs your attention</h2><button class="text-button" data-go="findings">View all findings <span aria-hidden="true">→</span></button></div>
+          <div id="priority-findings" class="issue-list"></div>
+          <div class="section-heading client-section-heading"><h2>Your clients</h2><span class="subtle">Select a client to follow its instruction chain</span></div>
+          <div id="client-overview" class="client-overview"></div>
+          <div id="trust-notice" class="context-note" hidden></div>
+        </section>
+        <section id="effective" class="page-view" hidden>
+          <div class="page-heading compact"><div><p class="overline" id="effective-eyebrow">Instruction chain</p><h1 id="effective-title">Effective configuration</h1><p id="effective-summary" class="page-description"></p></div><button id="copy-effective" class="button button-small">Copy effective text</button></div>
+          <div class="inspector-layout">
+            <aside class="source-panel"><div class="source-panel-heading"><h2>Sources</h2><span id="source-count" class="subtle"></span></div><label class="source-search"><span aria-hidden="true">⌕</span><input id="source-search" aria-label="Search sources" placeholder="Filter sources…" type="search"></label><div class="source-filter"><button data-source-filter="relevant" aria-pressed="true">In scope</button><button data-source-filter="all" aria-pressed="false">All discovered</button></div><div id="sources" role="navigation" aria-label="Configuration sources"></div></aside>
+            <article class="source-content"><div class="file-tab"><span class="file-symbol" aria-hidden="true">▤</span><strong id="source-title">Select a source</strong><span id="source-status"></span><button id="copy-source" class="icon-button" aria-label="Copy source content" title="Copy source content">⧉</button></div><div id="instructions"></div><div class="source-information"><h2>Effective settings from this source</h2><div id="settings"></div></div></article>
+            <aside class="why-panel"><div class="inspector-caption">Source details</div><div id="why"></div></aside>
+          </div>
+        </section>
+        <section id="compare" class="page-view" hidden>
+          <div class="page-heading compact"><div><p class="overline">Across clients</p><h1>Same repository. Different context.</h1><p class="page-description">See where instructions reach your clients, and where their paths diverge.</p></div></div>
+          <div id="compare-clients" class="compare-client-picker" aria-label="Clients to compare"></div>
+          <div class="section-heading"><h2>Instruction coverage</h2><label class="check-label"><input type="checkbox" id="differences-only" checked> Differences only</label></div><div id="comparison-matrix" class="table-scroll"></div>
+          <div class="section-heading"><h2>Extension differences</h2><span class="subtle">Select a definition to inspect it</span></div><div id="comparison-extensions"></div>
+        </section>
+        <section id="extensions" class="page-view" hidden>
+          <div class="page-heading compact"><div><p class="overline">Connected capabilities</p><h1>Extensions</h1><p class="page-description">Inspect MCP servers, skills, hooks and permission rules across your clients.</p></div></div>
+          <div class="list-toolbar"><div id="extension-tabs" class="segmented-control"><button data-kind="all" aria-pressed="true">All</button><button data-kind="mcp">MCP servers</button><button data-kind="skill">Skills</button><button data-kind="hook">Hooks</button><button data-kind="permission">Permissions</button></div><label class="sr-only" for="extension-client">Filter extensions by client</label><select id="extension-client"><option value="all">All clients</option></select></div><div id="extension-list"></div>
+        </section>
+        <section id="findings" class="page-view" hidden>
+          <div class="page-heading compact"><div><p class="overline">Configuration diagnostics</p><h1>Findings</h1><p class="page-description" id="findings-summary"></p></div></div>
+          <div class="list-toolbar"><label class="search-field"><span aria-hidden="true">⌕</span><input id="finding-search" type="search" placeholder="Search findings…" aria-label="Search findings"></label><label class="filter-label">Severity<select id="severity"><option value="actionable">Errors & warnings</option><option value="all">All severities</option><option value="error">Errors</option><option value="warn">Warnings</option><option value="info">Information</option></select></label><label class="filter-label">Client<select id="finding-client"><option value="all">All clients</option></select></label></div><div id="findings-list" class="issue-list"></div><p id="filter-summary" class="subtle"></p>
+        </section>
+      </main>
+      <footer class="statusbar"><span id="repository"></span><span id="footer-target"></span><button id="help-button">Keyboard shortcuts <kbd>?</kbd></button></footer>
+    </div>
+  </div>
+  <dialog id="detail-dialog" aria-labelledby="detail-title"><div class="dialog-topline"><span id="detail-category">Finding details</span><button class="icon-button" data-close-dialog aria-label="Close details">×</button></div><div id="detail-body"></div></dialog>
+  <dialog id="scope-dialog" aria-labelledby="scope-title"><div class="dialog-topline"><span>About this scan</span><button class="icon-button" data-close-dialog aria-label="Close scan details">×</button></div><div class="dialog-content"><h2 id="scope-title">Scan scope & rule versions</h2><ul id="assumptions" class="scope-list"></ul><div id="adapter-details"></div></div></dialog>
+  <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-topline"><span>Workspace shortcuts</span><button class="icon-button" data-close-dialog aria-label="Close shortcuts">×</button></div><div class="dialog-content"><h2 id="help-title">Keep your hands on the keyboard.</h2><dl class="shortcut-list"><div><dt>Choose a target</dt><dd><kbd>⌘ / Ctrl</kbd> <kbd>K</kbd></dd></div><div><dt>Search sources</dt><dd><kbd>/</kbd></dd></div><div><dt>Move between sources</dt><dd><kbd>↑</kbd> <kbd>↓</kbd></dd></div><div><dt>Close a dialog</dt><dd><kbd>Esc</kbd></dd></div><div><dt>Show shortcuts</dt><dd><kbd>?</kbd></dd></div></dl></div></dialog>
+  <div id="toast" role="status" hidden></div>
+  <script type="application/json" id="report-data">{{DATA}}</script>
+  <script>{{SCRIPT}}</script>
+</body>
+</html>

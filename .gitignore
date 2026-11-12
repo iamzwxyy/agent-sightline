@@ -6,3 +6,7 @@ playwright-report/
 .DS_Store
 coverage/
 artifacts/
+website/dist/
+website/.git/
+website/.sites-checkout/
+website/.sites-runtime/

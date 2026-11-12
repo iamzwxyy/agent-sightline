@@ -15,7 +15,7 @@ try {
   const output = execFileSync(process.execPath, [cli, '--repo', repo, '--no-user', '--trust', 'trusted', '--client', 'codex', '--json'], { encoding: 'utf8' });
   const report = JSON.parse(output); if (report.clients[0].instructions !== 'Installed package works.') throw new Error('Installed resolver failed.');
   const htmlFile = path.join(temp, 'report.html'); execFileSync(process.execPath, [cli, 'report', '--repo', repo, '--no-user', '--format', 'html', '--output', htmlFile]);
-  if (!readFileSync(htmlFile, 'utf8').includes('Configuration, in focus.')) throw new Error('Installed HTML reporter failed.');
+  if (!readFileSync(htmlFile, 'utf8').includes('Sightline — Agent configuration')) throw new Error('Installed HTML reporter failed.');
   const version = execFileSync(process.execPath, [cli, 'version'], { encoding: 'utf8' }).trim(); if (version !== '0.1.0') throw new Error('Wrong package version.');
   const demo = JSON.parse(execFileSync(process.execPath, [cli, 'demo', '--clients', 'codex,claude,copilot', '--json'], { encoding: 'utf8' }));
   if (new Set(demo.findings.map(f => f.ruleId)).size < 5) throw new Error('Bundled demo failed to demonstrate real findings.');

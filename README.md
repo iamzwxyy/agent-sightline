@@ -43,6 +43,10 @@ agent-sightline ci --no-user --fail-on warn --json
 
 The browser UI has client/source navigation, effective content, provenance explanations, client comparison, finding filters and portable HTML export. It binds to `127.0.0.1`; no Electron or hosted service is involved. `--no-open` prints the URL without opening a browser.
 
+The workspace opens with grouped errors and warnings. Select a finding to read its cause and suggested resolution, then jump to the source line. The source explorer shows the original redacted file with line numbers and the byte cutoff. Search target files with ⌘K / Ctrl+K, filter sources with `/`, and inspect client coverage in the comparison matrix. Trust assumptions can be changed from the top bar.
+
+The companion website includes an interactive example, a complete installation guide, product walkthroughs and a working CLI package download. Build and preview both interfaces locally with `npm run build:website` followed by `npm run preview`.
+
 ## Supported contracts
 
 | Client | Rule target | Status | Focus |

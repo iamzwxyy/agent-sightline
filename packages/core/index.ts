@@ -48,7 +48,12 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
   const report: Report = {
     schemaVersion: '1.0', tool: { name: 'Agent Sightline', version: '0.1.0' }, repository: ctx.repo, target: ctx.target, sessionDirectory: ctx.directory,
     assumptions: ['Fresh session launched in sessionDirectory, with target opened for path matching.', `User configuration: ${options.user === false ? 'excluded' : 'documented locations only (marked user)'}.`, `Trust: ${options.trust ?? 'auto'}; unknown trust remains conditional. --trust trusted also assumes project MCP approval for Claude.`, 'Only sources within --repo and explicit user/system configuration locations are read; external ancestors/imports may add context.', 'Token estimates use UTF-8 bytes / 4, not a model tokenizer. No model call or telemetry.'],
-    sources: ctx.sources.sort((a, b) => cmp(a.path, b.path)).map(({ id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid }) => ({ id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid })),
+    sources: ctx.sources.sort((a, b) => cmp(a.path, b.path)).map(source => {
+      const { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid } = source;
+      // Account/session state files only expose the parsed fields used by adapters.
+      const privateState = /[/\\]\.claude\.json$/.test(path) || source.scope === 'user' && source.owners.includes('copilot') && /[/\\]config\.json$/.test(path);
+      return { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid, ...(privateState ? {} : { preview: source.text }) };
+    }),
     clients, findings: unique, diff: [...diff.values()],
   };
   return redact(report, envValues(ctx));

@@ -14,7 +14,7 @@ try {
   await page.screenshot({ path: 'docs/assets/terminal.png', fullPage: true });
     await page.setViewportSize({ width: 1440, height: 1000 });
     execFileSync(process.execPath, ['dist/cli/index.js', 'explain', 'src/payments/refund.ts', '--repo', 'examples/broken-agent-config', '--clients', 'codex,claude,copilot', '--no-user', '--trust', 'trusted', '--format', 'html', '--output', 'docs/example-report.html']);
-    await page.goto(pathToFileURL(path.resolve('docs/example-report.html')).href); await page.locator('#sources .status.truncated').waitFor();
+    await page.goto(pathToFileURL(path.resolve('docs/example-report.html')).href + '#view=effective&client=codex'); await page.locator('#sources .source-dot.truncated').waitFor();
     await page.locator('.source').filter({ hasText: 'AGENTS.override.md' }).click(); await page.screenshot({ path: 'docs/assets/inspector.png' });
 } finally { await browser.close(); }
 console.log('Captured actual demo output and local inspector screenshots.');

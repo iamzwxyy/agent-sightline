@@ -22,4 +22,6 @@ Reports write only when `--output` is supplied. Output uses a temporary sibling 
 
 JSON `schemaVersion: "1.0"` includes tool, repository, target, sessionDirectory, assumptions, sources, clients, findings and diff. A finding has `id`, `ruleId`, `severity`, optional `client`, `message`, `location: {path,line,column,key?}`, `related`, `why` and `suggestion`. Missing/invalid config is a finding, not a crashed scan.
 
+Sources may include an additive `preview` string containing the redacted source file. Internal account/session state files omit this preview. The inspector uses previews for line-numbered source navigation. Snapshot reports retain source exploration and comparison while live target rescanning remains in the local UI.
+
 Use rule IDs for CI integrations; prose is not a compatibility API. JSON keeps absolute paths for diagnosis. HTML replaces the repo root with `<repo>` and common home paths with `~` for sharing.

@@ -40,7 +40,7 @@ export interface Effective {
 export interface Report {
   schemaVersion: '1.0'; tool: { name: string; version: string };
   repository: string; target: string; sessionDirectory: string;
-  assumptions: string[]; sources: Omit<Source, 'text' | 'body' | 'data' | 'lines' | 'baseDir'>[];
+  assumptions: string[]; sources: (Omit<Source, 'text' | 'body' | 'data' | 'lines' | 'baseDir'> & { preview?: string })[];
   clients: Effective[]; findings: Finding[];
   diff: { content: string; clients: ClientId[]; sources: Location[] }[];
 }
