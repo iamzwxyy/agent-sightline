@@ -89,7 +89,7 @@ The example is bundled in the installed package. From this checkout, the origina
 agent-sightline examples/broken-agent-config --no-user
 ```
 
-`npm run check` runs lint, typecheck, parser/resolver/adapter/CLI/report/server/probe tests, build and a real isolated package-install smoke test. GitHub Actions runs these checks plus Chromium browser tests on Linux, macOS and Windows. See the [executed validation record](docs/validation.md) and its private CI run link for results.
+`npm run check` runs lint, typecheck, parser/resolver/adapter/CLI/report/server/probe tests, build and a real isolated package-install smoke test. GitHub Actions runs these checks plus Chromium browser tests on Linux, macOS and Windows, with desktop Firefox coverage on Linux. See the [executed validation record](docs/validation.md) and its public CI run link for results.
 
 Exit codes: **0** successful inspection, **1** `--fail-on` threshold reached, **2** input/inspection error. CI defaults to JSON and failing on errors. See [CLI contract](docs/cli.md) for flags and JSON structure.
 
