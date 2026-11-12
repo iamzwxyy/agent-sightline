@@ -1,0 +1,6 @@
+{
+  "target": "src/payments/refund.ts",
+  "home": { ".claude/CLAUDE.md": "User guidance\n", ".claude/settings.json": "{\"model\":\"user-model\",\"permissions\":{\"allow\":[\"Bash(npm test)\"]}}" },
+  "repo": { "AGENTS.md": "Shared agent guidance\n", "CLAUDE.md": "Root Claude\n@docs/policy.md\n@docs/missing.md\n", "docs/policy.md": "Imported policy\n@../CLAUDE.md\n", "src/payments/CLAUDE.local.md": "Local payments guidance\n", "src/payments/refund.ts": "export {};\n", ".claude/settings.json": "{\"model\":\"project-model\",\"permissions\":{\"deny\":[\"Bash(npm test)\"]}}", ".claude/rules/payments.md": "---\npaths: [\"src/payments/**/*.ts\"]\n---\nPayment rule\n", ".claude/rules/python.md": "---\npaths: [\"**/*.py\"]\n---\nPython rule\n" },
+  "expected": { "active": ["$home/.claude/CLAUDE.md", "CLAUDE.md", "docs/policy.md", "src/payments/CLAUDE.local.md", ".claude/rules/payments.md"], "ignored": ["AGENTS.md", ".claude/rules/python.md"], "contains": ["User guidance", "Root Claude", "Imported policy", "Local payments guidance", "Payment rule"], "absent": ["Shared agent guidance", "Python rule"], "findings": ["include.missing", "include.cycle", "config.overridden", "permission.deny-overrides-allow"] }
+}

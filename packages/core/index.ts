@@ -1,0 +1,52 @@
+import { adapters } from '../adapters/index.js';
+import { discoverRepository, makeContext, selectedClients } from './discovery.js';
+import { diagnose } from './diagnostics.js';
+import { redact } from './redact.js';
+import { cmp } from './utils.js';
+import type { Context, Effective, Report, ScanOptions } from './types.js';
+export type * from './types.js';
+export { adapters } from '../adapters/index.js';
+
+function envValues(ctx: Context): string[] {
+  const values = new Set<string>();
+  const walk = (v: any, parent = '') => {
+    if (!v || typeof v !== 'object') return;
+    for (const [k, value] of Object.entries(v)) {
+      if (['env', 'headers', 'http_headers'].includes(parent) && typeof value === 'string') values.add(value);
+      if (/secret|token|password|api[_-]?key|cookie|authorization|credential/i.test(k) && typeof value === 'string') values.add(value);
+      walk(value, k);
+    }
+  };
+  for (const s of ctx.sources) walk(s.data);
+  return [...values].filter(v => v && !v.startsWith('${'));
+}
+export async function scan(options: ScanOptions & { probe?: boolean } = {}): Promise<Report> {
+  const ctx = await makeContext(options);
+  await discoverRepository(ctx);
+  const chosen = adapters.filter(a => selectedClients(options).includes(a.metadata.id));
+  // Ordered discovery shares a bounded cache and keeps all imported sources visible to diff.
+  for (const a of chosen) await a.discover(ctx);
+  const clients: Effective[] = [];
+  for (const a of chosen) {
+    const e = await a.resolveForTarget(ctx);
+    e.findings.push(...await a.validate(ctx, e));
+    if (options.probe) for (const x of e.extensions) e.findings.push(...await a.probe(x, ctx));
+    clients.push(e);
+  }
+  const findings = [...ctx.findings, ...clients.flatMap(e => e.findings), ...diagnose(ctx, clients)];
+  const unique = [...new Map(findings.map(f => [f.id, f])).values()].sort((a, b) => ({ error: 0, warn: 1, info: 2 }[a.severity] - { error: 0, warn: 1, info: 2 }[b.severity] || cmp(a.location.path, b.location.path) || a.location.line - b.location.line || cmp(a.ruleId, b.ruleId) || cmp(a.client ?? '', b.client ?? '')));
+  const diff = new Map<string, Report['diff'][number]>();
+  for (const e of clients) for (const d of e.decisions) if (['active', 'truncated'].includes(d.status) && d.content.trim()) {
+    const key = d.content.trim(); const entry = diff.get(key) ?? { content: key, clients: [], sources: [] };
+    if (!entry.clients.includes(e.client)) entry.clients.push(e.client);
+    if (!entry.sources.some(x => x.path === d.path && x.line === d.line)) entry.sources.push({ path: d.path, line: d.line, column: 1 });
+    diff.set(key, entry);
+  }
+  const report: Report = {
+    schemaVersion: '1.0', tool: { name: 'Agent Sightline', version: '0.1.0' }, repository: ctx.repo, target: ctx.target, sessionDirectory: ctx.directory,
+    assumptions: ['Fresh session launched in sessionDirectory, with target opened for path matching.', `User configuration: ${options.user === false ? 'excluded' : 'documented locations only (marked user)'}.`, `Trust: ${options.trust ?? 'auto'}; unknown trust remains conditional. --trust trusted also assumes project MCP approval for Claude.`, 'Only sources within --repo and explicit user/system configuration locations are read; external ancestors/imports may add context.', 'Token estimates use UTF-8 bytes / 4, not a model tokenizer. No model call or telemetry.'],
+    sources: ctx.sources.sort((a, b) => cmp(a.path, b.path)).map(({ id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid }) => ({ id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid })),
+    clients, findings: unique, diff: [...diff.values()],
+  };
+  return redact(report, envValues(ctx));
+}

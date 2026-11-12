@@ -1,0 +1,16 @@
+name: Adapter rule request
+description: Request a sourced client rule or missing configuration capability
+body:
+  - type: textarea
+    id: rule
+    attributes:
+      label: Rule and supported version
+      description: Include an official source/schema/documentation URL.
+    validations:
+      required: true
+  - type: textarea
+    id: fixture
+    attributes:
+      label: Minimal fixture and expected effective result
+    validations:
+      required: true

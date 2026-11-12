@@ -1,0 +1,64 @@
+{
+  "name": "agent-sightline",
+  "version": "0.1.0",
+  "description": "See what your coding agent actually sees. Local, read-only configuration diagnostics.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "agent-sightline": "dist/cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs",
+    "examples",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint packages tests scripts && git diff --check",
+    "test": "tsx --test tests/*.test.ts",
+    "test:web": "playwright test",
+    "smoke": "node scripts/package-smoke.mjs",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run smoke",
+    "prepack": "npm run build",
+    "start": "tsx packages/cli/index.ts"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "commander": "14.0.3",
+    "jsonc-parser": "3.3.1",
+    "minimatch": "11.0.8",
+    "smol-toml": "1.9.1",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "@playwright/test": "1.65.0",
+    "@types/node": "22.19.0",
+    "eslint": "9.39.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.4"
+  },
+  "keywords": [
+    "codex",
+    "claude-code",
+    "copilot",
+    "agents-md",
+    "mcp",
+    "agent",
+    "configuration",
+    "diagnostics"
+  ]
+}

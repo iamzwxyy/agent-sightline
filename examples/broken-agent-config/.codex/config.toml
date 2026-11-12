@@ -1,0 +1,6 @@
+project_doc_max_bytes = 160
+
+[mcp_servers.postgres]
+command = "missing-sightline-postgres"
+args = ["--readonly"]
+env_vars = ["SIGHTLINE_DEMO_DATABASE_URL"]

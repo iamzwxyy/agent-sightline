@@ -1,0 +1,6 @@
+{
+  "target": "src/payments/refund.ts",
+  "home": { ".codex/AGENTS.override.md": "Global override\n", ".codex/AGENTS.md": "Global base\n", ".codex/config.toml": "project_doc_max_bytes = 60\nproject_doc_fallback_filenames = [\"TEAM.md\"]\n" },
+  "repo": { "AGENTS.md": "Root instructions\n", "src/TEAM.md": "Fallback instructions\n", "src/payments/AGENTS.override.md": "Payments override instructions that exceed the budget\n", "src/payments/AGENTS.md": "Payments base\n", "src/payments/refund.ts": "export {};\n", ".claude/rules/only.md": "Only Claude\n" },
+  "expected": { "active": ["$home/.codex/AGENTS.override.md", "AGENTS.md", "src/TEAM.md"], "truncated": ["src/payments/AGENTS.override.md"], "shadowed": ["$home/.codex/AGENTS.md", "src/payments/AGENTS.md"], "contains": ["Global override", "Root instructions", "Fallback instructions", "Payments override in"], "absent": ["Global base", "Payments base", "Only Claude"], "findings": ["instructions.truncated", "codex.override"] }
+}

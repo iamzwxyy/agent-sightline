@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "missing-sightline-db-runtime",
+      "args": ["serve"],
+      "env": { "DATABASE_URL": "${SIGHTLINE_DEMO_DATABASE_URL}" }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "target": "src/app.ts",
+  "home": {},
+  "repo": { "AGENTS.md": "Shared root\n", "src/AGENTS.md": "Nested shared\n", "GEMINI.md": "Gemini root\n", "src/GEMINI.md": "Gemini nested\n", "src/app.ts": "export {};\n", ".cursor/rules/all.mdc": "---\nalwaysApply: true\n---\nAlways Cursor\n", ".cursor/rules/manual.mdc": "---\nalwaysApply: false\n---\nManual Cursor\n", ".cursor/rules/wrong.md": "Plain rule\n", "opencode.jsonc": "{// valid comment\n\"model\":\"local/example\",}" },
+  "expected": {
+    "gemini": { "active": ["GEMINI.md", "src/GEMINI.md"], "contains": ["Gemini root", "Gemini nested"], "absent": ["Shared root"] },
+    "cursor": { "active": ["AGENTS.md", "src/AGENTS.md", ".cursor/rules/all.mdc"], "conditional": [".cursor/rules/manual.mdc"], "ignored": [".cursor/rules/wrong.md"], "contains": ["Always Cursor"], "absent": ["Manual Cursor"] },
+    "opencode": { "active": ["src/AGENTS.md", "AGENTS.md", "opencode.jsonc"], "contains": ["Nested shared", "Shared root"], "absent": ["Gemini root"] }
+  }
+}

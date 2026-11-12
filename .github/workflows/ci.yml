@@ -1,0 +1,32 @@
+name: Verify
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [22]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm audit --omit=dev
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:web
+      - run: npm pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.os }}-node-${{ matrix.node }}
+          path: agent-sightline-*.tgz

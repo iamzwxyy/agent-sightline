@@ -1,0 +1,6 @@
+{
+  "target": "src/payments/refund.ts",
+  "home": { ".copilot/copilot-instructions.md": "Personal Copilot\n", ".copilot/settings.json": "{// user settings\n\"theme\":\"dark\",}" },
+  "repo": { "AGENTS.md": "Shared guidance\n@docs/common.md\n", "CLAUDE.md": "Claude guidance\n", "GEMINI.md": "Gemini guidance\n@docs/not-imported.md\n", "docs/common.md": "Common policy\n", "docs/not-imported.md": "Should stay out\n", ".github/copilot-instructions.md": "Repository Copilot\n", ".github/instructions/ts.instructions.md": "---\napplyTo: \"**/*.{ts,tsx}\"\nexcludeAgent: code-review\n---\nTypeScript rule\n", ".github/instructions/python.instructions.md": "---\napplyTo: \"**/*.py\"\n---\nPython rule\n", "src/payments/refund.ts": "export {};\n" },
+  "expected": { "active": ["$home/.copilot/copilot-instructions.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "docs/common.md", ".github/copilot-instructions.md", ".github/instructions/ts.instructions.md"], "ignored": [".github/instructions/python.instructions.md"], "contains": ["Shared guidance", "Common policy", "TypeScript rule", "Gemini guidance"], "absent": ["Should stay out", "Python rule"], "findings": [] }
+}

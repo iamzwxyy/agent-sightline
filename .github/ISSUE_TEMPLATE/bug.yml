@@ -1,0 +1,28 @@
+name: Loading-rule bug
+description: Report a reproducible discovery, resolution or diagnostic error
+body:
+  - type: input
+    id: client
+    attributes:
+      label: Client and version
+      placeholder: Codex CLI 0.167.2
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal configuration tree and command
+      description: Use synthetic values. Never paste credentials or real environment values.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior and official evidence
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result / rule IDs
+      description: Attach a reviewed portable HTML report or redacted JSON if useful.
