@@ -10,7 +10,7 @@ agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Public npm-registry publication is pending. [Explore the browser demo](https://agent-sightline.williamtse700.chatgpt.site/demo/) or read the [installation guide](https://agent-sightline.williamtse700.chatgpt.site/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
