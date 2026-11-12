@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { rm } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import type { Finding, Report } from '../packages/core/types.js';
-import { failed, html, json, terminal } from '../packages/reporter/index.js';
+import { failed, html, json, portable, terminal } from '../packages/reporter/index.js';
 import { workspace } from './helpers.js';
 
 const missingCommand: Finding = {
@@ -79,6 +79,23 @@ test('terminal renders unique related source locations and gives an empty worksp
   assert.ok(empty.includes('agent-sightline demo'));
 });
 
+test('portable reports replace JSON-escaped Windows and POSIX repository paths', () => {
+  for (const repository of ['D:\\projects\\checkout', 'C:\\Users\\example\\checkout', '/tmp/quoted"project', '/tmp/back\\slash-project']) {
+    const filename = repository + '/instructions.md';
+    const report = reportWithFindings([{ ...missingCommand, location: { ...missingCommand.location, path: filename } }]);
+    report.repository = repository;
+    report.target = filename;
+    report.sessionDirectory = repository;
+    report.assumptions = [`Working tree at ${repository}`];
+    const exported = portable(report);
+    assert.equal(exported.repository, '<repo>');
+    assert.equal(exported.target, '<repo>/instructions.md');
+    assert.equal(exported.sessionDirectory, '<repo>');
+    assert.equal(exported.findings[0].location.path, '<repo>/instructions.md');
+    assert.deepEqual(exported.assumptions, ['Working tree at <repo>']);
+  }
+});
+
 test('HTML is self-contained, inert against script injection, and redacted again at export', async t => {
   const w = await workspace({ 'CLAUDE.md': '</script><img src=x onerror=alert(1)>\nAPI_KEY=private-sentinel' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = await scan({ ...w, clients: ['claude'] });
@@ -86,4 +103,10 @@ test('HTML is self-contained, inert against script injection, and redacted again
   r.clients[0].instructions += '\npassword=second-secret';
   for (const output of [html(r), json(r), terminal(r, 'explain')]) { assert.ok(!output.includes('private-sentinel')); assert.ok(!output.includes('second-secret')); }
   const h = html(r); assert.ok(!h.includes('</script><img')); assert.ok(h.includes('\\u003c/script')); assert.ok(h.includes("default-src 'none'")); assert.ok(!h.includes('<script src=')); assert.ok(!h.includes(w.repo));
+  const live = html(r, { live: true, portable: false });
+  const snapshot = JSON.parse(live.match(/<script type="application\/json" id="export-data">([\s\S]*?)<\/script>/)![1]);
+  assert.equal(snapshot, h);
+  assert.ok(!snapshot.includes(w.repo));
+  assert.ok(!snapshot.includes('private-sentinel'));
+  assert.ok(!snapshot.includes('second-secret'));
 });

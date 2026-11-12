@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.1.4
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and isolated package installation passed. The 66-case core suite completed with 65 passes and one Windows-only skip.
+* All fourteen Chromium browser cases passed. The new export regression changes instructions on disk, pauses a refresh and checks exports before completion, after completion and after a rejected target. Each download retains the last successfully displayed report and portable paths.
+* The scan API can return a report and its portable HTML from the same inspection. Export redaction and script-injection fixtures cover both the initial page and subsequent scan responses.
+* Windows drive/home paths and POSIX directory names containing quotes or backslashes resolve to the repository placeholder in portable reports. The HTTP regression also checks the parsed exported repository field directly.
+* Real package installation verifies browser startup and the paired scan/export response. The standalone example and product screenshot were regenerated and visually inspected.
+* Tag verification runs through the Release workflow. Branch verification retains the Linux, macOS and Windows Node 22 matrix.
+
 ## v0.1.3
 
 Verified locally on macOS on 2026-11-12.

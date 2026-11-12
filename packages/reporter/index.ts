@@ -67,7 +67,8 @@ export function terminal(report: Report, mode = 'scan'): string {
   return redactText(lines.join('\n')) + '\n';
 }
 export function portable(report: Report): Report {
-  const serialized = JSON.stringify(redact(report)).split(report.repository).join('<repo>').replace(/(?:\/Users\/[^/"\\]+|\/home\/[^/"\\]+|[A-Za-z]:\\\\Users\\\\[^\\"/]+)/g, '~');
+  const escapedRepository = JSON.stringify(report.repository).slice(1, -1);
+  const serialized = JSON.stringify(redact(report)).split(escapedRepository).join('<repo>').replace(/(?:\/Users\/[^/"\\]+|\/home\/[^/"\\]+|[A-Za-z]:\\\\Users\\\\[^\\"/]+)/g, '~');
   return JSON.parse(serialized);
 }
 export function html(report: Report, options: { live?: boolean; portable?: boolean } = {}): string {
@@ -77,14 +78,16 @@ export function html(report: Report, options: { live?: boolean; portable?: boole
   const font = readFileSync(new URL('../web/assets/fonts/instrument-sans.woff2', import.meta.url)).toString('base64');
   const style = `@font-face{font-family:'Instrument Sans';font-style:normal;font-weight:400 700;font-display:swap;src:url(data:font/woff2;base64,${font}) format('woff2')}\n` + readFileSync(new URL('../web/assets/style.css', import.meta.url), 'utf8').replace(/\r\n?/g, '\n');
   const sha = (s: string) => createHash('sha256').update(s).digest('base64');
-  const safeJson = JSON.stringify(data).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const safeJson = (value: Report | string | null) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const csp = `default-src 'none'; script-src 'sha256-${sha(script)}'; style-src 'sha256-${sha(style)}'; font-src data:; connect-src ${options.live ? "'self'" : "'none'"}; img-src data:; base-uri 'none'; form-action 'none'`;
   const shell = readFileSync(new URL('../web/assets/shell.html', import.meta.url), 'utf8');
-  return shell.replace(/\{\{(CSP|STYLE|LIVE|DATA|SCRIPT)\}\}/g, (_match, key: string) => ({
+  const values: Record<string, string> = {
     CSP: csp,
     STYLE: style,
     LIVE: options.live ? 'true' : 'false',
-    DATA: safeJson,
+    DATA: safeJson(data),
+    EXPORT: options.live ? safeJson(html(report)) : 'null',
     SCRIPT: script,
-  })[key]!);
+  };
+  return shell.replace(/\{\{(CSP|STYLE|LIVE|DATA|EXPORT|SCRIPT)\}\}/g, (_match, key: string) => values[key]!);
 }

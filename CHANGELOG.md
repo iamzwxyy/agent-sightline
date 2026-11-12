@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4 — 2026-11-13
+
+* Export the most recent successful browser inspection, preserving its configuration content across disk edits and pending or failed refreshes.
+* Prepare portable HTML together with the displayed scan so exported reports retain the same target, trust, profile and redacted sources.
+* Replace repository paths correctly in portable reports on Windows and in directories containing JSON-escaped characters.
+* Route tag verification through the release workflow to avoid duplicate full platform matrices.
+
 ## 0.1.3 — 2026-11-12
 
 * Preserve separate source locations when the terminal groups repeated client findings, show severity totals and disclose the summary limit.

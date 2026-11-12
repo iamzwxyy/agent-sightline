@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { serve } from '../packages/web/server.js';
+import { portable } from '../packages/reporter/index.js';
 import { workspace } from './helpers.js';
 test('read-only local UI serves, scans target, exports portable HTML and rejects external origin', async t => {
   const w = await workspace({ 'CLAUDE.md': 'root', 'src/a.ts': '' }); t.after(() => rm(w.root, { recursive: true, force: true }));
@@ -37,4 +38,27 @@ test('profile selection and clearing survive local scans, reloads and portable e
   assert.ok(snapshot.includes('"codexProfile":"review"'));
   assert.ok(!snapshot.includes(w.home));
   assert.equal((await fetch(server.url + '/api/scan?profile=..%2Fprivate')).status, 400);
+});
+
+test('scan responses can pair their report with a portable HTML snapshot from the same inspection', async t => {
+  const w = await workspace({ 'CLAUDE.md': 'Instructions before editing.\nAPI_KEY=private-export-sentinel' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const server = await serve({ ...w, user: false, clients: ['claude'] });
+  t.after(server.close);
+  const response = await fetch(server.url + '/api/scan?include=html');
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  const exported = JSON.parse(result.html.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)[1]);
+  assert.deepEqual(exported, portable(result.report));
+  assert.equal(exported.repository, '<repo>');
+  assert.equal(exported.target, '<repo>');
+  assert.ok(!result.html.includes(w.repo));
+  assert.ok(!result.html.includes('private-export-sentinel'));
+  await writeFile(path.join(w.repo, 'CLAUDE.md'), 'Instructions after editing.');
+  const current = await (await fetch(server.url + '/api/scan')).json();
+  assert.equal(current.clients[0].instructions, 'Instructions after editing.');
+  assert.ok(result.report.clients[0].instructions.includes('Instructions before editing.'));
+  assert.ok(result.html.includes('Instructions before editing.'));
+  const refreshedExport = await (await fetch(server.url + '/api/export')).text();
+  assert.ok(refreshedExport.includes('Instructions after editing.'));
 });

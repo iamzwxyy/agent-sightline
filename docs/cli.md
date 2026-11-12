@@ -31,4 +31,6 @@ JSON `schemaVersion: "1.0"` includes tool, repository, target, sessionDirectory,
 
 Sources may include an additive `preview` string containing the redacted source file. Internal account/session state files omit this preview. The inspector uses previews for line-numbered source navigation. Snapshot reports retain source exploration and comparison while live target rescanning remains in the local UI.
 
+The browser's Export report action saves the most recent successful inspection. Configuration edits appear after Refresh scan. Exports during an in-flight or failed refresh keep the last displayed report, including its target, trust and selected Codex profile.
+
 Use rule IDs for CI integrations; prose is not a compatibility API. JSON keeps absolute paths for diagnosis. HTML replaces the repo root with `<repo>` and common home paths with `~` for sharing.

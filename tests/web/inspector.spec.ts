@@ -3,7 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { serve } from '../../packages/web/server.js';
 import { workspace } from '../helpers.js';
-import { rm, writeFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
@@ -70,6 +70,57 @@ test('JSON errors at separate columns remain visible with readable messages and 
     await page.getByRole('button', { name: 'Copy location', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Text to copy' })).toHaveValue(path.join(w.repo, '.claude/settings.local.json') + ':1:26');
   } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('export preserves the inspected configuration through disk edits and an in-flight refresh', async ({ page }) => {
+  const w = await workspace({ 'CLAUDE.md': 'Instructions before editing.' });
+  const server = await serve({ ...w, user: false, clients: ['claude'] });
+  const responseReady = Promise.withResolvers<void>();
+  const releaseResponse = Promise.withResolvers<void>();
+  const exportedReports: string[] = [];
+  const exportCurrentReport = async () => {
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = await (await downloading).path();
+    return readFile(file!, 'utf8');
+  };
+  try {
+    await page.goto(server.url);
+    await page.getByRole('button', { name: 'Inspect Claude Code instructions', exact: true }).click();
+    await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+    await expect(page.locator('#effective-document')).toContainText('Instructions before editing.');
+    await writeFile(path.join(w.repo, 'CLAUDE.md'), 'Instructions after editing.');
+    await page.route('**/api/scan?**', async route => {
+      const response = await route.fetch();
+      responseReady.resolve();
+      await releaseResponse.promise;
+      await route.fulfill({ response });
+    });
+    await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+    await responseReady.promise;
+    await expect(page.locator('#scan-status')).toHaveText('Inspecting…');
+    exportedReports.push(await exportCurrentReport());
+    releaseResponse.resolve();
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+    await expect(page.locator('#effective-document')).toContainText('Instructions after editing.');
+    exportedReports.push(await exportCurrentReport());
+    await page.locator('#target').fill('../outside');
+    await page.locator('#inspect').click();
+    await expect(page.locator('#scan-status')).toHaveText('Scan failed');
+    exportedReports.push(await exportCurrentReport());
+    const reports = exportedReports.map(html => JSON.parse(html.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]));
+    expect(reports.map(report => report.clients[0].instructions)).toEqual(['Instructions before editing.', 'Instructions after editing.', 'Instructions after editing.']);
+    for (const html of exportedReports) {
+      expect(html).not.toContain(w.repo);
+      expect(html).not.toContain(w.home);
+      expect(html).toContain('data-live="false"');
+    }
+  } finally {
+    releaseResponse.resolve();
+    await page.unrouteAll({ behavior: 'wait' });
+    await server.close();
+    await rm(w.root, { recursive: true, force: true });
+  }
 });
 
 test('target suggestions, rejected target, trust assumptions and keyboard navigation', async ({ page }) => {

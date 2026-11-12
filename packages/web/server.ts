@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import type { ScanOptions } from '../core/types.js';
 import { scan } from '../core/index.js';
 import { html, json } from '../reporter/index.js';
+import { redact } from '../core/redact.js';
 import { searchTargets } from './targets.js';
 
 export async function serve(options: ScanOptions, port = 0): Promise<{ url: string; close: () => Promise<void> }> {
@@ -28,7 +29,10 @@ export async function serve(options: ScanOptions, port = 0): Promise<{ url: stri
         const target = url.searchParams.get('target') ?? '.';
         if (target.length > 2048) throw new Error('Target path is too long.');
         const trust = requestedTrust(url, options.trust);
-        const report = await scan({ ...options, target, trust, codexProfile: requestedProfile(url, options.codexProfile) }); res.setHeader('Content-Type', 'application/json'); res.end(json(report));
+        const report = await scan({ ...options, target, trust, codexProfile: requestedProfile(url, options.codexProfile) });
+        res.setHeader('Content-Type', 'application/json');
+        if (url.searchParams.get('include') === 'html') res.end(JSON.stringify({ report: redact(report), html: html(report) }));
+        else res.end(json(report));
       } else if (url.pathname === '/api/export') {
         const report = await scan({ ...options, trust: requestedTrust(url, options.trust), target: url.searchParams.get('target') ?? options.target, codexProfile: requestedProfile(url, options.codexProfile) });
         res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Content-Disposition', 'attachment; filename="agent-sightline-report.html"'); res.end(html(report));

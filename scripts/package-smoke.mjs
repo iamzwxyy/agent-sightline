@@ -41,6 +41,8 @@ try {
     if (!page.includes('Read effective text') || !page.includes('instructions.truncated')) throw new Error('Installed demo inspector assets are incomplete.');
     const sample = await (await globalThis.fetch(url + '/api/scan?target=src/payments/refund.ts')).json();
     if (!sample.assumptions.includes('User configuration: excluded.')) throw new Error('Demo inspector must exclude personal configuration.');
+    const snapshot = await (await globalThis.fetch(url + '/api/scan?target=src/payments/refund.ts&include=html')).json();
+    if (snapshot.report.target !== sample.target || !snapshot.html.includes('data-live="false"') || !snapshot.html.includes('instructions.truncated')) throw new Error('Installed inspector snapshot export failed.');
   } finally {
     clearTimeout(startupTimer);
     if (inspector.exitCode === null) { const stopped = once(inspector, 'exit'); inspector.kill(); await stopped; }

@@ -3,6 +3,7 @@
   let report = JSON.parse(document.getElementById('report-data').textContent);
   const live = document.body.dataset.live === 'true';
   const originalDocument = document.documentElement.outerHTML;
+  let exportDocument = live ? JSON.parse(document.getElementById('export-data').textContent) : '<!doctype html>\n' + originalDocument;
   const names = { codex: 'Codex', claude: 'Claude Code', copilot: 'GitHub Copilot', gemini: 'Gemini CLI', cursor: 'Cursor', opencode: 'OpenCode' };
   const initials = { codex: 'C', claude: '✳', copilot: 'G', gemini: 'G', cursor: '↗', opencode: 'O' };
   const viewLabels = { overview: 'Overview', effective: 'Instructions', configuration: 'Settings', compare: 'Compare clients', extensions: 'Extensions', findings: 'Findings' };
@@ -631,12 +632,13 @@
     $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', 'Inspecting…'));
     let succeeded = false;
     try {
-      const query = new URLSearchParams({ target, trust: $('trust').value, profile: $('codex-profile').value.trim() });
+      const query = new URLSearchParams({ target, trust: $('trust').value, profile: $('codex-profile').value.trim(), include: 'html' });
       const response = await fetch(`/api/scan?${query}`, { signal: scanController.signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       if (request !== state.request) return;
-      report = data;
+      report = data.report;
+      exportDocument = data.html;
       if (!report.sources.some(source => source.path === state.source)) state.source = null;
       state.highlightLine = null;
       const address = new URL(location.href);
@@ -695,11 +697,7 @@
   $('trust').onchange = () => void refresh();
   $('profile-form').onsubmit = event => { event.preventDefault(); void refresh(); };
   $('export').onclick = () => {
-    if (live) {
-      const query = new URLSearchParams({ target: short(report.target), trust: $('trust').value, profile: report.inputs?.codexProfile ?? '' });
-      const anchor = node('a'); anchor.href = `/api/export?${query}`; anchor.download = 'sightline-report.html'; anchor.click(); return;
-    }
-    const url = URL.createObjectURL(new Blob(['<!doctype html>\n' + originalDocument], { type: 'text/html' }));
+    const url = URL.createObjectURL(new Blob([exportDocument], { type: 'text/html' }));
     const anchor = node('a'); anchor.href = url; anchor.download = 'sightline-report.html'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   document.addEventListener('keydown', event => {
