@@ -26,8 +26,8 @@ The v0.1.0 tag run exposed a Windows working-directory cleanup race. A probe ret
 
 ## Publication state
 
-The product website was deployed through Sites at https://agent-sightline.williamtse700.chatgpt.site and made public at the owner's explicit request. Anonymous HTTP requests to the homepage, interactive `/demo/`, guide, sitemap and package download returned 200. The downloaded package matched the local package's SHA-256 hash.
+The v0.1.1 product website was deployed through Sites at https://agent-sightline.williamtse700.chatgpt.site and made public at the owner's explicit request. Anonymous HTTP requests to the homepage, interactive `/demo/`, guide, sitemap and package download returned 200. The downloaded package matched the local package's SHA-256 hash.
 
-The source repository https://github.com/iamzwxyy/agent-sightline is public and uses `main` as its default branch. A fresh-cache `npx` execution from the public tarball URL ran the bundled sample, reported 15 distinct diagnostic rule IDs and excluded personal configuration.
+The source repository https://github.com/iamzwxyy/agent-sightline is public and uses `main` as its default branch. The v0.1.2 GitHub package passed anonymous SHA-256 verification and fresh-cache online execution. The installed CLI resolved the selected profile model and its source line, retained the replaced base definition, applied the project reasoning setting and ran the bundled demo with 15 distinct diagnostic rule IDs and personal configuration excluded.
 
-Public npm-registry publication is pending account authentication. The website's package URL provides a working online installation route. Official-rule fixtures record static compatibility contracts.
+Public npm-registry publication is pending account authentication. The public GitHub Release provides the verified online installation route. The v0.1.2 Sites deployment succeeded, but requests from the development network reset during TLS before HTTP. Website download availability could not be reverified on this network. Official-rule fixtures record static compatibility contracts.

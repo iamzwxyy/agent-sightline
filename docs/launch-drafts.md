@@ -15,7 +15,7 @@ Source and releases https://github.com/iamzwxyy/agent-sightline
 Try the sample with Node.js 22+
 
 ```sh
-npm exec --yes --package=https://agent-sightline.williamtse700.chatgpt.site/downloads/agent-sightline-0.1.2.tgz -- agent-sightline demo
+npm exec --yes --package=https://github.com/iamzwxyy/agent-sightline/releases/download/v0.1.2/agent-sightline-0.1.2.tgz -- agent-sightline demo
 ```
 
 The package is publicly downloadable from the website. Initial npm-registry publication is awaiting account authentication.
@@ -53,5 +53,5 @@ Use the actual product screenshot in `docs/assets/inspector.png` when posting.
 Node.js 22+ 可运行示例
 
 ```sh
-npm exec --yes --package=https://agent-sightline.williamtse700.chatgpt.site/downloads/agent-sightline-0.1.2.tgz -- agent-sightline demo
+npm exec --yes --package=https://github.com/iamzwxyy/agent-sightline/releases/download/v0.1.2/agent-sightline-0.1.2.tgz -- agent-sightline demo
 ```

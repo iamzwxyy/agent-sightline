@@ -5,12 +5,12 @@
 One file. Several agents. Different instructions. Sightline shows every discovered source, why it applies, what is shadowed or truncated, and the effective configuration—with source lines you can inspect.
 
 ```sh
-npm install -g https://agent-sightline.williamtse700.chatgpt.site/downloads/agent-sightline-0.1.2.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.1.2/agent-sightline-0.1.2.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package directly from the public website. Public npm-registry publication is pending. [Explore the browser demo](https://agent-sightline.williamtse700.chatgpt.site/demo/) or read the [installation guide](https://agent-sightline.williamtse700.chatgpt.site/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Public npm-registry publication is pending. [Explore the browser demo](https://agent-sightline.williamtse700.chatgpt.site/demo/) or read the [installation guide](https://agent-sightline.williamtse700.chatgpt.site/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
