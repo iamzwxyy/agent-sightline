@@ -1,6 +1,6 @@
 # v0.1.2 validation
 
-Codex profile selection and project-local setting restrictions were verified locally on 2026-11-12. The previous target-search and probe-lifecycle revision was verified at commit `339ba6306b6c1a8d68794508a1f649c6ffeee2c4`. The initial reproducibility and scan-performance measurements below were recorded at `e8661e86640f3242f2e3c1aa5ec291593fcd51f1`.
+Codex profile selection and project-local setting restrictions were verified at commit `3e7d441c17075d988631482991c721c25844c437` on 2026-11-12. The previous target-search and probe-lifecycle revision was verified at commit `339ba6306b6c1a8d68794508a1f649c6ffeee2c4`. The initial reproducibility and scan-performance measurements below were recorded at `e8661e86640f3242f2e3c1aa5ec291593fcd51f1`.
 
 ## Executed locally
 
@@ -18,9 +18,9 @@ Codex profile selection and project-local setting restrictions were verified loc
 
 ## Hosted OS matrix
 
-The previous v0.1.1 implementation run [Verify 43200014479](https://github.com/iamzwxyy/agent-sightline/actions/runs/43200014479) passed on Linux, macOS and Windows with Node 22. The run includes npm ci, lint, typecheck, tests, build, real package installation, production audit, all ten Chromium browser cases, packing and artifact upload. Linux also passed the desktop Firefox suite.
+The v0.1.2 implementation run [Verify 43231384487](https://github.com/iamzwxyy/agent-sightline/actions/runs/43231384487) passed on Linux, macOS and Windows with Node 22. The run includes npm ci, lint, typecheck, 58 core cases, build, real package installation with profile resolution, production audit, eleven Chromium browser cases, packing and artifact upload. Linux also passed all eleven desktop Firefox browser cases.
 
-Windows passed 44 of 50 core cases and skipped six POSIX-only symlink, permission and signal cases. It also passed the Windows command-shim probe fixture, platform-neutral path tests and Windows adapter golden fixtures. macOS passed 49 cases with one Windows-only skip. Linux may additionally skip the unreadable-file fixture when running as root.
+Windows passed 52 of 58 core cases and skipped six POSIX-only symlink, permission and signal cases. It also passed the Windows command-shim probe fixture, platform-neutral path tests and Windows adapter golden fixtures. macOS passed 57 cases with one Windows-only skip. Linux may additionally skip the unreadable-file fixture when running as root.
 
 The v0.1.0 tag run exposed a Windows working-directory cleanup race. A probe returned after requesting process termination, before the child released its files. v0.1.1 waits for process close, stops ordinary wrapper descendants, supports Windows command shims and bounds shutdown when SIGTERM is ignored. CLI interruptions await cleanup. The earlier Windows path-root and CRLF/CSP fixes remain covered.
 
