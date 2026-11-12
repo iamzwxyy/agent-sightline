@@ -2,7 +2,7 @@ import { adapters } from '../adapters/index.js';
 import { finish } from '../adapters/common.js';
 import { discoverRepository, makeContext, selectedClients } from './discovery.js';
 import { diagnose } from './diagnostics.js';
-import { redact } from './redact.js';
+import { redact, redactScanReport } from './redact.js';
 import { collectPathMappings } from './paths.js';
 import { cmp } from './utils.js';
 import { VERSION } from './version.js';
@@ -59,15 +59,18 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
     assumptions: ['Fresh session launched in sessionDirectory, with target opened for path matching.', `User configuration: ${options.user === false ? 'excluded' : 'documented locations only (marked user)'}.`, `Trust: ${options.trust ?? 'auto'}; unknown trust remains conditional. --trust trusted also assumes project MCP approval for Claude.`, 'Only sources within --repo and explicit user/system configuration locations are read; external ancestors/imports may add context.', 'Token estimates use UTF-8 bytes / 4, not a model tokenizer. No model call or telemetry.', ...(options.codexProfile ? [`Codex profile ${options.codexProfile} loads after user defaults and before applicable project layers.`] : [])],
     sources: ctx.sources.sort((a, b) => cmp(a.path, b.path)).map(source => {
       const { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid } = source;
+      // Syntax errors can discard private values during parsing, including overwritten duplicate keys.
       // Account/session state files only expose the parsed fields used by adapters.
       const privateState = /[/\\]\.claude\.json$/.test(path) || source.scope === 'user' && source.owners.includes('copilot') && /[/\\]config\.json$/.test(path);
-      return { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid, ...(privateState ? {} : { preview: source.text }) };
+      return { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid, ...(privateState || invalid ? {} : { preview: source.text }) };
     }),
     clients, findings: unique, diff: [...diff.values()],
   };
   const privateValues = envValues(ctx);
-  const result = redact(report, privateValues);
+  const result = redactScanReport(report, privateValues);
   const configuration = [result.clients, result.findings];
-  result.pathMappings = redact(await collectPathMappings(ctx, configuration), privateValues);
+  result.pathMappings = (await collectPathMappings(ctx, configuration)).map(mapping => ({
+    path: redact(mapping.path, privateValues), replacement: redact(mapping.replacement, privateValues),
+  }));
   return result;
 }

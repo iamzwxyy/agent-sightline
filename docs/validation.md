@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.2.6
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 124-case core suite completed with 123 passes and one Windows-only skip. The pinned Codex version check and eighteen native configuration comparisons remain included.
+* Synthetic environment values reproduced corruption of schemaVersion, client IDs, statuses, rule IDs, source hashes and version metadata. Regressions now verify their stable representation, source/decision links and private configuration payloads through the public scan API, JSON/portable reporters, CLI CI exit thresholds and the installed package.
+* Duplicate JSON environment keys and invalid TOML reproduced private values in raw source previews. Syntax-invalid sources now omit previews while retaining parser locations and loading decisions. JSON recovery, duplicate definitions, invalid TOML and broken YAML frontmatter have synthetic sentinel coverage. Valid sibling previews remain available.
+* All twenty-two Chromium browser cases passed. The added case checks client selection, effective content, error filtering, finding-to-source navigation, the unavailable-preview explanation and disabled source copying in both live and portable reports. Its source view was visually inspected.
+* Caller-modified tool/adapter metadata and instruction content remain covered by export-time redaction. Production dependency audit reported zero vulnerabilities. Eleven previously published archives retained their recorded SHA-256 values.
+
 ## v0.2.5
 
 Verified locally on macOS on 2026-11-13.

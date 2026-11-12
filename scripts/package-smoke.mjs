@@ -29,6 +29,14 @@ try {
   writeFileSync(path.join(invalidRepo, '.claude/settings.local.json'), '{ broken JSON');
   const scoped = JSON.parse(execFileSync(process.execPath, [cli, 'ci', '--repo', invalidRepo, '--no-user', '--client', 'codex'], { encoding: 'utf8' }));
   if (scoped.findings.some(finding => finding.ruleId.startsWith('parse.')) || !scoped.sources.some(source => source.relativePath === '.claude/settings.local.json' && source.invalid)) throw new Error('Installed client diagnostic scoping failed.');
+  const privacyRepo = path.join(temp, 'privacy-repository'); mkdirSync(path.join(privacyRepo, '.claude'), { recursive: true });
+  writeFileSync(path.join(privacyRepo, 'AGENTS.md'), 'codex active 1');
+  writeFileSync(path.join(privacyRepo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, env: { CLIENT: 'codex', STATUS: 'active', NUMBER: '1', RULE: 'parse.duplicate-key', SEVERITY: 'error', FIELD: 'clients' } } } }));
+  writeFileSync(path.join(privacyRepo, '.claude/settings.local.json'), '{"env":{"NORMAL":"discarded-preview-sentinel","NORMAL":"later-value"}}');
+  const privateOutput = execFileSync(process.execPath, [cli, '--repo', privacyRepo, '--no-user', '--trust', 'trusted', '--clients', 'codex,claude', '--json'], { encoding: 'utf8' });
+  const privateReport = JSON.parse(privateOutput);
+  if (privateReport.schemaVersion !== '1.0' || privateReport.clients[0].client !== 'codex' || !privateReport.clients[0].decisions.some(decision => decision.status === 'active') || !privateReport.findings.some(finding => finding.ruleId === 'parse.duplicate-key' && finding.severity === 'error') || privateReport.clients[0].instructions !== '[REDACTED] [REDACTED] [REDACTED]') throw new Error('Installed private-value redaction corrupted report structure.');
+  if (privateOutput.includes('discarded-preview-sentinel') || privateReport.sources.find(source => source.relativePath === '.claude/settings.local.json')?.preview !== undefined) throw new Error('Installed syntax-invalid preview privacy failed.');
   const alias = path.join(temp, 'repository-alias');
   symlinkSync(repo, alias, process.platform === 'win32' ? 'junction' : 'dir');
   writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, cwd: alias, args: ['--root=' + alias] } } }));

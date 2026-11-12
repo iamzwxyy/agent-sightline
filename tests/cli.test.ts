@@ -7,6 +7,28 @@ import { mkdir, readFile, readdir, realpath, rm, watch, writeFile } from 'node:f
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
+test('CI retains finding thresholds and stable JSON with private values matching machine fields', async t => {
+  const w = await workspace({
+    'AGENTS.md': 'codex active 1',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { CLIENT: 'codex', STATUS: 'active', NUMBER: '1', RULE: 'parse.json', SEVERITY: 'error', FIELD: 'findings' } } } }),
+    '.claude/settings.json': '{ "model": }',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const flags = ['--clients', 'codex,claude', '--no-user', '--trust', 'trusted'];
+  const result = run(['ci', ...flags], w.repo);
+  assert.equal(result.status, 1, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.schemaVersion, '1.0');
+  assert.equal(report.clients[0].client, 'codex');
+  assert.ok(report.clients[0].decisions.some((decision: any) => decision.status === 'active'));
+  assert.ok(report.findings.some((finding: any) => finding.ruleId === 'parse.json' && finding.severity === 'error'));
+  assert.equal(report.clients[0].instructions, '[REDACTED] [REDACTED] [REDACTED]');
+  const summary = run(flags, w.repo);
+  assert.equal(summary.status, 0, summary.stderr);
+  assert.ok(summary.stdout.includes('ERROR'));
+  assert.ok(summary.stdout.includes('parse.json'));
+  assert.ok(!summary.stdout.includes('NaN'));
+});
 test('no-argument CLI diagnoses repository and JSON is machine-readable without ANSI', async t => {
   const w = await workspace({ 'AGENTS.md': 'shared' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = run(['--no-user'], w.repo); assert.equal(r.status, 0); assert.ok(r.stdout.includes('Agent Sightline')); assert.ok(r.stdout.includes('sources')); assert.ok(!r.stdout.includes('\x1b'));

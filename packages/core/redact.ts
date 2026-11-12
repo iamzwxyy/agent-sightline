@@ -1,3 +1,5 @@
+import type { Finding, Location, Report } from './types.js';
+
 const sensitiveKey = /(?:secret|token|password|passwd|api[_-]?key|cookie|authorization|credential|private[_-]?key|client[_-]?secret)/i;
 
 export function redactText(text: string): string {
@@ -25,4 +27,45 @@ export function redact<T>(value: T, envValues: string[] = []): T {
     return v;
   };
   return walk(value);
+}
+
+/** Apply captured private values to scan payloads while retaining engine-generated report structure. */
+export function redactScanReport(report: Report, privateValues: string[]): Report {
+  const scrub = <T>(value: T): T => redact(value, privateValues);
+  const location = (value: Location): Location => ({
+    ...value, path: scrub(value.path), ...(value.key === undefined ? {} : { key: scrub(value.key) }),
+  });
+  const finding = (value: Finding): Finding => ({
+    ...value, message: scrub(value.message), why: scrub(value.why), suggestion: scrub(value.suggestion),
+    location: location(value.location), related: value.related.map(location),
+  });
+  return {
+    ...report,
+    ...(report.inputs ? { inputs: { codexProfile: scrub(report.inputs.codexProfile) } } : {}),
+    ...(report.pathMappings ? { pathMappings: report.pathMappings.map(mapping => ({ path: scrub(mapping.path), replacement: scrub(mapping.replacement) })) } : {}),
+    repository: scrub(report.repository), target: scrub(report.target), sessionDirectory: scrub(report.sessionDirectory),
+    assumptions: report.assumptions.map(scrub),
+    sources: report.sources.map(source => ({
+      ...source, path: scrub(source.path), relativePath: scrub(source.relativePath),
+      ...(source.preview === undefined ? {} : { preview: scrub(source.preview) }),
+    })),
+    clients: report.clients.map(client => ({
+      ...client, metadata: structuredClone(client.metadata),
+      executable: scrub(client.executable), instructions: scrub(client.instructions), notes: client.notes.map(scrub),
+      decisions: client.decisions.map(decision => ({
+        ...decision, path: scrub(decision.path), reason: scrub(decision.reason), content: scrub(decision.content),
+        ...(decision.importedFrom ? { importedFrom: location(decision.importedFrom) } : {}),
+      })),
+      settings: client.settings.map(setting => ({
+        ...setting, key: scrub(setting.key), value: scrub(setting.value), reason: scrub(setting.reason),
+        location: location(setting.location), overrides: setting.overrides.map(location),
+      })),
+      extensions: client.extensions.map(extension => ({
+        ...extension, name: scrub(extension.name), config: scrub(extension.config), reason: scrub(extension.reason), location: location(extension.location),
+      })),
+      findings: client.findings.map(finding),
+    })),
+    findings: report.findings.map(finding),
+    diff: report.diff.map(entry => ({ ...entry, content: scrub(entry.content), sources: entry.sources.map(location) })),
+  };
 }

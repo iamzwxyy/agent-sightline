@@ -37,7 +37,9 @@ Reports write only when `--output` is supplied. Output uses a temporary sibling 
 
 JSON `schemaVersion: "1.0"` includes tool, repository, target, sessionDirectory, assumptions, sources, clients, findings and diff. A finding has `id`, `ruleId`, `severity`, optional `client`, `message`, `location: {path,line,column,key?}`, `related`, `why` and `suggestion`. Missing/invalid config is a finding, not a crashed scan.
 
-Sources may include an additive `preview` string containing the redacted source file. Internal account/session state files omit this preview. The inspector uses previews for line-numbered source navigation. Snapshot reports retain source exploration and comparison while live target rescanning remains in the local UI.
+Captured private values are redacted from configuration payloads, source text, paths and diagnostic prose. Engine-generated client IDs, statuses, rule IDs, source IDs and version metadata retain their stable JSON representation. Exporters apply credential redaction again to caller-modified reports.
+
+Sources may include an additive `preview` string containing the redacted source file. Internal account/session state and syntax-invalid files omit this preview. Parser recovery can discard environment values or duplicate definitions, so syntax-invalid sources retain their diagnostic locations and loading decisions without raw previews. After correcting their syntax, rescan to view a redacted preview. The inspector uses available previews for line-numbered source navigation. Snapshot reports retain source exploration and comparison while live target rescanning remains in the local UI.
 
 The browser's Export report action saves the most recent successful inspection. Configuration edits appear after Refresh scan. Exports during an in-flight or failed refresh keep the last displayed report, including its target, trust and selected Codex profile.
 

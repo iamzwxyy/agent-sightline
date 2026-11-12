@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.6 — 2026-11-13
+
+* Preserve engine-generated report fields, client identifiers, statuses, rule IDs, source links and version metadata when private environment values match those strings.
+* Apply captured private values to configuration payloads, source text, paths and diagnostic prose. Renderers continue to redact caller-modified reports before export.
+* Omit syntax-invalid source previews because parser recovery can discard private values, including earlier duplicate definitions. Retain precise findings and source-loading decisions, with an inspector prompt to correct the syntax and rescan.
+* Verify these cases through the scan API, CLI CI thresholds, live/offline browser navigation and the installed package.
+
 ## 0.2.5 — 2026-11-13
 
 * Scope parser, field, glob and MCP-shape diagnostics to the selected client owners. Retain source previews and loading decisions across discovered clients.

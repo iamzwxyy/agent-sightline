@@ -420,7 +420,7 @@
         code.append(node('div', 'Byte limit reached · content below is not loaded', 'byte-limit-marker'));
       }
     });
-    else code.append(empty('No source preview available', source.bytes === 0 ? 'This configuration file is empty.' : 'This report includes the source’s loading decision and provenance in Source details.'));
+    else code.append(empty('No source preview available', source.bytes === 0 ? 'This configuration file is empty.' : source.status === 'invalid' ? 'Correct the syntax at the reported location and rescan to view a redacted preview.' : 'This report includes the source’s loading decision and provenance in Source details.'));
     content.push(code);
     $('instructions').replaceChildren(...content);
     $('copy-source').disabled = !preview.text;

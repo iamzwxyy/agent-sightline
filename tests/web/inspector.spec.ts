@@ -10,6 +10,43 @@ import AxeBuilder from '@axe-core/playwright';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('private environment literals preserve inspector navigation and syntax-invalid previews stay private online and offline', async ({ page }) => {
+  const w = await workspace({
+    'AGENTS.md': 'codex active 1',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { CLIENT: 'codex', STATUS: 'active', NUMBER: '1', RULE: 'parse.duplicate-key', SEVERITY: 'error', FIELD: 'clients' } } } }),
+    '.claude/settings.local.json': '{\n "env": {\n "NORMAL": "discarded-preview-sentinel",\n "NORMAL": "later-value"\n }\n}',
+  });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    for (const offline of [false, true]) {
+      if (offline) {
+        const pending = page.waitForEvent('download');
+        await page.getByRole('button', { name: /Export report/ }).click();
+        const file = test.info().outputPath('private-environment.html');
+        await (await pending).saveAs(file);
+        expect(await readFile(file, 'utf8')).not.toContain('discarded-preview-sentinel');
+        await page.goto(pathToFileURL(file).href);
+      }
+      const report = JSON.parse(await page.locator('#report-data').textContent() ?? 'null');
+      expect(report.schemaVersion).toBe('1.0');
+      expect(report.clients.map((client: any) => client.client)).toEqual(['codex', 'claude']);
+      await page.getByRole('button', { name: 'Inspect Codex instructions', exact: true }).click();
+      await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+      await expect(page.locator('#effective-document .effective-text')).toHaveText('[REDACTED] [REDACTED] [REDACTED]');
+      await page.locator('#findings-tab').click();
+      await page.locator('#severity').selectOption('error');
+      await page.locator('#findings-list .finding').filter({ hasText: 'Duplicate key "NORMAL".' }).click();
+      await expect(page.locator('#detail-dialog')).toContainText('line 4, column 2');
+      await page.getByRole('button', { name: /Inspect source/ }).click();
+      await expect(page.locator('#source-status')).toHaveText('Invalid');
+      await expect(page.locator('#instructions')).toContainText('Correct the syntax at the reported location and rescan to view a redacted preview.');
+      await expect(page.getByRole('button', { name: 'Copy source content', exact: true })).toBeDisabled();
+      if (!offline) await page.screenshot({ path: test.info().outputPath('private-syntax-preview.png') });
+    }
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('selected Codex diagnostics keep hook review state and foreign syntax errors in their own roles', async ({ page }) => {
   const w = await workspace({ 'AGENTS.md': 'Repository instructions.', '.claude/settings.local.json': '{ broken JSON' }, {
     '.codex/config.toml': '[hooks.state.fixture]\nenabled=false\ntrusted_hash="reviewed-fixture-hash"\n',
