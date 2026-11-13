@@ -103,14 +103,14 @@ export function hooks(e: Effective, s: Source, value: unknown, status: Status): 
     });
   }
 }
-export function permissions(e: Effective, s: Source, status: Status): void {
+export function permissions(e: Effective, s: Source, status: Status, allow = { status, reason: 'Permission lists accumulate; deny precedes ask, which precedes allow.' }): void {
   const p = s.data.permissions;
   if (s.invalid || p === undefined) return;
   if (!plainObject(p)) { e.findings.push(finding('permission.type', 'error', locate(s, 'permissions'), 'Permissions must be an object.', 'Permission lists cannot be read from this value.', 'Use an object containing allow, ask or deny arrays.', e.client)); return; }
   for (const action of ['allow', 'deny', 'ask']) {
     if (p[action] === undefined) continue;
     if (!Array.isArray(p[action]) || p[action].some((x: unknown) => typeof x !== 'string')) { e.findings.push(finding('permission.type', 'error', locate(s, `permissions.${action}`), `permissions.${action} must contain strings.`, 'Invalid permission rules cannot be applied.', 'Use an array of permission rule strings.', e.client)); continue; }
-    p[action].forEach((rule: string, index: number) => e.extensions.push({ kind: 'permission', name: rule, config: { action }, status, location: locate(s, `permissions.${action}.${index}`), reason: 'Permission lists accumulate; deny precedes ask, which precedes allow.' }));
+    p[action].forEach((rule: string, index: number) => e.extensions.push({ kind: 'permission', name: rule, config: { action }, status: action === 'allow' ? allow.status : status, location: locate(s, `permissions.${action}.${index}`), reason: action === 'allow' ? allow.reason : 'Permission lists accumulate; deny precedes ask, which precedes allow.' }));
   }
 }
 export async function skills(e: Effective, ctx: Context, roots: string[], behavior: 'coexist' | 'first', ignoredRoots: string[] = []): Promise<void> {

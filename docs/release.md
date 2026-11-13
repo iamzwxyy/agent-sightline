@@ -7,13 +7,13 @@ npm ci
 npm run check
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.3.2.tgz
+npm install -g ./agent-sightline-0.3.3.tgz
 agent-sightline demo
 ```
 
 `npm ci` uses the committed lockfile. Build uses pinned TypeScript and copies static assets plus a version-pinned schema. `npm run smoke` packs to a temporary directory, performs a real isolated offline installation with an empty npm cache, executes the installed resolver/version, and writes an installed HTML report. The package bundles its production dependency tree and dependency license files. The smoke test installs into a temporary prefix.
 
-The public website distributes the tested tarball and the source repository is public. For the first npm publication, log in with the account that will own `agent-sightline` and publish the verified GitHub Release tarball with `npm publish ./agent-sightline-0.3.2.tgz --access public`. The initial package publication enables configuration of npm trusted publishing for this repository and the `npm-release` environment.
+The public website distributes the tested tarball and the source repository is public. For the first npm publication, log in with the account that will own `agent-sightline` and publish the verified GitHub Release tarball with `npm publish ./agent-sightline-0.3.3.tgz --access public`. The initial package publication enables configuration of npm trusted publishing for this repository and the `npm-release` environment.
 
 The tag-triggered release workflow verifies the tag, waits for the OS matrix, and publishes new versions with provenance through the configured trusted publisher. It reports when the first authenticated publication is still required. An already-published version is detected and skipped, allowing verification of the initial tag and safe workflow retries. Promote registry install commands after confirming that the package is published.
 

@@ -33,6 +33,8 @@ SIGINT and SIGTERM interruptions stop active probes before returning exit code 1
 
 No-argument runs include explicit documented user configuration locations. Use `--no-user` for repository-only CI. Unknown project trust is conditional. `--trust trusted` models a trusted session and, for Claude project MCP, approved servers; it does not change the client’s real trust state.
 
+Claude shared-project permission grants and additionalDirectories entries remain conditional under unknown trust and ignored under explicit untrusted state. Local grants without explicit trusted state remain conditional because native Git/session checks can admit or withhold them. User/system grants and restrictive ask/deny entries have their own applicability. Permission masking checks exact and tool-wide coverage in deny → ask → allow order. Findings and shadowed entries retain every matching source at the highest overriding priority. EndConversation ask rules are ignored, and its deny rules depend on the uncaptured tool inventory.
+
 Reports write only when `--output` is supplied. Output uses a temporary sibling and atomic rename; invalid CLI input does not create partial files. The UI never writes user configuration. The default scan never executes a client, hook, MCP server or skill script.
 
 JSON `schemaVersion: "1.0"` includes tool, repository, target, sessionDirectory, assumptions, sources, clients, findings and diff. A finding has `id`, `ruleId`, `severity`, optional `client`, `message`, `location: {path,line,column,key?}`, `related`, `why` and `suggestion`. Missing/invalid config is a finding, not a crashed scan.

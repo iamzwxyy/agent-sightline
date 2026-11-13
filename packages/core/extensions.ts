@@ -221,10 +221,25 @@ export async function validateExtensions(ctx: Context, e: Effective): Promise<Fi
       if (token && !shellBuiltin && !/[=$`{}()]/.test(token) && !(await executable(token, cwd, env))) issue('hook.command-missing', 'Hook command was not found or is not executable.', 'The literal executable cannot be found in cwd or PATH.', 'Install the executable or fix its path.');
     }
   }
-  const allows = e.extensions.filter(x => x.kind === 'permission' && x.config.action === 'allow' && x.status === 'active');
-  for (const allow of allows) {
-    const deny = e.extensions.find(x => x.kind === 'permission' && x.config.action === 'deny' && x.status === 'active' && (x.name === allow.name || x.name === '*' || x.name === allow.name.split('(')[0]));
-    if (deny) { allow.status = 'shadowed'; allow.reason = 'An exact or tool-wide deny rule takes precedence.'; out.push(finding('permission.deny-overrides-allow', 'warn', allow.location, `Deny overrides allow for "${allow.name}".`, 'Deny rules are evaluated before allow rules.', 'Remove the redundant allow or narrow the deny intentionally.', e.client, [deny.location])); }
+  const permissionRules = e.extensions.filter(rule => rule.kind === 'permission' && ['active', 'conditional'].includes(rule.status));
+  if (e.client === 'claude') for (const rule of permissionRules.filter(rule => rule.name.split('(')[0] === 'EndConversation')) {
+    if (rule.config.action === 'ask') { rule.status = 'ignored'; rule.reason = 'EndConversation bypasses ask prompts.'; }
+    if (rule.config.action === 'deny') { rule.status = 'conditional'; rule.reason = 'Claude keeps EndConversation while other tools remain. Its denial depends on the session tool inventory.'; }
+  }
+  const denies = permissionRules.filter(rule => rule.config.action === 'deny' && rule.status === 'active');
+  const asks = permissionRules.filter(rule => rule.config.action === 'ask' && rule.status === 'active');
+  for (const rule of permissionRules.filter(rule => ['allow', 'ask'].includes(rule.config.action) && ['active', 'conditional'].includes(rule.status))) {
+    const tool = rule.name.split('(')[0];
+    if (e.client === 'claude' && tool === 'EndConversation') continue;
+    const higherRules = rule.config.action === 'allow' ? [...denies, ...asks] : denies;
+    const matches = higherRules.filter(higher => higher.name === rule.name || higher.name === '*' || higher.name === tool || tool === 'Bash' && higher.name === 'Bash(*)');
+    const action = matches[0]?.config.action;
+    if (!action) continue;
+    const blockers = matches.filter(higher => higher.config.action === action);
+    const title = action === 'deny' ? 'Deny' : 'Ask';
+    rule.status = 'shadowed'; rule.reason = `An exact or tool-wide ${action} rule takes precedence.`;
+    rule.origins = blockers.map(blocker => ({ key: blocker.location.key ?? `permissions.${action}`, location: blocker.location }));
+    out.push(finding(`permission.${action}-overrides-${rule.config.action}`, 'warn', rule.location, `${title} overrides ${rule.config.action} for "${rule.name}".`, `${title} rules are evaluated before ${rule.config.action} rules.`, `Remove the redundant ${rule.config.action} or narrow the ${action} intentionally.`, e.client, blockers.map(blocker => blocker.location)));
   }
   if (!e.executable && e.detected) out.push(finding('client.not-installed', 'info', { path: ctx.repo, line: 1, column: 1 }, `${e.metadata.name} configuration found; its CLI is not on PATH.`, 'Configuration can be diagnosed without installing the client.', 'Install the client before relying on these project extensions.', e.client));
   return out;

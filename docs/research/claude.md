@@ -1,6 +1,6 @@
 # Claude evidence ledger
 
-Verified 2026-11-13 against Claude Code 2.1.322. MCP has native CLI comparisons. Instructions, settings, skills, hooks and permissions retain official-document fixtures.
+Verified 2026-11-13 against Claude Code 2.1.322. MCP and permission behavior have native CLI comparisons. Instructions, other settings, skills and hooks retain official-document fixtures.
 
 Sources: [memory/instructions](https://code.claude.com/docs/en/memory), [settings](https://code.claude.com/docs/en/settings), [MCP](https://code.claude.com/docs/en/mcp), [skills](https://code.claude.com/docs/en/skills), [permissions](https://code.claude.com/docs/en/permissions), [hooks](https://code.claude.com/docs/en/hooks).
 
@@ -15,11 +15,18 @@ Sources: [memory/instructions](https://code.claude.com/docs/en/memory), [setting
 | Settings | User → shared repository .claude/settings.json → local → optional system managed; arrays merge, scalar values override |
 | MCP | User ~/.claude.json → repository .mcp.json → current-project local entry in ~/.claude.json; whole server replacement; interactive approval conditional |
 | Skills | Personal over project bare names; body loads on invocation; nested directory-qualified variants are a recorded runtime limitation |
-| Hooks/permissions | Hook event/matcher definitions discovered; no shell execution. Exact/tool-wide deny overrides allow; no prose semantics |
+| Hooks/permissions | Hook event/matcher definitions discovered. Proven whole-rule masking follows deny → ask → allow, retaining every highest-priority origin. Bash(*) is tool-wide. EndConversation ask entries are ignored and denial depends on the remaining tool inventory |
+| Permission trust | User/system grants are independent of workspace trust. Shared project allow/additionalDirectories entries require explicit trusted state; unknown trust is conditional. Local grants without explicit trust retain native Git/session conditions. Restrictive ask/deny entries remain applicable |
 | Limits | No global 32 KiB cap. On-demand path rules beyond 40,000 characters are conditional because context/model limits vary in 2.1.309+ |
 | Invalid formats | JSON, YAML metadata, duplicate keys and known deterministic field/type errors produce findings |
 
 Fixture: `fixtures/claude/chain.json`. Tests also cover AGENTS fallback modes, imports, cycles, depth, exclusions, raw Markdown and permission masking.
+
+## Native permission checks
+
+Nineteen isolated scenarios run the pinned CLI in manual mode against a loopback scripted Messages API. The fixture supplies one Bash request to write a temporary marker, followed by a fixed completion. Synthetic credentials and static responses keep these checks independent of accounts and model services. Assertions inspect the actual marker, native tool inventory, prompt-denial output and public scan results. Cases cover exact and tool-wide ask/deny priority, Bash(*), cross-scope restrictions, trusted project/local grants and withheld shared-project grants.
+
+The native print session applies an untracked local grant after its Git check, and withholds a tracked local grant in the same untrusted folder. Static reports retain both as conditional until workspace trust is explicitly modeled. The inspection has no live-session acceptance state. General wildcard containment, session permission modes and the remaining EndConversation tool inventory retain partial scope. [Permission reference](https://code.claude.com/docs/en/permissions)
 
 Structural validation was reviewed against the official MCP, hooks and permissions references on 2026-11-13. Fixtures now cover malformed server/handler collections, typed extension fields, individual permission-entry locations and private strings inside invalid environment/header containers. Command hooks with `args` use literal executable resolution. The documented command handler fields exclude per-handler `cwd`, `env` and `commandWindows`, which receive warnings. The current hooks reference also lists `mcp_tool`; Sightline retains its declaration as hook metadata. Runtime dispatch and MCP-tool invocation remain outside this inspection.
 

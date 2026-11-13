@@ -1,14 +1,14 @@
 import path from 'node:path';
-import type { AdapterMetadata, Context, Source } from '../core/types.js';
+import type { AdapterMetadata, Context, Source, Status } from '../core/types.js';
 import { readUserTree } from '../core/discovery.js';
 import { parseSource } from '../core/parse.js';
-import { finding, locate, matches, slash, within } from '../core/utils.js';
+import { finding, locate, matches, plainObject, slash, within } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, effectiveValue, expand, finish, hooks, mcp, pathPatterns, permissions, rootOf, settings, skills } from './common.js';
 
 export const claudeMetadata: AdapterMetadata = {
   id: 'claude', name: 'Claude Code', maturity: 'verified', ruleVersion: '2.1.322', verifiedOn: '2026-11-13',
   evidence: ['https://code.claude.com/docs/en/memory', 'https://code.claude.com/docs/en/settings', 'https://code.claude.com/docs/en/mcp', 'https://code.claude.com/docs/en/skills', 'https://code.claude.com/docs/en/permissions', 'https://code.claude.com/docs/en/hooks'],
-  limitations: ['Repository boundary excludes filesystem ancestors outside --repo; they may contribute instructions.', 'No account-synced or plugin/managed-cloud configuration. AGENTS.md fallback models the documented 2.1.277+ default.', 'Path-scoped rules over 40,000 characters are conditional because model/context-specific limits cannot be inferred. No universal CLAUDE.md truncation budget is invented.', 'Nested skills may also be directory-qualified at runtime; bare-name preference is shown.'],
+  limitations: ['Repository boundary excludes filesystem ancestors outside --repo; they may contribute instructions.', 'No account-synced or plugin/managed-cloud configuration. AGENTS.md fallback models the documented 2.1.277+ default.', 'Path-scoped rules over 40,000 characters are conditional because model/context-specific limits cannot be inferred. No universal CLAUDE.md truncation budget is invented.', 'Nested skills may also be directory-qualified at runtime; bare-name preference is shown.', 'Local permission grants without explicit workspace trust depend on native Git and session checks; shown as conditional. Session permission modes and the remaining tool inventory are outside this static inspection.'],
 };
 async function discover(ctx: Context): Promise<Source[]> {
   if (ctx.options.user !== false) {
@@ -36,9 +36,23 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
   for (const s of layers) {
     const excluded = ctx.options.trust !== 'trusted' && s.scope !== 'user' && s.scope !== 'system' ? ['enableAllProjectMcpServers', 'enabledMcpjsonServers'] : [];
     const data = Object.fromEntries(Object.entries(s.data).filter(([key]) => !excluded.includes(key)));
+    const local = path.basename(s.path) === 'settings.local.json';
+    const grantStatus: Status = s.scope === 'user' || s.scope === 'system' || ctx.options.trust === 'trusted' ? 'active'
+      : local || ctx.options.trust !== 'untrusted' ? 'conditional' : 'ignored';
+    const grantReason = grantStatus === 'active' ? 'Allow rule discovered in an applicable settings layer.'
+      : local ? 'Local grants depend on workspace trust, Git tracking and session trust checks. These runtime checks are outside this inspection.'
+      : 'Shared project grants become available after workspace trust.';
+    const grants: [string, unknown][] = [];
+    if (grantStatus !== 'active' && plainObject(data.permissions)) {
+      const restricted = { ...data.permissions };
+      for (const key of ['allow', 'additionalDirectories']) if (Object.hasOwn(restricted, key)) { grants.push([key, restricted[key]]); delete restricted[key]; }
+      if (grants.length > 0 && Object.keys(restricted).length === 0) delete data.permissions;
+      else data.permissions = restricted;
+    }
     settings(e, s, 'active', true, data);
+    if (!s.invalid) for (const [key, value] of grants) e.settings.push({ key: 'permissions.' + key, value, status: grantStatus, location: locate(s, 'permissions.' + key), reason: grantReason, overrides: [] });
     if (!s.invalid) for (const key of excluded) if (s.data[key] !== undefined) e.settings.push({ key, value: s.data[key], location: locate(s, key), status: 'ignored', reason: 'Workspace MCP approval settings require explicit trust.', overrides: [] });
-    hooks(e, s, s.data.hooks, 'active'); permissions(e, s, 'active');
+    hooks(e, s, s.data.hooks, 'active'); permissions(e, s, 'active', { status: grantStatus, reason: grantReason });
   }
   const excludes = effectiveValue(e, 'claudeMdExcludes', []);
   const excluded = (s: Source) => s.scope !== 'system' && Array.isArray(excludes) && matches(slash(s.path), excludes.filter(x => typeof x === 'string'));

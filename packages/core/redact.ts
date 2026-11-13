@@ -81,10 +81,15 @@ export function redactScanReport(report: Report, scrub: ReturnType<typeof create
         ...setting, key: scrub(setting.key), value: privateSettings.has(setting.location.path + '\0' + (setting.location.key ?? setting.key)) ? '[REDACTED]' : scrub(setting.value), reason: scrub(setting.reason),
         location: location(setting.location), overrides: setting.overrides.map(location),
       })),
-      extensions: client.extensions.map(extension => ({
-        ...extension, name: scrub(extension.name), config: scrub(extension.config), reason: scrub(extension.reason), location: location(extension.location),
-        ...(extension.origins ? { origins: extension.origins.map(origin => ({ key: scrub(origin.key), location: location(origin.location) })) } : {}),
-      })),
+      extensions: client.extensions.map(extension => {
+        const config = scrub(extension.config);
+        // Permission actions are generated enums, like client IDs and statuses.
+        if (extension.kind === 'permission' && ['allow', 'ask', 'deny'].includes(extension.config.action)) config.action = extension.config.action;
+        return {
+          ...extension, name: scrub(extension.name), config, reason: scrub(extension.reason), location: location(extension.location),
+          ...(extension.origins ? { origins: extension.origins.map(origin => ({ key: scrub(origin.key), location: location(origin.location) })) } : {}),
+        };
+      }),
       findings: client.findings.map(finding),
     })),
     findings: report.findings.map(finding),

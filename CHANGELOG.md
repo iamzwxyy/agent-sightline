@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3 — 2026-11-13
+
+* Resolve proven permission masking in deny → ask → allow order. Recognize Bash(*) as tool-wide and retain every matching highest-priority source.
+* Link shadowed permission entries to their overriding rules in terminal explanations, the local inspector and offline HTML reports.
+* Keep shared Claude project grants conditional under unknown workspace trust and excluded under explicit untrusted state. Retain local grants as conditional when native Git/session checks are outside the inspection, while applying restrictions independently.
+* Preserve the EndConversation permission exception and generated permission actions during private-value redaction.
+* Drive the pinned Claude CLI through nineteen isolated permission scenarios with a local scripted Messages API, alongside CLI correction, browser navigation and installed-package checks.
+
 ## 0.3.2 — 2026-11-13
 
 * Apply Copilot ignoredSkillsLocations before skill-name precedence, including home-relative paths and registered personal-setting aliases. Retain excluded sources with their reason while allowing the next eligible same-name skill to contribute.

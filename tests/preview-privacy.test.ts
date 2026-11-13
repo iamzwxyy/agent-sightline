@@ -7,6 +7,23 @@ import { workspace } from './helpers.js';
 import { html, json, portable, terminal } from '../packages/reporter/index.js';
 import { adapters } from '../packages/adapters/index.js';
 import { VERSION } from '../packages/core/version.js';
+import { createRedactor, redactScanReport } from '../packages/core/redact.js';
+
+test('permission actions retain generated enums while captured values remain private', async t => {
+  const w = await workspace({ '.claude/settings.json': JSON.stringify({ env: { ALLOW: 'allow', ASK: 'ask', DENY: 'deny' }, permissions: { allow: ['Bash(fixture)'], ask: ['Bash'], deny: ['Bash'] } }) });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  for (const value of [report, JSON.parse(json(report)), portable(report)]) {
+    assert.deepEqual(value.clients[0].extensions.map((rule: any) => rule.config.action).sort(), ['allow', 'ask', 'deny']);
+    assert.ok(value.clients[0].settings.filter((setting: any) => setting.key.startsWith('env.')).every((setting: any) => setting.value === '[REDACTED]'));
+  }
+  const changed = structuredClone(report);
+  changed.clients[0].extensions[0].config.action = 'permission-private-sentinel';
+  assert.equal(redactScanReport(changed, createRedactor(['permission-private-sentinel']), new Set()).clients[0].extensions[0].config.action, '[REDACTED]');
+  changed.clients[0].extensions[0].kind = 'mcp';
+  changed.clients[0].extensions[0].config.action = 'allow';
+  assert.equal(redactScanReport(changed, createRedactor(['allow']), new Set()).clients[0].extensions[0].config.action, '[REDACTED]');
+});
 
 test('parsed source values redact escaped and multiline secrets while preserving source lines', async t => {
   const cases = [

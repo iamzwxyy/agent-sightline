@@ -346,3 +346,98 @@ test('permission precedence findings identify the individual allow and deny arra
   assert.equal(finding.related[0].key, 'permissions.deny.0');
   assert.equal(finding.related[0].line, 8);
 });
+
+test('permission precedence covers ask, deny and tool-wide Bash rules with exact source entries', async t => {
+  const cases = [
+    { name: 'exact ask before allow', permissions: { allow: ['Bash(npm test)'], ask: ['Bash(npm test)'] }, findings: ['permission.ask-overrides-allow'] },
+    { name: 'tool-wide ask before allow', permissions: { allow: ['Bash(npm test)'], ask: ['Bash'] }, findings: ['permission.ask-overrides-allow'] },
+    { name: 'Bash wildcard ask before allow', permissions: { allow: ['Bash(npm test)'], ask: ['Bash(*)'] }, findings: ['permission.ask-overrides-allow'] },
+    { name: 'exact deny before ask', permissions: { ask: ['Bash(npm test)'], deny: ['Bash(npm test)'] }, findings: ['permission.deny-overrides-ask'] },
+    { name: 'tool-wide deny before ask', permissions: { ask: ['Bash(npm test)'], deny: ['Bash'] }, findings: ['permission.deny-overrides-ask'] },
+    { name: 'Bash wildcard deny before both', permissions: { allow: ['Bash(npm test)'], ask: ['Bash(npm test)'], deny: ['Bash(*)'] }, findings: ['permission.deny-overrides-allow', 'permission.deny-overrides-ask'] },
+    { name: 'deny remains ahead of ask', permissions: { allow: ['Bash(npm test)'], ask: ['Bash'], deny: ['Bash'] }, findings: ['permission.deny-overrides-allow', 'permission.deny-overrides-ask'] },
+    { name: 'narrow ask keeps broader allow', permissions: { allow: ['Bash'], ask: ['Bash(npm test)'] }, findings: [] },
+    { name: 'different specifier keeps allow', permissions: { allow: ['Bash(npm test)'], ask: ['Bash(git status)'] }, findings: [] },
+    { name: 'different tool keeps allow', permissions: { allow: ['Bash(npm test)'], ask: ['Read'] }, findings: [] },
+    { name: 'Read wildcard is not a bare tool rule', permissions: { allow: ['Read'], ask: ['Read(*)'] }, findings: [] },
+  ];
+  for (const scenario of cases) await t.test(scenario.name, async scenarioTest => {
+    const content = JSON.stringify({ permissions: scenario.permissions }, null, 2);
+    const w = await workspace({ '.claude/settings.json': content });
+    scenarioTest.after(() => rm(w.root, { recursive: true, force: true }));
+    const report = await scan({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+    const findings = report.findings.filter(finding => finding.ruleId.startsWith('permission.'));
+    assert.deepEqual(findings.map(finding => finding.ruleId).sort(), [...scenario.findings].sort());
+    for (const finding of findings) {
+      const action = finding.ruleId.endsWith('-allow') ? 'allow' : 'ask';
+      const blockingAction = finding.ruleId.includes('.deny-') ? 'deny' : 'ask';
+      assert.equal(finding.location.key, 'permissions.' + action + '.0');
+      assert.ok(content.split('\n')[finding.location.line - 1].includes(scenario.permissions[action]![0]));
+      assert.equal(finding.related[0].key, 'permissions.' + blockingAction + '.0');
+      assert.ok(content.split('\n')[finding.related[0].line - 1].includes(scenario.permissions[blockingAction]![0]));
+      const extension = report.clients[0].extensions.find(extension => extension.location.key === finding.location.key)!;
+      assert.equal(extension.status, 'shadowed');
+      assert.deepEqual(extension.origins?.map(origin => origin.location), finding.related);
+    }
+    if (!findings.length) assert.ok(report.clients[0].extensions.filter(extension => extension.config.action === 'allow').every(extension => extension.status === 'active'));
+  });
+});
+
+test('permission precedence retains every matching highest-priority source across settings layers', async t => {
+  const w = await workspace({
+    '.claude/settings.json': '{\n"permissions":{"deny":[\n"Bash(*)"\n],"ask":["Bash"]}\n}',
+    '.claude/settings.local.json': '{\n"permissions":{"allow":[\n"Bash(npm test)"\n]}\n}',
+  }, { '.claude/settings.json': '{\n"permissions":{"deny":[\n"Bash"\n]}\n}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['claude'], trust: 'trusted' });
+  const finding = report.findings.find(finding => finding.ruleId === 'permission.deny-overrides-allow')!;
+  assert.equal(finding.location.path, path.join(w.repo, '.claude/settings.local.json'));
+  assert.equal(finding.location.key, 'permissions.allow.0');
+  assert.equal(finding.location.line, 3);
+  assert.deepEqual(finding.related.map(location => [location.path, location.key, location.line]), [
+    [path.join(w.home, '.claude/settings.json'), 'permissions.deny.0', 3],
+    [path.join(w.repo, '.claude/settings.json'), 'permissions.deny.0', 3],
+  ]);
+  assert.ok(!report.findings.some(finding => finding.ruleId === 'permission.ask-overrides-allow'));
+});
+
+test('EndConversation permission rules retain their documented tool-inventory exception', async t => {
+  const w = await workspace({ '.claude/settings.json': JSON.stringify({ permissions: { allow: ['EndConversation'], ask: ['EndConversation'], deny: ['EndConversation'] } }) });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  const rules = report.clients[0].extensions;
+  assert.equal(rules.find(rule => rule.config.action === 'ask')?.status, 'ignored');
+  assert.equal(rules.find(rule => rule.config.action === 'deny')?.status, 'conditional');
+  assert.match(rules.find(rule => rule.config.action === 'deny')!.reason, /tool inventory/);
+  assert.ok(!report.findings.some(finding => finding.ruleId.startsWith('permission.')));
+});
+
+test('Claude permission grants retain trust conditions without suppressing restrictions or user grants', async t => {
+  const w = await workspace({
+    '.claude/settings.json': JSON.stringify({ permissions: { allow: ['Bash(project-fixture)'], ask: ['Read'], deny: ['WebFetch'], additionalDirectories: ['project-directory'] } }),
+    '.claude/settings.local.json': JSON.stringify({ permissions: { allow: ['Bash(local-fixture)'], additionalDirectories: ['local-directory'] } }),
+  }, { '.claude/settings.json': JSON.stringify({ permissions: { allow: ['Bash(user-fixture)'], additionalDirectories: ['user-directory'] } }) });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  for (const trust of ['auto', 'trusted', 'untrusted'] as const) {
+    const report = await scan({ ...w, clients: ['claude'], trust });
+    const client = report.clients[0];
+    const rules = client.extensions.filter(extension => extension.kind === 'permission');
+    const project = trust === 'trusted' ? 'active' : trust === 'untrusted' ? 'ignored' : 'conditional';
+    assert.equal(rules.find(rule => rule.name === 'Bash(project-fixture)')?.status, project);
+    assert.equal(rules.find(rule => rule.name === 'Bash(local-fixture)')?.status, trust === 'trusted' ? 'active' : 'conditional');
+    assert.equal(rules.find(rule => rule.name === 'Bash(user-fixture)')?.status, 'active');
+    assert.ok(rules.filter(rule => rule.config.action !== 'allow').every(rule => rule.status === 'active'));
+    for (const key of ['permissions.allow', 'permissions.additionalDirectories']) {
+      const settings = client.settings.filter(setting => setting.key === key);
+      if (trust === 'trusted') assert.equal(settings.filter(setting => setting.status === 'active').length, 1);
+      else {
+        assert.equal(settings.find(setting => setting.location.path === path.join(w.repo, '.claude/settings.json'))?.status, project);
+        assert.equal(settings.find(setting => setting.location.path === path.join(w.repo, '.claude/settings.local.json'))?.status, 'conditional');
+        assert.equal(settings.find(setting => setting.location.path === path.join(w.home, '.claude/settings.json'))?.status, 'active');
+      }
+    }
+  }
+  await writeFile(path.join(w.repo, '.claude/settings.json'), '{"permissions":{}}');
+  const empty = await scan({ ...w, user: false, clients: ['claude'] });
+  assert.deepEqual(empty.clients[0].settings.find(setting => setting.key === 'permissions' && setting.status === 'active')?.value, {});
+});

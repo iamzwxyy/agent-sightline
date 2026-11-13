@@ -1,5 +1,17 @@
 # Release validation
 
+## v0.3.3
+
+Verified locally on macOS with Node 22.23.5 on 2026-11-13.
+
+* Lint, strict TypeScript, build and empty-cache offline installation passed. The 264-case core suite completed with 263 passes and one Windows-only skip.
+* Nineteen isolated Claude 2.1.322 runs use a loopback scripted Messages API with synthetic credentials and fixed tool requests. They inspect actual temporary-marker creation, tool availability and prompt-denial output, covering exact/tool-wide ask and deny precedence, cross-scope rules, shared-project trust and local Git/session boundaries.
+* Targeted permission regressions failed before the implementation and passed afterward. Source assertions cover each allow/ask/deny array entry, every highest-priority overriding origin, narrower rules that leave broader grants applicable, Bash(*), EndConversation's inventory condition and captured private values matching generated permission-action enums.
+* CLI checks cover trust assumptions, source lines, terminal origins, warning thresholds under severity filtering, portable export and correction. Installed-package smoke independently verifies ask masking, source origins, conditional grants and redacted portable findings.
+* Shared-project grants retain explicit trust states in both structured settings and permission entries. Local grants without explicit trusted state remain conditional because the static report has no live-session Git-check acceptance state. Native print runs demonstrate an untracked local grant being admitted and a tracked one being withheld.
+* The added browser journey opens the masked grant and its overriding rule, verifies source lines online and offline, changes the trust assumption, then refreshes after the rule is corrected.
+* All forty-nine local Chromium browser cases passed, including the existing accessibility, phone, history, cancellation, export and website-motion coverage.
+
 ## v0.3.2
 
 Verified locally on macOS with Node 22.23.5 on 2026-11-13.

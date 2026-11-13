@@ -14,6 +14,52 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('permission masking follows the overriding rule in live and portable reports and responds to correction', async ({ page }) => {
+  const w = await workspace({
+    '.claude/settings.json': '{\n"permissions":{"ask":[\n"Bash"\n]}\n}',
+    '.claude/settings.local.json': '{"permissions":{"allow":["Read"]}}',
+  }, { '.claude/settings.json': '{\n"permissions":{"allow":[\n"Bash(npm test)"\n]}\n}' });
+  const server = await serve({ ...w, clients: ['claude'] });
+  try {
+    await page.goto(server.url);
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('permission-precedence.html');
+    await (await download).saveAs(file);
+    const content = await readFile(file, 'utf8');
+    for (const root of [w.repo, await realpath(w.repo), w.home, await realpath(w.home)]) expect(content).not.toContain(JSON.stringify(root).slice(1, -1));
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.goto(url);
+      await page.locator('#findings-tab').click();
+      await page.locator('#findings-list .finding').filter({ hasText: 'Ask overrides allow' }).click();
+      await page.getByRole('button', { name: /Inspect source/ }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('Bash(npm test)');
+      await expect(page.locator('.code-line.highlight .line-number')).toHaveText('3');
+      await page.locator('#extensions-tab').click();
+      await expect(page.locator('.extension-row').filter({ hasText: 'Read' }).locator('.status.conditional')).toHaveCount(1);
+      const shadowed = page.locator('.extension-row').filter({ hasText: 'Bash(npm test)' });
+      await expect(shadowed.locator('.status.shadowed')).toHaveCount(1);
+      await shadowed.click();
+      await expect(page.getByRole('heading', { name: 'Overriding rules', exact: true })).toBeVisible();
+      await page.locator('.extension-origins').getByRole('button', { name: /^permissions.ask.0 ·/ }).click();
+      await expect(page.locator('#source-title')).toHaveText('.claude/settings.json');
+      await expect(page.locator('.code-line.highlight')).toContainText('"Bash"');
+      await expect(page.locator('.code-line.highlight .line-number')).toHaveText('3');
+    }
+    await page.context().setOffline(false);
+    await page.goto(server.url);
+    await page.locator('#trust').selectOption('trusted');
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+    await page.locator('#extensions-tab').click();
+    await expect(page.locator('.extension-row').filter({ hasText: 'Read' }).locator('.status.active')).toHaveCount(1);
+    await writeFile(path.join(w.repo, '.claude/settings.json'), '{"permissions":{"ask":[]}}');
+    await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+    await expect(page.locator('.extension-row').filter({ hasText: 'Bash(npm test)' }).locator('.status.active')).toHaveCount(1);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('Copilot excluded skill directories retain their explanation, fallback and setting source offline', async ({ page }) => {
   const w = await workspace({
     '.github/skills/shared/SKILL.md': '---\nname: shared\ndescription: Excluded project skill.\n---\nInstructions.\n',

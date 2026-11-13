@@ -2,7 +2,6 @@
 
 These are proposed work items, not claims of implemented behavior.
 
-* Add a fixture proving permission diagnostics at each structured allow/ask/deny location.
 * Add localized terminal descriptions without changing rule IDs or JSON fields.
 * Add file-based Claude model/context-size inputs for exact on-demand character truncation.
 * Improve terminal summary grouping of repeated cross-client findings without losing full JSON detail.

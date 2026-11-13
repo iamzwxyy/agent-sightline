@@ -601,7 +601,9 @@
     content.append(badge(extension.status), title, node('p', extension.reason), node('p', `${short(extension.location.path)} · line ${extension.location.line}`, 'path'), node('h3', client === 'claude' && extension.kind === 'mcp' ? 'Declared configuration' : 'Configuration'), node('pre', JSON.stringify(extension.config, null, 2)));
     if (extension.origins?.length) {
       const origins = node('div', undefined, 'extension-origins setting-origins');
-      origins.append(node('h3', extension.kind === 'skill' ? 'Availability setting' : 'Field definitions'));
+      const heading = extension.kind === 'skill' ? 'Availability setting'
+        : extension.kind === 'permission' ? 'Overriding rules' : 'Field definitions';
+      origins.append(node('h3', heading));
       const mappings = [...report.pathMappings ?? []].filter(mapping => !mapping.replacement.startsWith('<repo>')).sort((a, b) => b.path.length - a.path.length);
       for (const origin of extension.origins) {
         const filename = origin.location.path;

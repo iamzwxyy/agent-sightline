@@ -7,6 +7,40 @@ import { mkdir, readFile, readdir, realpath, rm, watch, writeFile } from 'node:f
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
+test('CLI explains ask precedence, trust conditions and the original rule sources through correction', async t => {
+  const content = JSON.stringify({ permissions: { allow: ['Bash(npm test)', 'Read'], ask: ['Bash'] } }, null, 2);
+  const w = await workspace({ '.claude/settings.json': content });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const flags = ['--client', 'claude', '--no-user'];
+  const initial = JSON.parse(run(['scan', ...flags, '--json'], w.repo).stdout);
+  assert.equal(initial.clients[0].extensions.find((rule: any) => rule.name === 'Read').status, 'conditional');
+  const untrusted = JSON.parse(run(['scan', ...flags, '--trust', 'untrusted', '--json'], w.repo).stdout);
+  assert.ok(untrusted.clients[0].extensions.filter((rule: any) => rule.config.action === 'allow').every((rule: any) => rule.status === 'ignored'));
+  const checked = run(['ci', ...flags, '--trust', 'trusted', '--fail-on', 'warn'], w.repo);
+  assert.equal(checked.status, 1, checked.stderr);
+  const report = JSON.parse(checked.stdout);
+  const finding = report.findings.find((finding: any) => finding.ruleId === 'permission.ask-overrides-allow');
+  assert.equal(finding.location.key, 'permissions.allow.0');
+  assert.equal(finding.related[0].key, 'permissions.ask.0');
+  assert.ok(content.split('\n')[finding.location.line - 1].includes('Bash(npm test)'));
+  const hidden = run(['ci', ...flags, '--trust', 'trusted', '--fail-on', 'warn', '--severity', 'error'], w.repo);
+  assert.equal(hidden.status, 1, hidden.stderr);
+  assert.deepEqual(JSON.parse(hidden.stdout).findings, []);
+  const explained = run(['explain', '.', ...flags, '--trust', 'trusted'], w.repo);
+  assert.equal(explained.status, 0, explained.stderr);
+  assert.ok(explained.stdout.includes('Ask overrides allow'));
+  assert.ok(explained.stdout.includes('permissions.ask.0 ← ' + finding.related[0].path + ':' + finding.related[0].line));
+  const file = path.join(w.root, 'permission-sources.html');
+  assert.equal(run(['report', ...flags, '--trust', 'trusted', '--format', 'html', '--output', file], w.repo).status, 0);
+  const exported = await readFile(file, 'utf8');
+  for (const root of [w.repo, await realpath(w.repo)]) assert.ok(!exported.includes(JSON.stringify(root).slice(1, -1)));
+  const snapshot = JSON.parse(exported.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
+  assert.equal(snapshot.clients[0].extensions.find((rule: any) => rule.name === 'Bash(npm test)').origins[0].location.key, 'permissions.ask.0');
+  await writeFile(path.join(w.repo, '.claude/settings.json'), JSON.stringify({ permissions: { allow: ['Bash(npm test)', 'Read'] } }));
+  const corrected = run(['ci', ...flags, '--trust', 'trusted', '--fail-on', 'warn'], w.repo);
+  assert.equal(corrected.status, 0, corrected.stderr);
+  assert.ok(JSON.parse(corrected.stdout).clients[0].extensions.every((rule: any) => rule.status === 'active'));
+});
 test('CLI follows Copilot personal alias failures through correction and portable export', async t => {
   const w = await workspace({ '.mcp.json': '{"mcpServers":{"fixture":{"command":"missing-personal-alias-cli-command"}}}' }, { '.copilot/settings.json': '{\n"disabled_mcp_servers":[42],\n"disable_all_hooks":true\n}' });
   t.after(() => rm(w.root, { recursive: true, force: true }));

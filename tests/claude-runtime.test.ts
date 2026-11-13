@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import type { AddressInfo } from 'node:net';
 import { mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { claudeMetadata } from '../packages/adapters/claude.js';
@@ -36,6 +39,89 @@ test('the MCP conformance checks use the pinned Claude binary', async t => {
   t.after(() => rm(w.root, { recursive: true, force: true }));
   assert.equal(runtimePackage.version, claudeMetadata.ruleVersion);
   assert.equal(execFileSync(runtime, ['--version'], { env: isolatedEnvironment(w.home), encoding: 'utf8' }).trim(), claudeMetadata.ruleVersion + ' (Claude Code)');
+});
+
+test('Claude permission precedence and trust boundaries use the pinned CLI with a local scripted API', { timeout: 120000 }, async t => {
+  const marker = 'permission-marker.txt';
+  const command = `node -e "require('node:fs').writeFileSync('${marker}','permission-fixture')"`;
+  const exact = `Bash(${command})`;
+  const cases = [
+    { name: 'exact allow', user: { allow: [exact] }, allowed: true },
+    { name: 'exact ask before allow', user: { allow: [exact], ask: [exact] }, allowed: false, rule: 'permission.ask-overrides-allow' },
+    { name: 'tool-wide ask before allow', user: { allow: [exact], ask: ['Bash'] }, allowed: false, rule: 'permission.ask-overrides-allow' },
+    { name: 'Bash wildcard ask before allow', user: { allow: [exact], ask: ['Bash(*)'] }, allowed: false, rule: 'permission.ask-overrides-allow' },
+    { name: 'exact deny before allow', user: { allow: [exact], deny: [exact] }, allowed: false, rule: 'permission.deny-overrides-allow' },
+    { name: 'deny before ask and allow', user: { allow: [exact], ask: [exact], deny: ['Bash'] }, allowed: false, rule: 'permission.deny-overrides-allow', removed: true },
+    { name: 'user ask before project allow', user: { ask: ['Bash'] }, project: { allow: [exact] }, allowed: false, rule: 'permission.ask-overrides-allow' },
+    { name: 'project ask before user allow', user: { allow: [exact] }, project: { ask: ['Bash'] }, allowed: false, rule: 'permission.ask-overrides-allow' },
+    { name: 'user deny before local allow', user: { deny: ['Bash'] }, local: { allow: [exact] }, allowed: false, rule: 'permission.deny-overrides-allow', removed: true },
+    { name: 'project wildcard deny before local allow', user: { ask: ['Bash'] }, project: { deny: ['Bash(*)'] }, local: { allow: [exact] }, allowed: false, rule: 'permission.deny-overrides-allow', removed: true },
+    { name: 'different ask keeps allow', user: { allow: [exact], ask: ['Bash(unrelated-fixture)'] }, allowed: true },
+    { name: 'narrow ask keeps broader allow', user: { allow: ['Bash'], ask: ['Bash(unrelated-fixture)'] }, allowed: true },
+    { name: 'trusted project grant', user: {}, project: { allow: [exact] }, allowed: true },
+    { name: 'untrusted project grant', user: {}, project: { allow: [exact] }, trusted: false, allowed: false, status: 'ignored' },
+    { name: 'user grant independent of workspace trust', user: { allow: [exact] }, trusted: false, allowed: true },
+    { name: 'untrusted project ask still restricts user grant', user: { allow: [exact] }, project: { ask: ['Bash'] }, trusted: false, allowed: false, rule: 'permission.ask-overrides-allow' },
+    { name: 'trusted local grant', user: {}, local: { allow: [exact] }, allowed: true },
+    { name: 'untracked local grant retains a session check', user: {}, local: { allow: [exact] }, trusted: false, allowed: true, status: 'conditional' },
+    { name: 'tracked local grant retains a session check', user: {}, local: { allow: [exact] }, trusted: false, tracked: true, allowed: false, status: 'conditional' },
+  ];
+  let messages: any[] = [];
+  const server = createServer(async (request, response) => {
+    let text = '';
+    for await (const chunk of request) text += chunk;
+    const data = JSON.parse(text);
+    if (request.url?.includes('count_tokens')) { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ input_tokens: 1 })); return; }
+    messages.push(data);
+    const useTool = messages.length === 1;
+    const block = useTool ? { type: 'tool_use', id: 'fixture-tool', name: 'Bash', input: { command, description: 'Write the isolated fixture marker.' } } : { type: 'text', text: 'Fixture complete.' };
+    const reply = { id: 'fixture-' + messages.length, type: 'message', role: 'assistant', model: data.model, content: [block], stop_reason: useTool ? 'tool_use' : 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
+    if (!data.stream) { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(reply)); return; }
+    response.setHeader('Content-Type', 'text/event-stream');
+    const event = (value: Record<string, unknown>) => response.write('event: ' + value.type + '\ndata: ' + JSON.stringify(value) + '\n\n');
+    event({ type: 'message_start', message: { ...reply, content: [], stop_reason: null } });
+    event({ type: 'content_block_start', index: 0, content_block: useTool ? { ...block, input: {} } : { type: 'text', text: '' } });
+    event({ type: 'content_block_delta', index: 0, delta: useTool ? { type: 'input_json_delta', partial_json: JSON.stringify(block.input) } : { type: 'text_delta', text: block.text } });
+    event({ type: 'content_block_stop', index: 0 });
+    event({ type: 'message_delta', delta: { stop_reason: reply.stop_reason, stop_sequence: null }, usage: { output_tokens: 1 } });
+    event({ type: 'message_stop' });
+    response.end();
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    const closed = new Promise<void>(resolve => server.close(() => resolve()));
+    server.closeAllConnections();
+    await closed;
+  });
+  for (const scenario of cases) await t.test(scenario.name, async scenarioTest => {
+    const w = await workspace({ '.claude/settings.json': JSON.stringify({ permissions: scenario.project ?? {} }), '.claude/settings.local.json': JSON.stringify({ permissions: scenario.local ?? {} }) }, { '.claude/settings.json': JSON.stringify({ permissions: scenario.user }) });
+    scenarioTest.after(() => rm(w.root, { recursive: true, force: true }));
+    const env = { ...isolatedEnvironment(w.home), ANTHROPIC_API_KEY: 'synthetic-fixture-key', ANTHROPIC_BASE_URL: 'http://127.0.0.1:' + (server.address() as AddressInfo).port };
+    execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
+    if (scenario.tracked) execFileSync('git', ['add', '.claude/settings.local.json'], { env, cwd: w.repo });
+    const trust = { hasTrustDialogAccepted: scenario.trusted !== false };
+    await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true, projects: { [w.repo]: trust, [await realpath(w.repo)]: trust } }));
+    messages = [];
+    const child = spawn(runtime, ['-p', 'Run the isolated fixture.', '--output-format', 'json', '--permission-mode', 'manual', '--permission-prompts', 'none', '--no-session-persistence', '--tools', 'Bash', '--strict-mcp-config', '--system-prompt', 'Use the fixture tool.'], { cwd: w.repo, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    let output = '', errors = '';
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { errors += chunk; });
+    const timer = setTimeout(() => child.kill('SIGKILL'), 30000);
+    try {
+      const [status] = await once(child, 'close');
+      assert.equal(status, 0, errors);
+      assert.equal(messages.length, 2);
+      assert.equal(JSON.parse(output).is_error, false);
+      assert.equal(await readFile(path.join(w.repo, marker), 'utf8').catch(() => null), scenario.allowed ? 'permission-fixture' : null);
+      if (scenario.removed) assert.ok(!messages[0].tools.some((tool: any) => tool.name === 'Bash'));
+      if (scenario.rule === 'permission.ask-overrides-allow') assert.equal(JSON.parse(output).permission_denials.length, 1);
+      const report = await scan({ ...w, clients: ['claude'], trust: scenario.trusted === false ? 'untrusted' : 'trusted' });
+      const allow = report.clients[0].extensions.find(extension => extension.kind === 'permission' && extension.config.action === 'allow')!;
+      assert.equal(allow.status, scenario.status ?? (scenario.allowed ? 'active' : 'shadowed'));
+      if (scenario.rule) assert.ok(report.findings.some(finding => finding.ruleId === scenario.rule));
+      else assert.ok(!report.findings.some(finding => finding.ruleId.startsWith('permission.')));
+    } finally { clearTimeout(timer); if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); }
+  });
 });
 
 test('Claude native settings keep strict JSON when Copilot accepts a shared JSONC source', async t => {

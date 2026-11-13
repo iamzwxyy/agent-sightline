@@ -100,6 +100,18 @@ try {
   if (typeof exportedSkillDirectory !== 'string' || exportedSkillDirectory.replaceAll('\\', '/') !== '<repo>/.github/skills') throw new Error('Installed skill exclusion root replacement failed.');
   const privateSkillPaths = [copilotRepo, realpathSync(copilotRepo), copilotHome, realpathSync(copilotHome)];
   if (privateSkillPaths.some(root => skillHtml.includes(JSON.stringify(root).slice(1, -1)))) throw new Error('Installed skill exclusion paths leaked into portable HTML.');
+  const permissionRepo = path.join(temp, 'permission-repository');
+  mkdirSync(path.join(permissionRepo, '.claude'), { recursive: true });
+  writeFileSync(path.join(permissionRepo, '.claude/settings.json'), JSON.stringify({ permissions: { allow: ['Bash(fixture)', 'Read'], ask: ['Bash'] } }));
+  const permissionArgs = ['--repo', permissionRepo, '--no-user', '--client', 'claude'];
+  const permissions = JSON.parse(execFileSync(process.execPath, [cli, ...permissionArgs, '--json'], { encoding: 'utf8' }));
+  const maskedPermission = permissions.clients[0].extensions.find(rule => rule.name === 'Bash(fixture)');
+  if (maskedPermission?.status !== 'shadowed' || maskedPermission.origins?.[0].location.key !== 'permissions.ask.0' || permissions.clients[0].extensions.find(rule => rule.name === 'Read')?.status !== 'conditional') throw new Error('Installed permission precedence or trust conditions failed.');
+  const permissionFile = path.join(temp, 'permission-precedence.html');
+  execFileSync(process.execPath, [cli, 'report', ...permissionArgs, '--format', 'html', '--output', permissionFile]);
+  const permissionHtml = readFileSync(permissionFile, 'utf8');
+  const permissionSnapshot = JSON.parse(permissionHtml.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)[1]);
+  if (!permissionSnapshot.findings.some(finding => finding.ruleId === 'permission.ask-overrides-allow') || permissionHtml.includes(JSON.stringify(realpathSync(permissionRepo)).slice(1, -1))) throw new Error('Installed permission export lost its findings or private-path replacement.');
   const profileHome = path.join(temp, 'profile-home');
   mkdirSync(path.join(profileHome, '.codex'), { recursive: true });
   writeFileSync(path.join(profileHome, '.codex/config.toml'), 'model = "base-model"\n[hooks.state.fixture]\nenabled=false\ntrusted_hash="fixture-hash"\n');
