@@ -155,6 +155,37 @@ test('portable paths preserve neighboring repositories and URLs while retaining 
   assert.deepEqual(portable(report).assumptions, ['<repo>/config.json', '/workspace/project-backup/config.json', '/workspace/project.backup/config.json', 'https://example.test/workspace/project/config.json', 'file://<repo>/config.json', '~/.claude/CLAUDE.md', 'projects./workspace/project.backup.trust_level', 'projects.~/project.backup.trust_level']);
 });
 
+test('portable Claude project MCP origins conceal repository paths and preserve neighboring Codex trust keys', async t => {
+  const w = await workspace({}, { '.claude.json': '{}', '.codex/config.toml': '' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const repo = await realpath(w.repo);
+  const neighbor = repo + '.mcpServers.neighbor';
+  await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ projects: { [repo]: { mcpServers: {
+    fixture: { command: 'missing-source-fixture', env: { API_TOKEN: 'private-origin-sentinel' } },
+  } } } }, null, 2));
+  await writeFile(path.join(w.home, '.codex/config.toml'), `[projects.${JSON.stringify(neighbor)}]\ntrust_level="trusted"\n`);
+  const report = await scan({ ...w, repo, clients: ['claude', 'codex'] });
+  for (const legacy of [false, true]) {
+    const input = JSON.parse(json(report)) as Report;
+    if (legacy) for (const client of input.clients) for (const extension of client.extensions) delete extension.origins;
+    const exported = portable(input);
+    const claude = exported.clients.find(client => client.client === 'claude')!;
+    const server = claude.extensions.find(extension => extension.name === 'fixture')!;
+    assert.equal(server.location.key, 'projects.<repo>.mcpServers.fixture');
+    if (!legacy) {
+      const origin = server.origins!.find(origin => origin.key === 'env.API_TOKEN')!;
+      assert.equal(origin.location.key, 'projects.<repo>.mcpServers.fixture.env.API_TOKEN');
+      assert.equal(typeof origin.location.line, 'number');
+    }
+    assert.equal(claude.findings.find(finding => finding.ruleId === 'mcp.command-missing')?.location.key, 'projects.<repo>.mcpServers.fixture.command');
+    const codex = exported.clients.find(client => client.client === 'codex')!;
+    assert.equal(codex.settings.find(setting => setting.key.endsWith('.trust_level'))?.key, `projects.${neighbor}.trust_level`);
+    assert.ok(!JSON.stringify(claude).includes(JSON.stringify(repo).slice(1, -1)));
+    for (const text of [json(exported), html(input)]) assert.ok(!text.includes('private-origin-sentinel'));
+    assert.deepEqual(portable(exported), exported);
+  }
+});
+
 test('portable paths retain correct separators when the repository is a filesystem root', () => {
   for (const repository of ['/', 'C:\\', '\\\\server\\share\\']) {
     const report = reportWithFindings();

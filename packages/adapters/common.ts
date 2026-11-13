@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
-import type { Adapter, AdapterMetadata, Context, Decision, Effective, Source, Status } from '../core/types.js';
+import type { Adapter, AdapterMetadata, Context, Decision, Effective, Extension, Source, Status } from '../core/types.js';
 import { bytes, cmp, executable, finding, locate, plainObject, prefix, slash, splitGlobs, within } from '../core/utils.js';
 import { hookCommandField, validateExtensions, probeMcp } from '../core/extensions.js';
 
@@ -44,14 +44,38 @@ export function mcp(e: Effective, s: Source, servers: unknown, key: string, stat
   if (s.invalid || servers === undefined) return;
   if (!plainObject(servers)) { e.findings.push(finding('mcp.servers-type', 'error', locate(s, key), 'MCP servers must be an object keyed by server name.', 'The server collection cannot be resolved from this value.', 'Use an object containing named server definitions.', e.client)); return; }
   for (const [name, data] of Object.entries(servers)) {
-    const old = e.extensions.find(x => x.kind === 'mcp' && x.name === name && x.status === 'active');
+    const previousStatuses = merge && status === 'conditional' ? ['active', 'conditional'] : ['active'];
+    const old = e.extensions.findLast(x => x.kind === 'mcp' && x.name === name && previousStatuses.includes(x.status));
     if (old && status === 'active') {
       old.status = 'shadowed'; old.reason = 'Higher-priority server configuration with the same name.';
       e.findings.push(finding('mcp.redefined', 'warn', locate(s, `${key}.${name}`), `MCP server "${name}" is defined in multiple layers.`, merge ? 'Codex merges server fields; the final command may come from a different layer than its arguments.' : 'The higher-priority definition replaces the whole server entry.', 'Keep one definition or inspect the effective server below.', e.client, [old.location]));
+    } else if (merge && old?.status === 'conditional' && status === 'conditional') {
+      old.status = 'shadowed'; old.reason = 'A closer conditional layer includes these fields in its merged server.';
     }
-    const config = plainObject(data) ? (merge && old && status === 'active' ? mergeTables(old.config, data) : data) : { _invalid: true };
-    e.extensions.push({ kind: 'mcp', name, config, status, location: locate(s, `${key}.${name}`), reason: status === 'conditional' ? 'Workspace trust or server approval is required.' : 'Discovered in this client’s MCP configuration.' });
+    const inherited = merge && old && ['active', 'conditional'].includes(status) ? old : undefined;
+    const config = plainObject(data) ? (inherited ? mergeTables(inherited.config, data) : data) : { _invalid: true };
+    const reason = status === 'conditional' ? 'Workspace trust or server approval is required.' : inherited ? 'Server fields merge across applicable configuration layers.' : 'Discovered in this client’s MCP configuration.';
+    e.extensions.push({ kind: 'mcp', name, config, status, location: locate(s, `${key}.${name}`), reason,
+      ...(plainObject(data) ? { origins: mcpOrigins(s, config, data, `${key}.${name}`, inherited) } : {}),
+    });
   }
+}
+function mcpOrigins(source: Source, config: Record<string, any>, incoming: Record<string, any>, baseKey: string, previous?: Extension): NonNullable<Extension['origins']> {
+  const origins: NonNullable<Extension['origins']> = [];
+  const inherited = new Map(previous?.origins?.map(origin => [origin.key, origin.location]));
+  const walk = (value: unknown, own: unknown, prefix = ''): void => {
+    if (!value || typeof value !== 'object') return;
+    const supplied = own && typeof own === 'object' ? own as Record<string, unknown> : undefined;
+    for (const [key, child] of Object.entries(value)) {
+      const field = prefix ? prefix + '.' + key : key;
+      const defined = !!supplied && Object.hasOwn(supplied, key);
+      const location = defined ? locate(source, baseKey + '.' + field) : inherited.get(field) ?? previous?.location ?? locate(source, baseKey + '.' + field);
+      origins.push({ key: field, location });
+      walk(child, defined ? supplied![key] : undefined, field);
+    }
+  };
+  walk(config, incoming);
+  return origins;
 }
 function mergeTables(a: Record<string, any>, b: Record<string, any>): Record<string, any> {
   const result = { ...a }; for (const [k, v] of Object.entries(b)) result[k] = plainObject(v) && plainObject(a[k]) ? mergeTables(a[k], v) : v; return result;

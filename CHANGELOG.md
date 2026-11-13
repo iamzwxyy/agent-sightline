@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.9 — 2026-11-13
+
+* Track MCP field origins through nested Codex configuration merges, including inherited environment maps and replaced arrays. Show each field's file and line in terminal explanations and extension details.
+* Merge conditional project MCP layers over the user baseline, retaining the final possible configuration when workspace trust is unknown.
+* Locate command, working-directory, environment, argument-type and cross-client drift findings at the contributing fields. Link repeated missing-variable references and probe directory findings to their source locations.
+* Replace repository paths embedded in Claude project-local MCP source keys during portable export. Preserve neighboring project keys and reports created before field-origin metadata existed.
+* Compare merged MCP values and private mapping origins with the pinned Codex configuration API, alongside CLI, browser and installed-package regressions.
+
 ## 0.2.8 — 2026-11-13
 
 * Redact parsed JSON/JSONC, TOML and YAML/frontmatter values before building source previews, including escaped quotes, Unicode escapes, folded blocks and aliases.

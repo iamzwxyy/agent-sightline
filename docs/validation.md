@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.2.9
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 150-case core suite completed with 149 passes and one Windows-only skip.
+* The pinned Codex 0.167.2 version check and twenty-one native configuration comparisons passed. The added scenario checks merged command, directory, arguments, required-variable lists and private environment-mapping origins against native configuration files.
+* Fixtures verify nested table inheritance, replaced/empty arrays, whole-entry replacement, unknown-trust conditional chains, exact malformed-argument locations, repeated missing-variable references, field-specific cross-client drift and inherited probe working-directory locations.
+* Claude project-local source keys reproduced repository-path residue in portable reports. Export regressions cover field metadata, JSON round trips, legacy reports, idempotence, private mapping values and neighboring Codex trust keys.
+* All twenty-six Chromium browser cases passed. New cases follow merged command and argument fields to their separate files in live and offline views, inspect conditional candidates and open legacy extension snapshots. The field-definition dialog was visually inspected with compact user-home paths. Existing phone, accessibility, source, comparison and export checks remain included.
+* CLI explanations display field origins and retain CI finding locations and exit thresholds. Installed-package smoke verifies merged field provenance and unknown-trust behavior. Production dependency audit reported zero vulnerabilities.
+
 ## v0.2.8
 
 Verified locally on macOS on 2026-11-13.

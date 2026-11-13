@@ -7,8 +7,81 @@ import { serve } from '../../packages/web/server.js';
 import { workspace } from '../helpers.js';
 import { readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
+import { html } from '../../packages/reporter/index.js';
+import type { Report } from '../../packages/core/types.js';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
+
+test('merged MCP field definitions navigate across user and project sources online and offline', async ({ page }) => {
+  const w = await workspace({ '.codex/config.toml': '[mcp_servers.fixture]\nargs=["project-argument"]\n' }, {
+    '.codex/config.toml': '[mcp_servers.fixture]\ncommand="missing-browser-source-fixture"\ncwd="missing-workdir"\n[mcp_servers.fixture.env]\nAPI_TOKEN="browser-private-origin-sentinel"\n',
+  });
+  const server = await serve({ ...w, clients: ['codex'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    for (const offline of [false, true]) {
+      if (offline) {
+        const pending = page.waitForEvent('download');
+        await page.getByRole('button', { name: /Export report/ }).click();
+        const file = test.info().outputPath('merged-mcp-sources.html');
+        await (await pending).saveAs(file);
+        const content = await readFile(file, 'utf8');
+        expect(content).not.toContain('browser-private-origin-sentinel');
+        expect(content).not.toContain(JSON.stringify(w.home).slice(1, -1));
+        await page.goto(pathToFileURL(file).href);
+      }
+      for (const [field, expected] of [['command', 'missing-browser-source-fixture'], ['args.0', 'project-argument']]) {
+        await page.locator('#extensions-tab').click();
+        await page.locator('.extension-row').filter({ hasText: 'fixture' }).filter({ has: page.locator('.status.active') }).click();
+        await expect(page.locator('.extension-origins')).toContainText('env.API_TOKEN');
+        await expect(page.locator('.extension-origins')).toContainText('~/.codex/config.toml:2');
+        await expect(page.locator('#detail-dialog')).not.toContainText('browser-private-origin-sentinel');
+        if (!offline && field === 'command') await page.screenshot({ path: test.info().outputPath('merged-mcp-definitions.png') });
+        await page.locator('.extension-origins').getByRole('button', { name: new RegExp('^' + field.replaceAll('.', '\\.') + ' ·') }).click();
+        await expect(page.locator('.code-line.highlight')).toContainText(expected);
+        await expect(page.locator('.code-line.highlight .line-number')).toHaveText('2');
+      }
+      await page.locator('#findings-tab').click();
+      await page.locator('#findings-list .finding').filter({ hasText: 'MCP command for "fixture"' }).click();
+      await page.getByRole('button', { name: /Inspect source/ }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('missing-browser-source-fixture');
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: 'Toggle navigation' }).click();
+    await page.locator('#extensions-tab').click();
+    await page.locator('.extension-row').filter({ has: page.locator('.status.active') }).click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: test.info().outputPath('merged-mcp-phone.png') });
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('unknown trust retains the merged MCP candidate and legacy snapshots open extension details', async ({ page }) => {
+  const w = await workspace({ '.codex/config.toml': '[mcp_servers.fixture]\nargs=["project-argument"]\n' }, {
+    '.codex/config.toml': `[mcp_servers.fixture]\ncommand=${JSON.stringify(process.execPath)}\n`,
+  });
+  const server = await serve({ ...w, clients: ['codex'] });
+  try {
+    await page.goto(server.url);
+    const report = JSON.parse(await page.locator('#report-data').textContent() ?? 'null') as Report;
+    expect(report.findings.some(finding => finding.ruleId === 'mcp.transport')).toBe(false);
+    await page.locator('#extensions-tab').click();
+    await page.locator('.extension-row').filter({ has: page.locator('.status', { hasText: 'Conditional' }) }).click();
+    await expect(page.locator('#detail-dialog')).toContainText('project-argument');
+    await page.locator('.extension-origins').getByRole('button', { name: /^command ·/ }).click();
+    await expect(page.locator('.code-line.highlight')).toContainText('command=');
+    for (const client of report.clients) for (const extension of client.extensions) delete extension.origins;
+    const file = test.info().outputPath('legacy-mcp-origins.html');
+    await writeFile(file, html(report));
+    await page.goto(pathToFileURL(file).href);
+    await page.locator('#extensions-tab').click();
+    await page.locator('.extension-row').first().click();
+    await expect(page.locator('#detail-dialog')).toContainText('fixture');
+    await expect(page.locator('.extension-origins')).toHaveCount(0);
+    await page.getByRole('button', { name: /Inspect source/ }).click();
+    await expect(page.locator('#source-title')).toContainText('config.toml');
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
 
 test('encoded private values stay hidden while live and portable previews retain source-line navigation', async ({ page }) => {
   const toml = '[mcp_servers.fixture]\ncommand="node"\n[mcp_servers.fixture.env]\nNORMAL="""\nbrowser-multiline-confidential-first\nbrowser-multiline-confidential-last"""\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="missing-preview-hook-fixture"\n';
@@ -168,7 +241,7 @@ test('related finding locations navigate to the owning client and exact source l
       await page.locator('.related-list').getByRole('button', { name: /\.mcp.json · line/ }).click();
       await expect(page.locator('#effective-title')).toHaveText('Claude Code’s instructions');
       await expect(page.locator('#source-title')).toHaveText('.mcp.json');
-      await expect(page.locator('.code-line.highlight')).toContainText('"db": {');
+      await expect(page.locator('.code-line.highlight')).toContainText('"command": "missing-claude-server"');
       await expect(page.getByRole('button', { name: 'Copy source path', exact: true })).toBeVisible();
     }
   } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }

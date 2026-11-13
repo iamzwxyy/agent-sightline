@@ -581,6 +581,21 @@
     const content = node('div', undefined, 'dialog-content');
     const title = node('h2', extension.name); title.id = 'detail-title';
     content.append(badge(extension.status), title, node('p', extension.reason), node('p', `${short(extension.location.path)} · line ${extension.location.line}`, 'path'), node('h3', 'Configuration'), node('pre', JSON.stringify(extension.config, null, 2)));
+    if (extension.origins?.length) {
+      const origins = node('div', undefined, 'extension-origins setting-origins');
+      origins.append(node('h3', 'Field definitions'));
+      const mappings = [...report.pathMappings ?? []].filter(mapping => !mapping.replacement.startsWith('<repo>')).sort((a, b) => b.path.length - a.path.length);
+      for (const origin of extension.origins) {
+        const filename = origin.location.path;
+        const mapping = mappings.find(mapping => filename === mapping.path || filename.startsWith(mapping.path + '/') || filename.startsWith(mapping.path + '\\'));
+        const label = mapping ? mapping.replacement + filename.slice(mapping.path.length).replace(/\\/g, '/') : short(filename);
+        const link = button('', () => inspectSourceLocation(origin.location, client), 'source-link');
+        link.title = `${filename}:${origin.location.line}`;
+        link.append(node('span', origin.key + ' ·'), node('span', `${label}:${origin.location.line}`));
+        origins.append(link);
+      }
+      content.append(origins);
+    }
     const actions = node('div', undefined, 'dialog-actions');
     actions.append(button('Inspect source →', () => { $('detail-dialog').close(); state.sourceFilter = 'all'; state.highlightLine = extension.location.line; navigate('effective', client, extension.location.path); }, 'button button-primary'), button('Copy definition', () => copy(JSON.stringify(extension.config, null, 2))));
     content.append(actions); $('detail-body').replaceChildren(content); if (!$('detail-dialog').open) $('detail-dialog').showModal();

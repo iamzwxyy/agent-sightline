@@ -7,6 +7,33 @@ import { mkdir, readFile, readdir, realpath, rm, watch, writeFile } from 'node:f
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
+test('CLI preserves merged MCP field locations through explain, CI and portable export', async t => {
+  const w = await workspace({ '.codex/config.toml': '[mcp_servers.fixture]\nargs=["project-argument"]\n' }, {
+    '.codex/config.toml': '[mcp_servers.fixture]\ncommand="missing-cli-source-fixture"\ncwd="missing-workdir"\nenv_vars=["SIGHTLINE_SOURCE_MISSING"]\n',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const flags = ['--home', w.home, '--client', 'codex'];
+  const checked = run(['ci', ...flags, '--trust', 'trusted'], w.repo);
+  assert.equal(checked.status, 1, checked.stderr);
+  const report = JSON.parse(checked.stdout);
+  assert.equal(report.findings.find((finding: any) => finding.ruleId === 'mcp.command-missing').location.line, 2);
+  const server = report.clients[0].extensions.find((extension: any) => extension.status === 'active');
+  assert.equal(server.origins.find((origin: any) => origin.key === 'args.0').location.path, path.join(await realpath(w.repo), '.codex/config.toml'));
+  const explained = run(['explain', '.', ...flags, '--trust', 'trusted'], w.repo);
+  assert.equal(explained.status, 0, explained.stderr);
+  assert.ok(explained.stdout.includes(path.join(w.home, '.codex/config.toml') + ':2:1'));
+  assert.ok(explained.stdout.includes('command ← ' + path.join(w.home, '.codex/config.toml') + ':2'));
+  assert.ok(explained.stdout.includes('args.0 ← ' + path.join(await realpath(w.repo), '.codex/config.toml') + ':2'));
+  const conditional = JSON.parse(run(['scan', ...flags, '--json'], w.repo).stdout);
+  assert.ok(!conditional.findings.some((finding: any) => finding.ruleId === 'mcp.transport'));
+  assert.ok(conditional.clients[0].extensions.some((extension: any) => extension.status === 'conditional' && extension.config.command === 'missing-cli-source-fixture'));
+  const output = path.join(w.root, 'mcp-sources.html');
+  const exported = run(['report', ...flags, '--trust', 'trusted', '--format', 'html', '--output', output], w.repo);
+  assert.equal(exported.status, 0, exported.stderr);
+  const content = await readFile(output, 'utf8');
+  assert.ok(!content.includes(JSON.stringify(w.home).slice(1, -1)));
+  assert.ok(content.includes('mcp_servers.fixture.command'));
+});
 test('CLI exports redact encoded source values and keep downstream hook diagnostics on the original line', async t => {
   const toml = '[mcp_servers.fixture]\ncommand="node"\n[mcp_servers.fixture.env]\nNORMAL="""\ncli-multiline-confidential-first\ncli-multiline-confidential-last"""\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="missing-preview-hook-fixture"\n';
   const w = await workspace({ '.codex/config.toml': toml, '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { NORMAL: 'cli-escaped-confidential-"value' } } } }) });
@@ -136,7 +163,7 @@ test('CLI summary keeps same-name MCP failures at separate sources and labels ex
   assert.ok(result.stdout.includes('Cursor (experimental)'));
   assert.match(result.stdout, /2 findings\nErrors 2 · Warnings 0 · Info 0/);
   assert.equal(result.stdout.match(/^ERROR MCP command/gm)?.length, 2);
-  assert.ok(result.stdout.includes(path.join(w.repo, '.codex/config.toml') + ':1:1'));
+  assert.ok(result.stdout.includes(path.join(w.repo, '.codex/config.toml') + ':2:1'));
   assert.ok(result.stdout.includes(path.join(w.repo, '.mcp.json') + ':1:1'));
   assert.ok(result.stdout.includes('[claude, copilot]'));
 });

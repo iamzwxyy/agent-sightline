@@ -90,6 +90,7 @@ interface RuntimeCase {
   trustAlias?: boolean;
   canonicalTrust?: 'trusted' | 'untrusted';
   keys: string[];
+  originKeys?: string[];
 }
 
 function assertConfiguredValue(configured: any, actual: any, key: string): void {
@@ -129,6 +130,16 @@ const cases: RuntimeCase[] = [
     user: `model="user-model"\n[mcp_servers.fixture]\ncommand=${JSON.stringify(process.execPath)}\nargs=["user-argument"]\n`,
     files: { '.codex/config.toml': '[mcp_servers.fixture]\nargs=["project-argument"]\n' },
     keys: ['mcp_servers.fixture.command', 'mcp_servers.fixture.args'],
+  },
+  {
+    name: 'nested MCP field sources and private mapping origins',
+    user: `[mcp_servers.fixture]\ncommand=${JSON.stringify(process.execPath)}\ncwd=${JSON.stringify(path.parse(process.execPath).root)}\nenv_vars=["SIGHTLINE_NATIVE_REQUIRED"]\n[mcp_servers.fixture.env]\nSHARED="origin-user-sentinel"\nUSER_ONLY="origin-user-only-sentinel"\n`,
+    files: {
+      '.codex/config.toml': '[mcp_servers.fixture]\nargs=["root-argument"]\n[mcp_servers.fixture.env]\nSHARED="origin-project-sentinel"\n',
+      'src/.codex/config.toml': '[mcp_servers.fixture]\nenv_vars=["SIGHTLINE_PROJECT_REQUIRED"]\n',
+    },
+    keys: ['mcp_servers.fixture.command', 'mcp_servers.fixture.cwd', 'mcp_servers.fixture.args', 'mcp_servers.fixture.env_vars'],
+    originKeys: ['mcp_servers.fixture.env.SHARED', 'mcp_servers.fixture.env.USER_ONLY'],
   },
   {
     name: 'persisted hook review state',
@@ -245,11 +256,12 @@ for (const fixture of cases) test(`Codex runtime configuration matches Sightline
   const cwd = path.join(boundary, fixture.cwd ?? 'src');
   const actual = await readRuntimeConfig(cwd, env);
   const report = await scan({ repo: boundary, target: path.join(fixture.cwd ?? 'src', 'example.ts'), home, env, clients: ['codex'] });
-  for (const key of fixture.keys) {
+  for (const key of [...fixture.keys, ...fixture.originKeys ?? []]) {
     const value = key.split('.').reduce((object, part) => object?.[part], actual.config);
     const setting = report.clients[0].settings.find(setting => setting.key === key && setting.status === 'active');
     assert.ok(setting, `No active Sightline value for ${key}.`);
-    assertConfiguredValue(setting.value, value, key);
+    if (fixture.keys.includes(key)) assertConfiguredValue(setting.value, value, key);
+    else assert.equal(setting.value, '[REDACTED]');
     const originKeys = Object.keys(actual.origins).filter(originKey => originKey === key || originKey.startsWith(key + '.'));
     assert.ok(originKeys.length, `Codex did not expose origins for ${key}.`);
     for (const originKey of originKeys) {
@@ -257,6 +269,13 @@ for (const fixture of cases) test(`Codex runtime configuration matches Sightline
       assert.ok(origin, `Codex did not expose the origin for ${originKey}.`);
       const file = origin.name.type === 'project' ? path.join(origin.name.dotCodexFolder, 'config.toml') : origin.name.file;
       assert.equal(await realpath(setting.location.path), await realpath(file), `${originKey} has a different winning source.`);
+      if (key.startsWith('mcp_servers.')) {
+        const [, name, ...parts] = originKey.split('.');
+        const extension = report.clients[0].extensions.find(extension => extension.kind === 'mcp' && extension.name === name && extension.status === 'active');
+        const field = extension?.origins?.find(origin => origin.key === parts.join('.'));
+        assert.ok(field, `No MCP field origin for ${originKey}.`);
+        assert.equal(await realpath(field.location.path), await realpath(file), `${originKey} has a different MCP field source.`);
+      }
     }
   }
   assert.ok(!report.findings.some(finding => finding.ruleId.startsWith('parse.') || finding.ruleId === 'config.schema'));

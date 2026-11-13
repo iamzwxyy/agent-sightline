@@ -83,6 +83,7 @@ export function redactScanReport(report: Report, scrub: ReturnType<typeof create
       })),
       extensions: client.extensions.map(extension => ({
         ...extension, name: scrub(extension.name), config: scrub(extension.config), reason: scrub(extension.reason), location: location(extension.location),
+        ...(extension.origins ? { origins: extension.origins.map(origin => ({ key: scrub(origin.key), location: location(origin.location) })) } : {}),
       })),
       findings: client.findings.map(finding),
     })),

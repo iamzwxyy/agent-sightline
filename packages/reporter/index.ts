@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import type { Finding, Report, Severity } from '../core/types.js';
+import type { Extension, Finding, Report, Severity } from '../core/types.js';
 import { redact, redactText } from '../core/redact.js';
 export function json(report: Report): string { return JSON.stringify(redact(report), null, 2) + '\n'; }
 export function filter(report: Report, severity?: Severity): Report {
@@ -13,6 +13,10 @@ export function failed(report: Report, failOn: Severity | 'none'): boolean {
 }
 export function terminal(report: Report, mode = 'scan'): string {
   report = redact(report);
+  const extensionLines = (extension: Extension): string[] => [
+    `  ${extension.kind} ${extension.name} [${extension.status}] ${JSON.stringify(extension.config)}  ← ${extension.location.path}:${extension.location.line}`,
+    ...extension.origins?.map(origin => `    ${origin.key} ← ${origin.location.path}:${origin.location.line}`) ?? [],
+  ];
   const grouped = new Map<string, { item: Finding; clients: string[] }>();
   for (const finding of report.findings) {
     const key = JSON.stringify([finding.ruleId, finding.severity, finding.message, finding.location, finding.why, finding.suggestion, finding.related]);
@@ -42,13 +46,13 @@ export function terminal(report: Report, mode = 'scan'): string {
     lines.push('', `Effective instructions · ${e.instructionBytes} bytes · ~${e.estimatedTokens} tokens`, e.instructions || '(no proven active instructions)', '', 'Effective settings');
     for (const s of e.settings.filter(s => s.status !== 'shadowed')) lines.push(`  [${s.status}] ${s.key} = ${JSON.stringify(s.value)}  ← ${s.location.path}:${s.location.line}`);
     lines.push('', 'Extensions');
-    for (const x of e.extensions) lines.push(`  ${x.kind} ${x.name} [${x.status}] ${JSON.stringify(x.config)}  ← ${x.location.path}:${x.location.line}`);
+    for (const x of e.extensions) lines.push(...extensionLines(x));
     lines.push('', ...e.notes.map(n => `  Note: ${n}`), '');
   }
   if (mode === 'diff') {
     lines.push('Instruction content by receiving client', '');
     for (const d of report.diff) lines.push(`  ${d.clients.join(', ')}${d.clients.length === report.clients.length ? ' · shared by all' : ''}`, `  ${d.sources.map(s => `${s.path}:${s.line}`).join(', ')}`, ...d.content.split('\n').map(l => `    ${l}`), '');
-    for (const e of report.clients) { lines.push(`${e.metadata.name} extensions`); for (const x of e.extensions) lines.push(`  ${x.kind} ${x.name} [${x.status}] ${JSON.stringify(x.config)} ← ${x.location.path}:${x.location.line}`); lines.push(''); }
+    for (const e of report.clients) { lines.push(`${e.metadata.name} extensions`); for (const x of e.extensions) lines.push(...extensionLines(x)); lines.push(''); }
   }
   const findings = mode === 'scan' ? groups.slice(0, 12).map(group => ({ ...group.item, clientLabel: group.clients.join(', ') })) : report.findings.map(f => ({ ...f, clientLabel: f.client }));
   for (const finding of findings) {
@@ -103,10 +107,23 @@ export function portable(report: Report): Report {
     text = text.replace(commonHome, (_match, prefix: string) => prefix + '~');
     return pathKey ? pathKey[1] + text + pathKey[3] : text;
   };
+  const claudeProjectRoots = data.clients.filter(client => client.client === 'claude').flatMap(client => client.extensions.flatMap(extension => {
+    const key = extension.location.key;
+    const suffix = `.mcpServers.${extension.name}`;
+    return extension.kind === 'mcp' && key?.startsWith('projects.') && key.endsWith(suffix)
+      ? [{ path: extension.location.path, root: key.slice('projects.'.length, -suffix.length) }]
+      : [];
+  }));
   const walk = (value: any): any => {
     if (typeof value === 'string') return scrub(value);
     if (Array.isArray(value)) return value.map(walk);
-    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, child]) => [scrub(key), walk(child)]));
+    if (value && typeof value === 'object') {
+      // Claude embeds the complete project path before a multi-component MCP field suffix.
+      const project = typeof value.key === 'string' ? claudeProjectRoots.find(project => project.path === value.path && value.key.startsWith(`projects.${project.root}.mcpServers.`)) : undefined;
+      return Object.fromEntries(Object.entries(value).map(([key, child]) => [scrub(key), project && key === 'key'
+        ? `projects.${scrub(project.root)}${value.key.slice('projects.'.length + project.root.length)}`
+        : walk(child)]));
+    }
     return value;
   };
   const result = walk(data) as Report;

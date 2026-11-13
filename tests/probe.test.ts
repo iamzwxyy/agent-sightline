@@ -4,6 +4,18 @@ import { readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { scan } from '../packages/core/index.js';
 import { workspace } from './helpers.js';
+
+test('merged MCP probe scope diagnostics identify the inherited working directory', async t => {
+  const w = await workspace({ '.codex/config.toml': '[mcp_servers.fixture]\nargs=[]\n' }, {
+    '.codex/config.toml': `[mcp_servers.fixture]\ncommand=${JSON.stringify(process.execPath)}\ncwd=".."\n`,
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['codex'], trust: 'trusted', probe: true });
+  const finding = report.findings.find(finding => finding.ruleId === 'probe.outside-scope')!;
+  assert.equal(finding.location.path, path.join(w.home, '.codex/config.toml'));
+  assert.equal(finding.location.line, 3);
+  assert.equal(finding.location.key, 'mcp_servers.fixture.cwd');
+});
 test('an explicit probe skips invalid definitions and initializes a valid sibling', async t => {
   const code = `import {writeFileSync} from 'node:fs';
 import readline from 'node:readline';

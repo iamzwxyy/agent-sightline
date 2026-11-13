@@ -31,6 +31,8 @@ Codex selects its project root before resolving automatic trust and project conf
 
 `Decision` records source, scope, state, reason, loading position, raw/loaded bytes and content. `Setting` records a key’s value, winning location and replaced locations. `Extension` records discovered MCP/skill/hook/permission definitions separately from unconditional prompt content. Conditional contributions are visible but excluded from proven `instructions`.
 
+MCP extensions optionally include an `origins` array mapping field paths to source locations. Codex field merges retain inherited leaf origins and replace array origins with the incoming array. Unknown-trust project layers retain the proven user baseline and a merged conditional candidate. Terminal explanations, diagnostics and browser field links consume the same metadata. Older reports fall back to the server's location.
+
 Content diagnostics use the selected client owners for parser findings, field checks and glob validation. MCP shape checks use the clients’ source loading decisions. Shared sources retain diagnostics for each supported selected owner. Discovery coverage and filesystem findings describe the full inspected tree.
 
 Extension validation checks field types before filesystem lookup and process probing. Malformed definitions retain field-specific findings while valid sibling definitions remain inspectable. JSON array entries retain individual line locations for handlers and permission rules. The redaction boundary collects private string leaves from environment and header containers, including malformed containers.

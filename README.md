@@ -5,7 +5,7 @@
 One file. Several agents. Different instructions. Sightline shows every discovered source, why it applies, what is shadowed or truncated, and the effective configuration—with source lines you can inspect.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.2.8/agent-sightline-0.2.8.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.2.9/agent-sightline-0.2.9.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
@@ -52,6 +52,8 @@ The workspace opens with grouped errors and warnings. Select a finding to read i
 
 Read effective text shows the exact accumulated instructions with clickable source origins. Compare clients puts those instructions side by side. Settings lets you search resolved values, inspect the selected definition and follow replaced layers. The target and trust choice survive reloads, and browser Back returns through your inspection history. A repository with no configuration opens with a working sample-workspace entry point.
 
+MCP extension details link each configured field to its contributing file and line. A Codex server can inherit its command from user settings and its arguments from a project layer. Findings and terminal explanations retain those separate origins.
+
 The companion website includes an interactive example, a complete installation guide, product walkthroughs and a working CLI package download. Build and preview both interfaces locally with `npm run build:website` followed by `npm run preview`.
 
 ## Supported contracts
@@ -65,7 +67,7 @@ The companion website includes an interactive example, a complete installation g
 | Cursor | Docs snapshot 2026-11-12 | Experimental | AGENTS.md and .mdc always/glob/manual/intelligent states, local MCP |
 | OpenCode V2 | Docs snapshot 2026-11-12 | Experimental | V2 local configuration and nearest-first AGENTS.md; no V1 fallback assertion |
 
-Codex base/project scalar and MCP values and their winning files are compared with the real 0.167.2 configuration API in eighteen isolated scenarios. Instruction bodies, profiles and source line numbers retain source/schema fixture coverage. Run `npm run test:codex` to reproduce the configuration comparisons.
+Codex base/project scalar and MCP values and their winning files are compared with the real 0.167.2 configuration API in twenty-one isolated scenarios. Instruction bodies, profiles and source line numbers retain source/schema fixture coverage. Run `npm run test:codex` to reproduce the configuration comparisons.
 
 Rules and known limits are visible through `agent-sightline adapters` and the [evidence ledgers](docs/research/). “Fixture-verified” means the recorded official contracts have executable fixtures; it is not an authenticated live-client conformance claim. Copilot CLI rules differ from VS Code/code review/cloud agent rules.
 

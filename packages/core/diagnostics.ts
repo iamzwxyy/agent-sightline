@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { Context, Effective, Finding } from './types.js';
 import { cmp, finding, locate, splitGlobs } from './utils.js';
+import { extensionFieldLocation } from './extensions.js';
 
 export function diagnose(ctx: Context, clients: Effective[]): Finding[] {
   const out: Finding[] = [];
@@ -28,7 +29,12 @@ export function diagnose(ctx: Context, clients: Effective[]): Finding[] {
   for (const name of names) {
     const group = servers.filter(s => s.name === name);
     const definitions = new Set(group.map(x => JSON.stringify({ command: x.config.command, args: x.config.args, url: x.config.url })));
-    if (definitions.size > 1) out.push(finding('mcp.cross-client-drift', 'warn', group[0].location, `MCP server "${name}" has different commands or endpoints across clients/sources.`, 'The same server name does not imply the same process or remote service.', 'Align the transport definitions intentionally, then inspect each client’s effective server.', undefined, group.slice(1).map(x => x.location)));
+    if (definitions.size > 1) {
+      const fields = ['command', 'args', 'url'].filter(field => new Set(group.map(server => JSON.stringify(server.config[field]))).size > 1);
+      const locations = group.flatMap(server => fields.filter(field => server.config[field] !== undefined).map(field => extensionFieldLocation(server, field)));
+      const [primary = group[0].location, ...related] = [...new Map(locations.map(location => [JSON.stringify(location), location])).values()];
+      out.push(finding('mcp.cross-client-drift', 'warn', primary, `MCP server "${name}" has different commands or endpoints across clients/sources.`, 'The same server name does not imply the same process or remote service.', 'Align the transport definitions intentionally, then inspect each client’s effective server.', undefined, related));
+    }
   }
   const topKeys = ['permissions', 'hooks', 'env', 'model', 'mcpServers', 'claudeMdExcludes', 'enabledPlugins'];
   for (const s of ctx.sources.filter(s => selected.has('claude') && s.kind === 'settings' && s.owners.includes('claude'))) {

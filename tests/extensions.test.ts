@@ -4,7 +4,121 @@ import path from 'node:path';
 import { chmod, rm, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { workspace } from './helpers.js';
-import { hookCommandField } from '../packages/core/extensions.js';
+import { extensionFieldLocation, hookCommandField } from '../packages/core/extensions.js';
+
+test('merged Codex MCP diagnostics retain each winning field source and array ownership', async t => {
+  const w = await workspace({ '.codex/config.toml': '[mcp_servers.fixture]\nargs=["project-argument"]\n' }, {
+    '.codex/config.toml': '[mcp_servers.fixture]\ncommand="missing-provenance-fixture"\ncwd="missing-workdir"\nenv_vars=["SIGHTLINE_SOURCE_MISSING"]\nargs=["user-first","user-second"]\n[mcp_servers.fixture.env]\nNORMAL="private-fixture-value"\n',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['codex'], trust: 'trusted' });
+  const userFile = path.join(w.home, '.codex/config.toml');
+  for (const [rule, line, key] of [
+    ['mcp.command-missing', 2, 'mcp_servers.fixture.command'],
+    ['extension.cwd-missing', 3, 'mcp_servers.fixture.cwd'],
+    ['mcp.env-missing', 4, 'mcp_servers.fixture.env_vars.0'],
+  ] as const) {
+    const finding = report.findings.find(finding => finding.ruleId === rule)!;
+    assert.equal(finding.location.path, userFile, rule);
+    assert.equal(finding.location.line, line, rule);
+    assert.equal(finding.location.key, key, rule);
+  }
+  const server = report.clients[0].extensions.find(extension => extension.kind === 'mcp' && extension.status === 'active')!;
+  assert.equal(server.origins?.find(origin => origin.key === 'command')?.location.path, userFile);
+  assert.equal(server.origins?.find(origin => origin.key === 'args.0')?.location.path, path.join(w.repo, '.codex/config.toml'));
+  assert.ok(!server.origins?.some(origin => origin.key === 'args.1'));
+  assert.equal(server.origins?.find(origin => origin.key === 'env.NORMAL')?.location.line, 7);
+  assert.ok(!JSON.stringify(report).includes('private-fixture-value'));
+});
+
+test('conditional Codex MCP layers retain the user baseline and merge the full possible project chain', async t => {
+  const w = await workspace({
+    '.codex/config.toml': '[mcp_servers.fixture]\nargs=["project-argument"]\n',
+    'src/.codex/config.toml': '[mcp_servers.fixture]\ncwd="."\n', 'src/file.ts': '',
+  }, { '.codex/config.toml': `[mcp_servers.fixture]\ncommand=${JSON.stringify(process.execPath)}\nargs=["user-argument"]\n` });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, target: 'src/file.ts', clients: ['codex'] });
+  assert.ok(!report.findings.some(finding => finding.severity === 'error'));
+  const servers = report.clients[0].extensions.filter(extension => extension.kind === 'mcp');
+  assert.equal(servers.filter(server => server.status === 'active').length, 1);
+  assert.equal(servers.filter(server => server.status === 'conditional').length, 1);
+  const possible = servers.find(server => server.status === 'conditional')!;
+  assert.equal(possible.config.command, process.execPath);
+  assert.deepEqual(possible.config.args, ['project-argument']);
+  assert.equal(possible.config.cwd, '.');
+  assert.equal(possible.origins?.find(origin => origin.key === 'command')?.location.path, path.join(w.home, '.codex/config.toml'));
+  assert.equal(possible.origins?.find(origin => origin.key === 'args')?.location.path, path.join(w.repo, '.codex/config.toml'));
+  assert.equal(possible.origins?.find(origin => origin.key === 'cwd')?.location.path, path.join(w.repo, 'src/.codex/config.toml'));
+});
+
+test('JSON MCP errors point to individual fields and collect all references to a missing variable', async t => {
+  const text = JSON.stringify({ mcpServers: { fixture: {
+    command: 'missing-provenance-fixture', cwd: 'missing-workdir',
+    args: ['${SIGHTLINE_SOURCE_MISSING}', '${SIGHTLINE_SOURCE_MISSING}'], env: { NORMAL: '${SIGHTLINE_SOURCE_MISSING}' },
+  } } }, null, 2);
+  const w = await workspace({ '.mcp.json': text });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['claude', 'copilot'], trust: 'trusted' });
+  for (const client of report.clients) {
+    const command = client.findings.find(finding => finding.ruleId === 'mcp.command-missing')!;
+    assert.ok(text.split('\n')[command.location.line - 1].includes('"command"'));
+    const cwd = client.findings.find(finding => finding.ruleId === 'extension.cwd-missing')!;
+    assert.ok(text.split('\n')[cwd.location.line - 1].includes('"cwd"'));
+    const missing = client.findings.filter(finding => finding.ruleId === 'mcp.env-missing');
+    assert.equal(missing.length, 1);
+    assert.equal(missing[0].location.key, 'mcpServers.fixture.args.0');
+    assert.deepEqual(missing[0].related.map(location => location.key), ['mcpServers.fixture.args.1', 'mcpServers.fixture.env.NORMAL']);
+  }
+});
+
+test('MCP origins follow nested merges, empty arrays and whole-entry replacement', async t => {
+  const w = await workspace({
+    '.codex/config.toml': '[mcp_servers.fixture]\nargs=[]\n[mcp_servers.fixture.env]\nPROJECT="project-private"\n',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: [] } } }, null, 2),
+  }, {
+    '.codex/config.toml': `[mcp_servers.fixture]\ncommand=${JSON.stringify(process.execPath)}\nargs=["old-argument"]\n[mcp_servers.fixture.env]\nUSER="user-private"\nPROJECT="old-private"\n`,
+    '.claude.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, env: { USER: 'user-private' } } } }, null, 2),
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['codex', 'claude'], trust: 'trusted' });
+  const codex = report.clients[0].extensions.find(extension => extension.status === 'active')!;
+  assert.deepEqual(codex.config.args, []);
+  assert.ok(!codex.origins?.some(origin => origin.key === 'args.0'));
+  assert.equal(extensionFieldLocation(codex, 'env.USER').path, path.join(w.home, '.codex/config.toml'));
+  assert.equal(extensionFieldLocation(codex, 'env.USER').line, 5);
+  assert.equal(extensionFieldLocation(codex, 'env.PROJECT').path, path.join(w.repo, '.codex/config.toml'));
+  assert.equal(extensionFieldLocation(codex, 'env.PROJECT').line, 4);
+  const claude = report.clients[1].extensions.find(extension => extension.status === 'active')!;
+  assert.equal(claude.config.env, undefined);
+  assert.ok(claude.origins?.every(origin => origin.location.path === path.join(w.repo, '.mcp.json')));
+  const legacy = { ...claude, origins: undefined };
+  assert.deepEqual(extensionFieldLocation(legacy, 'args.0'), legacy.location);
+  assert.deepEqual(extensionFieldLocation(claude, 'args.0'), extensionFieldLocation(claude, 'args'));
+});
+
+test('invalid MCP array values navigate to the first invalid argument', async t => {
+  const text = JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: ['valid', 42, false] } } }, null, 2);
+  const w = await workspace({ '.mcp.json': text });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  const finding = report.findings.find(finding => finding.ruleId === 'mcp.args-type')!;
+  assert.equal(finding.location.key, 'mcpServers.fixture.args.1');
+  assert.equal(text.split('\n')[finding.location.line - 1].trim(), '42,');
+});
+
+test('MCP drift points at differing fields and keeps inherited command sources', async t => {
+  const w = await workspace({ '.codex/config.toml': '[mcp_servers.fixture]\nargs=["project-argument"]\n' }, {
+    '.codex/config.toml': `[mcp_servers.fixture]\ncommand=${JSON.stringify(process.execPath)}\nargs=["user-argument"]\n`,
+    '.claude.json': JSON.stringify({ mcpServers: { fixture: { command: 'missing-source-fixture', args: ['project-argument'] } } }, null, 2),
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['codex', 'claude'], trust: 'trusted' });
+  const finding = report.findings.find(finding => finding.ruleId === 'mcp.cross-client-drift')!;
+  assert.equal(finding.location.path, path.join(w.home, '.codex/config.toml'));
+  assert.equal(finding.location.line, 2);
+  assert.ok(finding.related.every(location => location.key?.endsWith('.command')));
+  assert.equal(finding.related[0].path, path.join(w.home, '.claude.json'));
+});
 
 test('hook command field selection preserves client and platform semantics', () => {
   for (const field of ['commandWindows', 'command_windows']) {

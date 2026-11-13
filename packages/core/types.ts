@@ -29,6 +29,7 @@ export interface Setting {
 export interface Extension {
   kind: 'mcp' | 'skill' | 'hook' | 'permission'; name: string;
   status: Status; location: Location; config: Record<string, any>; reason: string;
+  origins?: { key: string; location: Location }[];
 }
 export interface AdapterMetadata {
   id: ClientId; name: string; maturity: 'verified' | 'experimental';
