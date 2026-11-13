@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.7
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* Lint, strict TypeScript, build and empty-cache offline installation passed. The 292-case core suite completed with 291 passes and one Windows-only skip.
+* All 53 Chromium browser cases passed, including live/offline source navigation, portable privacy, phone layouts, accessibility and website opening behavior.
+* A regression fixture reproduced v0.3.6 assigning a surviving managed permission rule to the rejected predecessor's key. Current fixtures cover multiple rejected entries before valid allow, ask and deny rules, their original keys and lines, masking origins, compacted effective arrays and preserved raw sources.
+* The isolated Linux matrix includes 51 native scenarios and compares rejected-predecessor origins through the public scan API, built CLI and portable HTML. Unreadable managed lists retain invalid declarations while applicable lower-scope rules remain effective.
+* Post-publication v0.3.6 checks exposed a cold Copilot connection exceeding 15 seconds and a Codex background plugin clone racing temporary-home removal. The test harness now allows 30 seconds for connection, stops owned POSIX process groups after wrapper exit and retries fixture cleanup. Dedicated Codex and Copilot suites passed 22 and 44 cases respectively.
+
 ## v0.3.6
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.

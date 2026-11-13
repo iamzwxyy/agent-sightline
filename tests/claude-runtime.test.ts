@@ -47,6 +47,8 @@ interface PolicyScenario {
   userSettings?: Record<string, unknown>; projectSettings?: Record<string, unknown>; localSettings?: Record<string, unknown>;
   managed?: Record<string, unknown>; managedFiles?: Record<string, unknown>;
   managedContent?: string; startupBlocked?: boolean; noAllow?: boolean;
+  blockingRule?: { key: string; line: number };
+  effectiveDeny?: string[];
   hookScopes?: string[]; hooksRun?: string[]; rejected?: boolean;
 }
 
@@ -110,9 +112,9 @@ test('Claude permission precedence and hook policies use the pinned CLI with a l
       { name: 'managed false overrides ordinary disable', user: { allow: [exact] }, userSettings: { disableAllHooks: true }, managed: { disableAllHooks: false }, hookScopes: scopes, hooksRun: scopes, allowed: true },
       { name: 'invalid managed hook disable is dropped', user: { allow: [exact] }, managed: { disableAllHooks: 'true' }, hookScopes: scopes, hooksRun: scopes, allowed: true },
       { name: 'drop-in can enable managed hook lock', user: { allow: [exact] }, managedFiles: { '10-policy.json': { allowManagedHooksOnly: true } }, hookScopes: scopes, hooksRun: ['managed'], allowed: true },
-      { name: 'unreadable managed restriction withholds adjacent grants', user: {}, managed: { permissions: { allow: [exact], deny: 42 } }, allowed: false, noAllow: true, rule: 'permission.type' },
+      { name: 'unreadable managed restriction withholds adjacent grants', user: { deny: ['Bash'] }, managed: { permissions: { allow: [exact], deny: 42 } }, allowed: false, noAllow: true, removed: true, rule: 'permission.type', effectiveDeny: ['Bash'] },
       { name: 'null managed restriction is absent', user: {}, managed: { permissions: { allow: [exact], deny: null } }, allowed: true },
-      { name: 'managed restriction arrays retain valid entries', user: { allow: [exact] }, managed: { permissions: { deny: ['Bash', 42] } }, allowed: false, removed: true, rule: 'permission.deny-overrides-allow' },
+      { name: 'managed restriction arrays retain valid entries', user: { allow: [exact] }, managed: { permissions: { deny: [42, 'Bash'] } }, allowed: false, removed: true, rule: 'permission.deny-overrides-allow', blockingRule: { key: 'permissions.deny.1', line: 5 } },
       { name: 'malformed managed JSON prevents startup', user: { allow: [exact] }, managedContent: '{ broken JSON', startupBlocked: true, allowed: false },
       { name: 'non-object policy drop-in prevents startup', user: { allow: [exact] }, managedFiles: { '10-policy.json': [] }, startupBlocked: true, allowed: false },
     ] : []),
@@ -155,7 +157,7 @@ test('Claude permission precedence and hook policies use the pinned CLI with a l
         await rm(path.join(managedRoot, 'managed-settings.json'), { force: true });
         await rm(dropins, { recursive: true, force: true });
       });
-      await writeFile(path.join(managedRoot, 'managed-settings.json'), scenario.managedContent ?? JSON.stringify(scopeSettings('managed', scenario.managed)));
+      await writeFile(path.join(managedRoot, 'managed-settings.json'), scenario.managedContent ?? JSON.stringify(scopeSettings('managed', scenario.managed), null, 2));
       for (const [name, data] of Object.entries(scenario.managedFiles ?? {})) await writeFile(path.join(dropins, name), JSON.stringify(data));
     }
     const env = { ...isolatedEnvironment(w.home), ANTHROPIC_API_KEY: 'synthetic-fixture-key', ANTHROPIC_BASE_URL: 'http://127.0.0.1:' + (server.address() as AddressInfo).port };
@@ -166,12 +168,17 @@ test('Claude permission precedence and hook policies use the pinned CLI with a l
         const builtCli = path.resolve('dist/cli/index.js');
         const fromCli = JSON.parse(execFileSync(process.execPath, [builtCli, ...flags, '--json'], { env, encoding: 'utf8' }));
         assert.deepEqual(fromCli.clients[0].extensions, report.clients[0].extensions);
-        if (scenario.name === 'managed-only hooks retain only managed handlers') {
+        assert.deepEqual(fromCli.clients[0].settings, report.clients[0].settings);
+        if (scenario.name === 'managed-only hooks retain only managed handlers' || scenario.blockingRule) {
           const outputFile = path.join(w.root, 'managed-report.html');
           execFileSync(process.execPath, [builtCli, 'report', ...flags, '--format', 'html', '--output', outputFile], { env });
           const exported = await readFile(outputFile, 'utf8');
           const snapshot = JSON.parse(exported.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
-          assert.ok(snapshot.clients[0].extensions.filter((entry: any) => entry.kind === 'hook' && entry.status === 'ignored').every((entry: any) => entry.origins[0].location.key === 'allowManagedHooksOnly'));
+          if (scenario.blockingRule) {
+            const blocked = snapshot.findings.find((finding: any) => finding.ruleId === scenario.rule);
+            assert.equal(blocked.related[0].key, scenario.blockingRule.key);
+            assert.equal(blocked.related[0].line, scenario.blockingRule.line);
+          } else assert.ok(snapshot.clients[0].extensions.filter((entry: any) => entry.kind === 'hook' && entry.status === 'ignored').every((entry: any) => entry.origins[0].location.key === 'allowManagedHooksOnly'));
           assert.ok(!exported.includes(JSON.stringify(w.home).slice(1, -1)));
         }
       }
@@ -222,6 +229,12 @@ test('Claude permission precedence and hook policies use the pinned CLI with a l
       else assert.equal(allow.status, scenario.status ?? (scenario.allowed ? 'active' : 'shadowed'));
       if (scenario.rule) assert.ok(report.findings.some(finding => finding.ruleId === scenario.rule));
       else assert.ok(!report.findings.some(finding => finding.ruleId.startsWith('permission.')));
+      if (scenario.blockingRule) {
+        const blocked = report.findings.find(finding => finding.ruleId === scenario.rule)!;
+        assert.equal(blocked.related[0].key, scenario.blockingRule.key);
+        assert.equal(blocked.related[0].line, scenario.blockingRule.line);
+      }
+      if (scenario.effectiveDeny) assert.deepEqual(report.clients[0].settings.find(setting => setting.key === 'permissions.deny' && setting.status === 'active')?.value, scenario.effectiveDeny);
       for (const scope of scenario.hookScopes ?? []) {
         const ran = scenario.hooksRun?.includes(scope) ?? false;
         assert.equal(await readFile(path.join(w.repo, `hook-${scope}.txt`), 'utf8').catch(() => null), ran ? 'hook-fixture' : null, scope);

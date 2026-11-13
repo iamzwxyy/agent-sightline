@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { readdir } from 'node:fs/promises';
-import type { Context, Effective, Setting, Source } from '../core/types.js';
+import type { Context, Effective, Location, Setting, Source } from '../core/types.js';
 import { cmp, finding, locate, plainObject } from '../core/utils.js';
 
 // File policy is one managed tier. Remote, MDM, registry and SDK policy are
@@ -25,8 +25,9 @@ export async function discoverClaudeManagedSettings(ctx: Context, directory = pr
 }
 
 const managedLocks = ['allowManagedPermissionRulesOnly', 'allowManagedHooksOnly'];
+interface ClaudeSettingsLayer extends Source { permissionLocations?: Record<string, Location> }
 
-export function claudeSettingsSource(e: Effective, source: Source): Source {
+export function claudeSettingsSource(e: Effective, source: Source): ClaudeSettingsLayer {
   if (source.invalid) {
     if (source.scope === 'system') {
       let validObject = false;
@@ -36,6 +37,7 @@ export function claudeSettingsSource(e: Effective, source: Source): Source {
     return source;
   }
   const data = { ...source.data };
+  const permissionLocations: Record<string, Location> = {};
   for (const key of [...managedLocks, 'disableAllHooks']) {
     if (!Object.hasOwn(data, key)) continue;
     const value = data[key];
@@ -73,16 +75,28 @@ export function claudeSettingsSource(e: Effective, source: Source): Source {
     }
     for (const action of ['allow', 'ask', 'deny']) {
       const rules = permissions[action];
-      if (!Array.isArray(rules)) continue;
-      permissions[action] = rules.filter((rule, index) => {
-        if (typeof rule === 'string') return true;
-        e.findings.push(finding('permission.type', 'error', locate(source, `permissions.${action}.${index}`), 'Permission rule must be a string.', 'Claude drops the invalid entry and retains other managed rules.', 'Replace the entry with a permission rule string.', 'claude'));
-        return false;
+      if (rules === undefined) continue;
+      if (!Array.isArray(rules)) {
+        const key = 'permissions.' + action;
+        const location = locate(source, key);
+        e.settings.push({ key, value: rules, location, status: 'invalid', reason: 'Claude drops this unreadable managed permission list.', overrides: [] });
+        e.findings.push(finding('permission.type', 'error', location, `${key} must contain strings.`, 'Claude drops the unreadable list while retaining applicable rules from other settings.', 'Use an array of permission rule strings.', 'claude'));
+        delete permissions[action];
+        continue;
+      }
+      const accepted: string[] = [];
+      rules.forEach((rule, index) => {
+        const location = locate(source, `permissions.${action}.${index}`);
+        if (typeof rule === 'string') {
+          permissionLocations[`permissions.${action}.${accepted.length}`] = location;
+          accepted.push(rule);
+        } else e.findings.push(finding('permission.type', 'error', location, 'Permission rule must be a string.', 'Claude drops the invalid entry and retains other managed rules.', 'Replace the entry with a permission rule string.', 'claude'));
       });
+      permissions[action] = accepted;
     }
     data.permissions = permissions;
   }
-  return { ...source, data };
+  return { ...source, data, permissionLocations };
 }
 
 export function applyClaudePolicy(e: Effective, ctx: Context): void {

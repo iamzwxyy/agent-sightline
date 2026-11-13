@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.7 — 2026-11-14
+
+* Correct source keys and line numbers for valid Claude managed permission rules following rejected entries. v0.3.6 could attribute a surviving rule to an earlier array position.
+* Preserve original permission origins through masking findings, built CLI output and portable reports while retaining dense effective rule arrays.
+* Mark unreadable managed permission lists as invalid and retain applicable lower-scope lists in the effective settings view.
+* Stop Codex native test process groups after wrapper exit, retry temporary-home removal and allow 30 seconds for the initial Copilot test connection.
+
 ## 0.3.6 — 2026-11-14
 
 * Discover Claude's optional managed-settings.d JSON files in alphabetical order after the base system policy.

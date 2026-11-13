@@ -80,7 +80,7 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
       e.settings.push({ key, value: s.data[key], location: locate(s, key), status: 'ignored', reason: key === 'hooks' ? `Hooks are disabled by ${hookGateKey}.` : 'Workspace MCP approval settings require explicit trust.', overrides: [] });
       if (key === 'hooks') e.findings.push(finding('claude.policy-ignored', 'info', locate(s, key), `Claude ignores these hooks under ${hookGateKey}.`, 'The effective hook control excludes handlers from this settings layer.', 'Review the controlling setting to confirm which hooks can run.', 'claude', [locate(hookGate!, hookGateKey)]));
     }
-    hooks(e, s, s.data.hooks, 'active'); permissions(e, s, 'active', { status: grantStatus, reason: grantReason });
+    hooks(e, s, s.data.hooks, 'active'); permissions(e, s, 'active', { status: grantStatus, reason: grantReason }, s.permissionLocations);
   }
   const excludes = effectiveValue(e, 'claudeMdExcludes', []);
   const excluded = (s: Source) => s.scope !== 'system' && Array.isArray(excludes) && matches(slash(s.path), excludes.filter(x => typeof x === 'string'));

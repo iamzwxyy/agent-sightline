@@ -105,11 +105,29 @@ test('Claude hook disable precedence and managed hook protection retain controll
 });
 
 test('Claude repairs supported managed permission entries and withholds grants beside an unreadable restriction', async t => {
-  const { effective } = await policyFixture(t, { 'managed-settings.json': { permissions: { allow: ['Read'], additionalDirectories: ['../docs'], deny: 42, ask: ['Edit', 7] } } });
+  const { effective } = await policyFixture(t, { 'managed-settings.json': { permissions: { allow: ['Read'], additionalDirectories: ['../docs'], deny: 42, ask: ['Edit', 7] } } }, { permissions: { deny: ['Bash'] } });
   assert.ok(!effective.extensions.some(extension => extension.config.action === 'allow'));
   assert.equal(effective.extensions.find(extension => extension.name === 'Edit')?.status, 'active');
   assert.ok(!effective.settings.some(setting => setting.key === 'permissions.additionalDirectories' && setting.status === 'active'));
   assert.equal(effective.findings.filter(finding => finding.ruleId === 'claude.managed-grants-withheld').length, 2);
+  assert.deepEqual(effective.settings.find(setting => setting.key === 'permissions.deny' && setting.status === 'active')?.value, ['Bash']);
+  assert.equal(effective.settings.find(setting => setting.key === 'permissions.deny' && setting.location.path.includes('managed-settings.json'))?.status, 'invalid');
+});
+
+test('Claude repaired permission lists retain original rule keys and lines', async t => {
+  for (const action of ['allow', 'ask', 'deny']) {
+    const user = action === 'allow' ? {} : { permissions: { allow: ['Bash(fixture)'] } };
+    const { effective, ctx } = await policyFixture(t, { 'managed-settings.json': { permissions: { [action]: [42, 'Read', false, 'Bash'] } } }, user);
+    const rules = effective.extensions.filter(extension => extension.kind === 'permission' && extension.config.action === action && extension.location.path.includes('managed-settings.json'));
+    assert.deepEqual(rules.map(rule => [rule.location.key, rule.location.line]), [[`permissions.${action}.1`, 5], [`permissions.${action}.3`, 7]]);
+    if (action !== 'allow') {
+      const finding = effective.findings.find(finding => finding.ruleId === `permission.${action}-overrides-allow`)!;
+      assert.deepEqual(finding.related[0], rules[1].location);
+    }
+    assert.deepEqual(effective.settings.find(setting => setting.key === 'permissions.' + action && setting.status === 'active')?.value, ['Read', 'Bash']);
+    assert.deepEqual(ctx.sources.find(source => source.scope === 'system')?.data.permissions[action], [42, 'Read', false, 'Bash']);
+    assert.ok(!JSON.stringify(effective).includes('permissionLocations'));
+  }
 });
 
 test('Claude empty managed files and directory-shaped drop-ins contribute no policy', async t => {

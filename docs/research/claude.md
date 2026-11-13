@@ -39,6 +39,8 @@ The native file-policy cases cover managed-only grants, ignored ordinary restric
 
 Skill allowed-tools withholding uses official-reference fixtures while retaining skill discovery. Static file-policy results assume the file-based managed tier is selected. Remote, MDM, registry and embedding-host policy selection require session evidence. Managed schema recovery covers the two implemented locks, disableAllHooks and permission-list types. Other managed schema repairs and whole-entry map exceptions retain partial coverage. [Managed settings](https://code.claude.com/docs/en/managed-settings) [Settings reference](https://code.claude.com/docs/en/settings-reference)
 
+Permission-list recovery retains each surviving rule's original array key and line. The resolver uses a separate location map for compacted effective lists. The native matrix checks a rejected entry before an applicable Bash restriction through the built CLI and portable report.
+
 ## Native MCP comparisons
 
 `npm run test:claude` checks the pinned CLI in temporary homes. The matrix compares transport acceptance, pending approval, user-level approvals, repository/local self-approval, explicit rejection and fallback after invalid higher-priority entries. Synthetic stdio servers answer health-check requests and record their working directory.
