@@ -101,7 +101,15 @@ test('Claude permission precedence and trust boundaries use the pinned CLI with 
     if (scenario.tracked) execFileSync('git', ['add', '.claude/settings.local.json'], { env, cwd: w.repo });
     const trust = { hasTrustDialogAccepted: scenario.trusted !== false };
     const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { env, cwd: w.repo, encoding: 'utf8' }).trim();
-    await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true, projects: { [w.repo]: trust, [await realpath(w.repo)]: trust, [gitRoot]: trust } }));
+    await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({
+      hasCompletedOnboarding: true,
+      projects: {
+        [w.repo]: trust,
+        [w.repo.replaceAll('\\', '/')]: trust,
+        [await realpath(w.repo)]: trust,
+        [gitRoot]: trust,
+      },
+    }));
     messages = [];
     const child = spawn(runtime, ['-p', 'Run the isolated fixture.', '--output-format', 'json', '--permission-mode', 'manual', '--permission-prompts', 'none', '--no-session-persistence', '--tools', 'Bash', '--strict-mcp-config', '--system-prompt', 'Use the fixture tool.'], { cwd: w.repo, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let output = '', errors = '';
