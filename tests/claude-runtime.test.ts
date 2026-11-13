@@ -100,7 +100,8 @@ test('Claude permission precedence and trust boundaries use the pinned CLI with 
     execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
     if (scenario.tracked) execFileSync('git', ['add', '.claude/settings.local.json'], { env, cwd: w.repo });
     const trust = { hasTrustDialogAccepted: scenario.trusted !== false };
-    await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true, projects: { [w.repo]: trust, [await realpath(w.repo)]: trust } }));
+    const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { env, cwd: w.repo, encoding: 'utf8' }).trim();
+    await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true, projects: { [w.repo]: trust, [await realpath(w.repo)]: trust, [gitRoot]: trust } }));
     messages = [];
     const child = spawn(runtime, ['-p', 'Run the isolated fixture.', '--output-format', 'json', '--permission-mode', 'manual', '--permission-prompts', 'none', '--no-session-persistence', '--tools', 'Bash', '--strict-mcp-config', '--system-prompt', 'Use the fixture tool.'], { cwd: w.repo, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let output = '', errors = '';
@@ -112,7 +113,7 @@ test('Claude permission precedence and trust boundaries use the pinned CLI with 
       assert.equal(status, 0, errors);
       assert.equal(messages.length, 2);
       assert.equal(JSON.parse(output).is_error, false);
-      assert.equal(await readFile(path.join(w.repo, marker), 'utf8').catch(() => null), scenario.allowed ? 'permission-fixture' : null);
+      assert.equal(await readFile(path.join(w.repo, marker), 'utf8').catch(() => null), scenario.allowed ? 'permission-fixture' : null, errors);
       if (scenario.removed) assert.ok(!messages[0].tools.some((tool: any) => tool.name === 'Bash'));
       if (scenario.rule === 'permission.ask-overrides-allow') assert.equal(JSON.parse(output).permission_denials.length, 1);
       const report = await scan({ ...w, clients: ['claude'], trust: scenario.trusted === false ? 'untrusted' : 'trusted' });
