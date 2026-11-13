@@ -14,6 +14,7 @@
     instructionView: 'sources',
     extensionKind: 'all',
     compareClients: new Set(report.clients.filter(client => client.detected).slice(0, 3).map(client => client.client)),
+    comparisonLimit: 100,
     highlightLine: null,
     request: 0,
   };
@@ -510,6 +511,47 @@
     $('setting-list').replaceChildren(visible.length ? table : empty(settings.length ? 'No settings match your filters' : 'No structured settings discovered', settings.length ? 'Try another key, value, client or source path.' : 'Structured settings appear here when a supported configuration file is discovered.', button('Reset filters', reset, 'button button-small')));
     $('setting-summary').textContent = `${visible.length} of ${settings.length} setting definitions shown. Select a key to inspect its precedence and replaced origins.`;
   }
+  function renderContentComparison(clients) {
+    $('comparison-content').hidden = !report.instructionDiff;
+    if (!report.instructionDiff) return;
+    const blocks = report.instructionDiff.map(block => ({
+      ...block, origins: block.origins.filter(origin => state.compareClients.has(origin.client)),
+    })).filter(block => block.origins.length);
+    const shared = block => clients.length > 1 && clients.every(client => block.clients.includes(client.client));
+    const filter = $('content-filter').value;
+    const filtered = blocks.filter(block => filter === 'all' || (filter === 'shared' ? shared(block) : !shared(block)));
+    const rows = filtered.slice(0, state.comparisonLimit).map(block => {
+      const row = node('article', undefined, 'instruction-block');
+      const content = node('div', undefined, 'instruction-block-content');
+      if (shared(block)) content.append(node('p', 'Shared by all', 'instruction-shared'));
+      const text = node('pre', block.content);
+      text.tabIndex = 0; text.setAttribute('aria-label', 'Instruction paragraph');
+      content.append(text);
+      const origins = node('div', undefined, 'instruction-block-origins');
+      for (const origin of block.origins) {
+        const location = origin.location;
+        const range = origin.endLine === undefined ? `source starts at line ${location.line}` : origin.endLine === location.line ? `line ${location.line}` : `lines ${location.line}–${origin.endLine}`;
+        const action = button('', () => inspectSourceLocation(location, origin.client), 'source-link instruction-block-origin');
+        const identity = node('span', undefined, 'instruction-block-client');
+        identity.append(avatar(origin.client), node('span', names[origin.client]));
+        action.append(identity, node('span', `${short(location.path)} · ${range}`, 'instruction-block-path'));
+        origins.append(action);
+      }
+      row.append(content, origins);
+      return row;
+    });
+    if (!rows.length) rows.push(empty('No matching instruction paragraphs', blocks.length ? 'Choose another content filter or client selection.' : 'Selected clients have no proven active instruction text for this target.'));
+    if (filtered.length > state.comparisonLimit) rows.push(button(`Show ${Math.min(100, filtered.length - state.comparisonLimit)} more paragraphs`, () => {
+      const firstNew = state.comparisonLimit;
+      state.comparisonLimit += 100; renderContentComparison(clients);
+      $('comparison-blocks').querySelectorAll('.instruction-block pre')[firstNew]?.focus();
+    }, 'button button-small content-diff-more'));
+    $('comparison-blocks').replaceChildren(...rows);
+    const paragraphLabel = filtered.length === 1 ? 'paragraph' : 'paragraphs';
+    const sharedCount = blocks.filter(shared).length;
+    const sharedSummary = filter === 'all' && clients.length > 1 ? ` ${sharedCount} ${sharedCount === 1 ? 'reaches' : 'reach'} every selected client.` : '';
+    $('comparison-content-summary').textContent = `Showing ${Math.min(filtered.length, state.comparisonLimit)} of ${filtered.length} ${paragraphLabel}.${sharedSummary}`;
+  }
   function renderCompare() {
     const clients = report.clients.filter(client => state.compareClients.has(client.client));
     $('compare-clients').replaceChildren(...report.clients.map(client => {
@@ -518,12 +560,13 @@
           if (state.compareClients.size === 1) { toast('Keep at least one client selected'); return; }
           state.compareClients.delete(client.client);
         } else state.compareClients.add(client.client);
-        renderCompare();
+        state.comparisonLimit = 100; renderCompare();
       }, 'compare-chip');
       element.append(avatar(client.client), node('span', names[client.client]));
       element.setAttribute('aria-pressed', String(state.compareClients.has(client.client)));
       return element;
     }));
+    renderContentComparison(clients);
     $('comparison-text').replaceChildren(...clients.map(client => {
       const panel = node('article', undefined, 'comparison-document');
       const heading = node('div', undefined, 'comparison-document-heading');
@@ -740,6 +783,7 @@
   $('include-shadowed').onchange = renderSettings;
   $('extension-client').onchange = renderExtensions;
   $('differences-only').onchange = renderCompare;
+  $('content-filter').onchange = () => { state.comparisonLimit = 100; renderCompare(); };
   $('review-findings').onclick = () => { $('severity').value = 'actionable'; navigate('findings'); };
   $('scope-button').onclick = () => $('scope-dialog').showModal();
   $('help-button').onclick = () => $('help-dialog').showModal();

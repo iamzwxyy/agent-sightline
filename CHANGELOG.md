@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.4 — 2026-11-13
+
+* Compare exact instruction paragraphs across different source files, retaining each receiving client, repeated occurrence, loading order and original line range.
+* Keep fenced code blocks intact and normalize CRLF for comparison. Loaded prefixes participate according to their actual content. Client-specific trust and loading decisions determine eligibility.
+* Add paragraph filters and clickable client-specific origins to the inspector and portable reports. Initially render up to 100 matching paragraphs, with an action to reveal more.
+* Preserve whole-source JSON groups and older report rendering. Build membership before privacy redaction, with explicit source-start navigation when transformed content has no proven contiguous source range.
+* Allow 30 seconds for the two isolated Copilot inventory startups that exceeded their former 15-second bound on Windows.
+
 ## 0.3.3 — 2026-11-13
 
 * Resolve proven permission masking in deny → ask → allow order. Recognize Bash(*) as tool-wide and retain every matching highest-priority source.

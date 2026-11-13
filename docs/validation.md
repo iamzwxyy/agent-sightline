@@ -1,5 +1,17 @@
 # Release validation
 
+## v0.3.4
+
+Verified locally on macOS with Node 22.23.5 on 2026-11-13.
+
+* Lint, strict TypeScript, build and empty-cache offline package installation passed. The 271-case core suite completed with 270 passes and one Windows-only skip.
+* Paragraph regressions reproduced the missing common content before implementation. Current checks cover different source files, CRLF, exact ranges, repeated occurrence order, whitespace, fenced code, frontmatter, removed comments, loaded byte prefixes, excluded trust states, privacy collisions and legacy report rendering.
+* CLI and installed-package checks follow shared paragraphs to their original client-specific source lines and retain portable origins. The shipped demo includes one shared payment paragraph across three different files, with both Copilot occurrences preserved.
+* All fifty-one Chromium browser cases passed. The added live and offline journeys exercise recipient filters, source navigation, changed content, inert HTML, WCAG AA checks, phone layout, incremental rendering and legacy snapshots.
+* A fresh process inspecting the existing 10,000-file fixture with 1,000 skills and 1,201 configuration sources completed in 1,282 ms. Discovery was complete. The filesystem cache was warmed by fixture creation. Run `node scripts/benchmark.mjs --skills 1000` after building to reproduce this synthetic workload.
+* Desktop and phone visual review covers the paragraph comparison and source links. Production dependency audit reported zero vulnerabilities. Paragraph membership is determined before private-value redaction. Transformed text without a proven contiguous source range retains an explicit source-start link.
+* Two cold Copilot inventory startups exceeded their former 15-second bound during the v0.3.3 main Windows run. Those isolated tests now use the existing 30-second startup allowance.
+
 ## v0.3.3
 
 Verified locally on macOS with Node 22.23.5 on 2026-11-13.

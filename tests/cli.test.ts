@@ -7,6 +7,27 @@ import { mkdir, readFile, readdir, realpath, rm, watch, writeFile } from 'node:f
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
+test('CLI diff groups shared paragraphs across different files and exports original source lines', async t => {
+  const w = await workspace({ 'AGENTS.md': 'Codex introduction.\n\nRun the checks.', 'CLAUDE.md': 'Run the checks.\n\nClaude ending.' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const flags = ['diff', '.', '--clients', 'codex,claude', '--no-user', '--trust', 'trusted'];
+  const result = run([...flags, '--json'], w.repo);
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  const common = report.instructionDiff.find((block: any) => block.content === 'Run the checks.');
+  assert.deepEqual(common.clients, ['codex', 'claude']);
+  assert.deepEqual(common.origins.map((origin: any) => origin.location.line), [3, 1]);
+  const output = run(flags, w.repo);
+  assert.equal(output.status, 0, output.stderr);
+  assert.ok(output.stdout.includes('codex, claude · shared by all'));
+  assert.ok(output.stdout.includes(path.join(w.repo, 'AGENTS.md') + ':3'));
+  const file = path.join(w.root, 'content-diff.html');
+  const exported = run([...flags, '--format', 'html', '--output', file], w.repo);
+  assert.equal(exported.status, 0, exported.stderr);
+  const content = await readFile(file, 'utf8');
+  const snapshot = JSON.parse(content.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
+  assert.ok(snapshot.instructionDiff.every((block: any) => block.origins.every((origin: any) => origin.location.path.startsWith('<repo>/'))));
+});
 test('CLI explains ask precedence, trust conditions and the original rule sources through correction', async t => {
   const content = JSON.stringify({ permissions: { allow: ['Bash(npm test)', 'Read'], ask: ['Bash'] } }, null, 2);
   const w = await workspace({ '.claude/settings.json': content });

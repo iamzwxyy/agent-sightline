@@ -51,8 +51,16 @@ export function terminal(report: Report, mode = 'scan'): string {
     lines.push('', ...e.notes.map(n => `  Note: ${n}`), '');
   }
   if (mode === 'diff') {
-    lines.push('Instruction content by receiving client', '');
-    for (const d of report.diff) lines.push(`  ${d.clients.join(', ')}${d.clients.length === report.clients.length ? ' · shared by all' : ''}`, `  ${d.sources.map(s => `${s.path}:${s.line}`).join(', ')}`, ...d.content.split('\n').map(l => `    ${l}`), '');
+    lines.push(report.instructionDiff ? 'Instruction paragraphs by receiving client' : 'Instruction content by receiving client', '');
+    for (const block of report.instructionDiff ?? report.diff) {
+      lines.push(`  ${block.clients.join(', ')}${block.clients.length === report.clients.length ? ' · shared by all' : ''}`);
+      if ('origins' in block) for (const origin of block.origins) {
+        const range = origin.endLine === undefined ? ' (source starts here)' : origin.endLine === origin.location.line ? '' : `–${origin.endLine}`;
+        lines.push(`  ${origin.client} ← ${origin.location.path}:${origin.location.line}${range}`);
+      }
+      else lines.push(`  ${block.sources.map(source => `${source.path}:${source.line}`).join(', ')}`);
+      lines.push(...block.content.split('\n').map(line => `    ${line}`), '');
+    }
     for (const e of report.clients) { lines.push(`${e.metadata.name} extensions`); for (const x of e.extensions) lines.push(...extensionLines(x)); lines.push(''); }
   }
   const findings = mode === 'scan' ? groups.slice(0, 12).map(group => ({ ...group.item, clientLabel: group.clients.join(', ') })) : report.findings.map(f => ({ ...f, clientLabel: f.client }));

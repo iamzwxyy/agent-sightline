@@ -63,7 +63,7 @@
   const workflows = {
     trace: { image: basePath + 'images/instructions.png', alt: 'The instruction explorer shows a source file, its loading order and provenance', caption: 'Inspect a source, read its loaded content, and see why it applies to your target file.', link: basePath + 'demo/#view=effective&client=codex' },
     find: { image: basePath + 'images/finding.png', alt: 'A finding explains the issue, exact source and suggested resolution', caption: 'A finding connects the problem, its source location and the next step in one place.', link: basePath + 'demo/#view=findings' },
-    compare: { image: basePath + 'images/compare.png', alt: 'Side-by-side effective instructions and source coverage across three clients', caption: 'Read the exact instructions side by side, then trace each loading difference to its source.', link: basePath + 'demo/#view=compare' },
+    compare: { image: basePath + 'images/compare.png', alt: 'Instruction paragraphs grouped by receiving clients with original source lines', caption: 'Find shared paragraphs across different files and follow each client to the original source lines.', link: basePath + 'demo/#view=compare' },
   };
   document.querySelectorAll('[data-workflow]').forEach(button => {
     button.onclick = () => {

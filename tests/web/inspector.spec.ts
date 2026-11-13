@@ -14,6 +14,82 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('paragraph comparison follows exact recipients and source lines online and offline', async ({ page }) => {
+  const shared = 'Run the checks.\nKeep changes focused.';
+  const w = await workspace({
+    'AGENTS.md': 'Codex introduction.\n\n' + shared + '\n\nCodex ending.',
+    'CLAUDE.md': shared + '\n\nClaude ending.\n\n<script>window.paragraphExecuted = true</script>',
+  });
+  const server = await serve({ ...w, user: false, trust: 'trusted', clients: ['codex', 'claude'] });
+  try {
+    await page.goto(server.url);
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('paragraph-comparison.html');
+    await (await download).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.goto(url);
+      await page.locator('#compare-tab').click();
+      await expect(page.locator('.instruction-block')).toHaveCount(5);
+      await page.getByLabel('Instruction content filter').selectOption('shared');
+      await expect(page.locator('.instruction-block')).toHaveCount(1);
+      await expect(page.locator('.instruction-block pre')).toHaveText(shared);
+      const sources = page.locator('.instruction-block-origin');
+      await expect(sources.filter({ hasText: 'Codex' })).toContainText('lines 3–4');
+      await expect(sources.filter({ hasText: 'Claude Code' })).toContainText('lines 1–2');
+      await sources.filter({ hasText: 'Codex' }).click();
+      await expect(page.locator('#source-title')).toHaveText('AGENTS.md');
+      await expect(page.locator('.code-line.highlight .line-number')).toHaveText('3');
+      await page.locator('#compare-tab').click();
+      await page.getByLabel('Instruction content filter').selectOption('different');
+      await expect(page.locator('.instruction-block')).toHaveCount(4);
+      await expect(page.locator('#comparison-blocks')).toContainText('<script>window.paragraphExecuted');
+      expect(await page.evaluate(() => 'paragraphExecuted' in window)).toBe(false);
+      await page.getByLabel('Instruction content filter').selectOption('all');
+      await page.locator('#compare-clients button').filter({ hasText: 'Claude Code' }).click();
+      await expect(page.locator('.instruction-block')).toHaveCount(3);
+      await page.locator('#compare-clients button').filter({ hasText: 'Claude Code' }).click();
+      await expect(page.locator('.instruction-block')).toHaveCount(5);
+      expect((await new AxeBuilder({ page }).include('#compare').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+      await page.setViewportSize({ width: 390, height: 844 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    }
+    await page.context().setOffline(false);
+    await writeFile(path.join(w.repo, 'CLAUDE.md'), 'Updated Claude-only instructions.');
+    await page.goto(server.url);
+    await page.locator('#compare-tab').click();
+    await page.getByLabel('Instruction content filter').selectOption('shared');
+    await expect(page.locator('.instruction-block')).toHaveCount(0);
+    await expect(page.locator('#comparison-blocks')).toContainText('No matching instruction paragraphs');
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('paragraph comparison bounds initial rows and keeps legacy snapshots inspectable', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': Array.from({ length: 125 }, (_, index) => `Instruction ${index + 1}.`).join('\n\n') });
+  try {
+    const report = await scan({ ...w, user: false, trust: 'trusted', clients: ['codex', 'claude'] });
+    const file = test.info().outputPath('many-paragraphs.html');
+    await writeFile(file, html(report));
+    await page.goto(pathToFileURL(file).href);
+    await page.locator('#compare-tab').click();
+    await expect(page.locator('.instruction-block')).toHaveCount(100);
+    await page.getByRole('button', { name: 'Show 25 more paragraphs', exact: true }).click();
+    await expect(page.locator('.instruction-block')).toHaveCount(125);
+    await expect(page.locator('.instruction-block pre').nth(100)).toBeFocused();
+    await expect(page.locator('#comparison-content-summary')).toContainText('Showing 125 of 125');
+    delete report.instructionDiff;
+    const legacyFile = test.info().outputPath('legacy-comparison.html');
+    await writeFile(legacyFile, html(report));
+    await page.goto(pathToFileURL(legacyFile).href);
+    await page.locator('#compare-tab').click();
+    await expect(page.locator('#comparison-content')).toBeHidden();
+    await expect(page.locator('#comparison-text')).toContainText('Instruction 125.');
+    await expect(page.locator('#comparison-matrix')).toBeVisible();
+  } finally { await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('permission masking follows the overriding rule in live and portable reports and responds to correction', async ({ page }) => {
   const w = await workspace({
     '.claude/settings.json': '{\n"permissions":{"ask":[\n"Bash"\n]}\n}',

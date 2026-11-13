@@ -301,7 +301,7 @@ test('Copilot native workspace MCP inventory follows trustedFolders and disabled
   await writeFile(path.join(w.home, '.copilot/config.json'), JSON.stringify({ trustedFolders: [w.repo] }));
   for (const key of ['disabledMcpServers', 'disabled_mcp_servers']) {
     await writeFile(path.join(w.home, '.copilot/settings.json'), JSON.stringify({ [key]: ['fixture'] }));
-    const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd: w.repo, env, encoding: 'utf8', timeout: 15000 }));
+    const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd: w.repo, env, encoding: 'utf8', timeout: 30000 }));
     const report = await scan({ ...w, clients: ['copilot'] });
     assert.equal(native.mcpServers.fixture?.enabled, false);
     assert.equal(report.clients[0].extensions.find(extension => extension.name === 'fixture')?.status, 'ignored');
@@ -320,7 +320,7 @@ test('Copilot native shared-rule inventory keeps root and cwd sources with their
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
   const env = isolatedEnvironment(w.home);
   execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
-  const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'instruction', 'list', '--json'], { cwd: path.join(w.repo, 'src/deep'), env, encoding: 'utf8', timeout: 15000 }));
+  const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'instruction', 'list', '--json'], { cwd: path.join(w.repo, 'src/deep'), env, encoding: 'utf8', timeout: 30000 }));
   assert.deepEqual(native.map((entry: any) => entry.label).sort(), ['all.md', 'local.md', 'ts.md']);
   assert.deepEqual(native.find((entry: any) => entry.label === 'ts.md').applyTo, ['src/**/*.ts']);
   const report = await scan({ ...w, clients: ['copilot'], target: 'src/deep/refund.ts' });

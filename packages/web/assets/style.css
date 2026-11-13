@@ -305,6 +305,18 @@ dialog::backdrop { background: #252f2338; backdrop-filter: blur(3px); }
 .comparison-document-meta { margin: 0; padding: 0 14px 12px; font-size: 11px; color: #626b59; background: #fafbf7; border-bottom: 1px solid var(--line); }
 .comparison-document-text { font: 11px/1.9 var(--mono); padding: 15px; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 310px; min-height: 160px; overflow: auto; flex: 1; }
 .comparison-document > .text-button { padding: 10px 14px; border-top: 1px solid var(--line); text-align: left; font-size: 11px; }
+#comparison-content { margin-bottom: 30px; }
+#comparison-content-summary { margin-bottom: 8px; }
+.instruction-block { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.instruction-block-content { min-width: 0; }
+.instruction-block-content pre { font: 12px/1.85 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; margin: 0; }
+.instruction-shared { color: var(--green); font-size: 12px; font-weight: 550; margin-bottom: 8px; }
+.instruction-block-origins { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; min-width: 0; }
+.instruction-block-origin { text-align: left; max-width: 100%; }
+.instruction-block-client { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.instruction-block-path { display: block; overflow-wrap: anywhere; color: var(--muted); font-size: 11px; margin-top: 3px; }
+.content-diff-more { margin-top: 16px; }
+@media (max-width: 760px) { .instruction-block { grid-template-columns: 1fr; gap: 14px; } .instruction-block-origins { flex-direction: row; flex-wrap: wrap; gap: 12px 24px; } }
 .settings-table { min-width: 760px; }
 .settings-table th, .settings-table td { text-align: left; vertical-align: top; }
 .settings-table .status { display: block; width: fit-content; margin-top: 5px; }

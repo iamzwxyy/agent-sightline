@@ -46,6 +46,11 @@ export interface Discovery {
   repositoryEntryLimit: number;
   userFileLimit: number;
 }
+export interface InstructionBlock {
+  content: string;
+  clients: ClientId[];
+  origins: { client: ClientId; location: Location; endLine?: number; order: number }[];
+}
 export interface Report {
   schemaVersion: '1.0'; tool: { name: string; version: string };
   inputs?: { codexProfile?: string };
@@ -55,6 +60,7 @@ export interface Report {
   assumptions: string[]; sources: (Omit<Source, 'text' | 'body' | 'data' | 'lines' | 'baseDir' | 'valueRanges'> & { preview?: string })[];
   clients: Effective[]; findings: Finding[];
   diff: { content: string; clients: ClientId[]; sources: Location[] }[];
+  instructionDiff?: InstructionBlock[];
 }
 export interface ScanOptions {
   repo?: string; target?: string; clients?: ClientId[]; home?: string; user?: boolean;

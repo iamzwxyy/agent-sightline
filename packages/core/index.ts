@@ -4,6 +4,7 @@ import { discoverRepository, makeContext, selectedClients } from './discovery.js
 import { diagnose } from './diagnostics.js';
 import { createRedactor, isSensitiveKey, privateMappings, redactScanReport, redactSourcePreview } from './redact.js';
 import { collectPathMappings } from './paths.js';
+import { compareInstructions } from './comparison.js';
 import { cmp } from './utils.js';
 import { VERSION } from './version.js';
 import type { Context, Effective, Report, ScanOptions } from './types.js';
@@ -74,7 +75,7 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
       const privateState = /[/\\]\.claude\.json$/.test(path) || source.scope === 'user' && source.owners.includes('copilot') && /[/\\]config\.json$/.test(path);
       return { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid, ...(privateState || invalid ? {} : { preview: redactSourcePreview(source, scrub) }) };
     }),
-    clients, findings: unique, diff: [...diff.values()],
+    clients, findings: unique, diff: [...diff.values()], instructionDiff: compareInstructions(clients, ctx.sources),
   };
   const result = redactScanReport(report, scrub, privateValues.settings);
   const configuration = [result.clients, result.findings];

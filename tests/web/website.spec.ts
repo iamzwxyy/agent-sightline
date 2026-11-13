@@ -102,7 +102,7 @@ test('website connects the real client demo, workflow walkthrough, guide and dow
     await page.getByRole('tab', { name: /Claude Code/ }).click();
     await expect(page.locator('#demo-file')).toHaveText('CLAUDE.md');
     await expect(page.locator('#demo-reason-title')).toContainText('Claude Code');
-    await page.getByRole('tab', { name: 'Compare perspectives Understand what each client receives.' }).click();
+    await page.getByRole('tab', { name: 'Compare perspectives Find shared paragraphs and their sources.' }).click();
     await expect(page.locator('#workflow-image')).toHaveAttribute('src', '/images/compare.png');
     await expect(page.locator('#workflow-image')).toBeVisible();
     await expect.poll(() => page.locator('#workflow-image').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBeTruthy();

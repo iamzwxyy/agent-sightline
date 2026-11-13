@@ -42,7 +42,7 @@ test('project-hosted website loads assets, demo, guide and the exact released pa
     await page.getByRole('tab', { name: /Claude Code/ }).click();
     dataGate.resolve();
     await expect(page.locator('#demo-file')).toHaveText('CLAUDE.md');
-    await page.getByRole('tab', { name: 'Compare perspectives Understand what each client receives.' }).click();
+    await page.getByRole('tab', { name: 'Compare perspectives Find shared paragraphs and their sources.' }).click();
     await expect(page.locator('#workflow-image')).toHaveAttribute('src', prefix + 'images/compare.png');
     await expect.poll(() => page.locator('#workflow-image').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBeTruthy();
     const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: /Download CLI package/ }).click()]);

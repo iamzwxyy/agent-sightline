@@ -94,5 +94,9 @@ export function redactScanReport(report: Report, scrub: ReturnType<typeof create
     })),
     findings: report.findings.map(finding),
     diff: report.diff.map(entry => ({ ...entry, content: scrub(entry.content), sources: entry.sources.map(location) })),
+    ...(report.instructionDiff ? { instructionDiff: report.instructionDiff.map(block => ({
+      ...block, content: scrub(block.content),
+      origins: block.origins.map(origin => ({ ...origin, location: location(origin.location) })),
+    })) } : {}),
   };
 }

@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import type { Adapter, AdapterMetadata, Context, Decision, Effective, Extension, Source, Status } from '../core/types.js';
-import { bytes, cmp, executable, finding, locate, plainObject, prefix, slash, splitGlobs, within } from '../core/utils.js';
+import { bytes, cmp, executable, finding, locate, plainObject, prefix, slash, splitGlobs, stripComments, within } from '../core/utils.js';
+export { stripComments } from '../core/utils.js';
 import { hookCommandField, validateExtensions, validateMcpConfiguration, probeMcp } from '../core/extensions.js';
 
 export async function base(metadata: AdapterMetadata, ctx: Context): Promise<Effective> {
@@ -185,9 +186,6 @@ export async function expand(e: Effective, ctx: Context, s: Source, stack: strin
     const imported = await ctx.read(target, e.client, 'instructions', s.scope === 'user' ? 'user' : 'import');
     if (imported) { await expand(e, ctx, imported, [...stack, real], depth + 1); const d = e.decisions.findLast(x => x.path === imported.path); if (d) d.importedFrom = loc; }
   }
-}
-export function stripComments(body: string): string {
-  let fence = false; return body.split(/(^\s*```.*$|^\s*~~~.*$)/m).map(p => { if (/^\s*(```|~~~)/.test(p)) { fence = !fence; return p; } return fence ? p : p.replace(/<!--[\s\S]*?-->/g, ''); }).join('');
 }
 export function truncated(e: Effective, s: Source, limit: number): string {
   const content = prefix(s.text, limit).trim();

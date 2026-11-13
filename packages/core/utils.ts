@@ -9,6 +9,13 @@ export const slash = (s: string): string => s.replace(/\\/g, '/');
 export const cmp = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 export const bytes = (s: string): number => Buffer.byteLength(s, 'utf8');
 export const hash = (s: string): string => createHash('sha256').update(s).digest('hex').slice(0, 16);
+export function stripComments(body: string, preserveOffsets = false): string {
+  let fence = false;
+  return body.split(/(^\s*```.*$|^\s*~~~.*$)/m).map(part => {
+    if (/^\s*(```|~~~)/.test(part)) { fence = !fence; return part; }
+    return fence ? part : part.replace(/<!--[\s\S]*?-->/g, comment => preserveOffsets ? comment.replace(/[^\r\n]/g, '\0') : '');
+  }).join('');
+}
 export function within(root: string, file: string): boolean {
   const rel = path.relative(root, file);
   return rel === '' || (!rel.startsWith(`..${path.sep}`) && rel !== '..' && !path.isAbsolute(rel));
