@@ -34,14 +34,17 @@ test('blocked Claude MCP retains field definitions and original policy lines liv
       await page.locator('.extension-row').click();
       await expect(page.getByRole('heading', { name: 'Field definitions and policy', exact: true })).toBeVisible();
       await expect(page.locator('.extension-origins').getByRole('button', { name: /^command ·/ })).toBeVisible();
+      await page.screenshot({ path: test.info().outputPath('claude-mcp-policy-desktop.png') });
       await page.setViewportSize({ width: 390, height: 844 });
       expect(await page.locator('#detail-dialog').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await page.screenshot({ path: test.info().outputPath('claude-mcp-policy-phone.png') });
       await page.locator('.extension-origins').getByRole('button', { name: /^deniedMcpServers ·/ }).click();
       await expect(page.locator('.code-line.highlight')).toContainText('"serverName": "fixture"');
       await expect(page.locator('.code-line.highlight .line-number')).toHaveText('4');
     }
     await page.context().setOffline(false);
     await writeFile(path.join(w.home, '.claude/settings.json'), '{}');
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(server.url);
     await page.locator('#extensions-tab').click();
     await expect(page.locator('.extension-row .status.active')).toHaveCount(1);

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { readdir } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import type { Context, Effective, Location, Setting, Source } from '../core/types.js';
 import { cmp, finding, locate, plainObject } from '../core/utils.js';
 
@@ -22,7 +22,14 @@ export async function discoverClaudeManagedSettings(ctx: Context, directory = pr
     }
   }
   await ctx.read(path.join(directory, 'CLAUDE.md'), 'claude', 'instructions', 'system');
-  await ctx.read(path.join(directory, 'managed-mcp.json'), 'claude', 'mcp', 'system');
+  const mcpPath = path.join(directory, 'managed-mcp.json');
+  if (!await ctx.read(mcpPath, 'claude', 'mcp', 'system')) {
+    try {
+      await stat(mcpPath);
+      if (ctx.discovery) ctx.discovery.complete = false;
+      ctx.findings.push(finding('claude.managed-mcp-unreadable', 'error', { path: mcpPath, line: 1, column: 1 }, 'Exclusive managed MCP configuration cannot be loaded.', 'The existing exclusive path suppresses ordinary MCP servers even when it cannot be loaded.', 'Check that managed-mcp.json is a readable JSON file.', 'claude'));
+    } catch { ctx.options.signal?.throwIfAborted(); }
+  }
 }
 
 const managedLocks = ['allowManagedPermissionRulesOnly', 'allowManagedHooksOnly', 'allowManagedMcpServersOnly'];

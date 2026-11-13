@@ -17,7 +17,7 @@ export const claudeMetadata: AdapterMetadata = {
     'Path-scoped rules over 40,000 characters are conditional because model/context-specific limits cannot be inferred. No universal CLAUDE.md truncation budget is invented.',
     'Nested skills may also be directory-qualified at runtime; bare-name preference is shown.',
     'Local permission grants without explicit workspace trust depend on native Git and session checks; shown as conditional. Session permission modes and the remaining tool inventory are outside this static inspection.',
-    'Managed file-policy results assume the file-based tier is selected. Remote, MDM, registry and embedding-host selection require session evidence. Managed schema repairs cover the implemented Boolean controls and permission-list types.',
+    'Managed file-policy results assume the file-based tier is selected. Remote, MDM, registry and embedding-host selection require session evidence. Managed schema repairs cover the implemented Boolean controls, permission lists and MCP lists/provided entries.',
   ],
 };
 async function discover(ctx: Context): Promise<Source[]> {

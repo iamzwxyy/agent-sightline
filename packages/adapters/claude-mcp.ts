@@ -65,7 +65,7 @@ export function claudeMcpSettingsSource<T extends Source>(e: Effective, source: 
   for (const key of listKeys) {
     const value = data[key];
     if (value === undefined) continue;
-    if (source.scope === 'system' && value === null) { delete data[key]; continue; }
+    if (source.scope === 'system' && value === null && key === 'deniedMcpServers') { delete data[key]; continue; }
     if (!Array.isArray(value)) {
       const closed = source.scope === 'system' && key === 'allowedMcpServers';
       const reason = closed ? 'Claude enforces an empty managed MCP allowlist until this value is repaired.' : 'Claude drops this unreadable MCP policy list.';
@@ -114,8 +114,10 @@ function expand(value: string, env: NodeJS.ProcessEnv, fallbackEnv = env): strin
 
 function expandAllowUrl(value: string, env: NodeJS.ProcessEnv): string | undefined {
   const references: { token: string; raw: string }[] = [];
+  let tokenPrefix = 'sightlineenv';
+  while (value.includes(tokenPrefix)) tokenPrefix += 'x';
   let template = value.replace(variable, raw => {
-    const token = 'sightlineenv' + references.length;
+    const token = tokenPrefix + references.length + 'end';
     references.push({ token, raw });
     return token;
   });
@@ -126,7 +128,7 @@ function expandAllowUrl(value: string, env: NodeJS.ProcessEnv): string | undefin
     if (replacement === undefined || /[\s*?#\\]/.test(replacement)) return undefined;
     if (parts[4]?.includes(token)) {
       if (replacement.split('/').some(segment => /^(?:\.|%2e){1,2}$/i.test(segment))) return undefined;
-    } else if (/[/:@]/.test(replacement)) return undefined;
+    } else if (/[/@]/.test(replacement) || replacement.includes(':') && !(parts[2].startsWith('[') && parts[2].includes(token))) return undefined;
     template = template.replace(token, () => replacement);
   }
   return template;
@@ -175,11 +177,17 @@ function policyMatches(rule: PolicyRule, extension: Extension, environments: Ret
   return url !== undefined && pattern !== undefined && urlMatches(pattern, url);
 }
 
+function exclusiveLocation(ctx: Context): Location | undefined {
+  const source = ctx.sources.find(source => source.scope === 'system' && source.kind === 'mcp' && source.owners.includes('claude'));
+  return source ? locate(source) : ctx.findings.find(finding => finding.ruleId === 'claude.managed-mcp-unreadable')?.location;
+}
+
 export function applyClaudeMcpPolicy(e: Effective, ctx: Context, layers: McpSettingsSource[]): ReturnType<typeof claudeMcpEnvironments> {
   const valid = layers.filter(source => !source.invalid);
-  const exclusive = ctx.sources.find(source => source.scope === 'system' && source.kind === 'mcp' && !source.invalid && plainObject(source.data.mcpServers));
+  const managedFile = ctx.sources.find(source => source.scope === 'system' && source.kind === 'mcp');
+  const exclusive = exclusiveLocation(ctx);
   if (exclusive) {
-    for (const extension of e.extensions) if (extension.kind === 'mcp' && ['active', 'conditional'].includes(extension.status)) block(extension, 'managed-mcp.json', [locate(exclusive)], 'The exclusive managed MCP file suppresses user, project and local servers.');
+    for (const extension of e.extensions) if (extension.kind === 'mcp' && ['active', 'conditional', 'shadowed'].includes(extension.status)) block(extension, 'managed-mcp.json', [exclusive], 'The exclusive managed MCP file suppresses user, project and local servers, including when the file is malformed.');
   }
   for (const source of valid) if (plainObject(source.data.managedMcpServers)) {
     for (const [name, value] of Object.entries(source.data.managedMcpServers)) {
@@ -190,9 +198,10 @@ export function applyClaudeMcpPolicy(e: Effective, ctx: Context, layers: McpSett
     }
     mcp(e, source, source.data.managedMcpServers, 'managedMcpServers', 'active');
   }
-  const managedFile = ctx.sources.find(source => source.scope === 'system' && source.kind === 'mcp');
   if (managedFile) {
-    decision(e, managedFile, 'active', 'Exclusive managed MCP server configuration.');
+    const validMap = !managedFile.invalid && plainObject(managedFile.data.mcpServers);
+    decision(e, managedFile, validMap ? 'active' : 'invalid', validMap ? 'Exclusive managed MCP server configuration.' : 'This invalid exclusive file still suppresses ordinary MCP sources.');
+    if (!managedFile.invalid && managedFile.data.mcpServers === undefined) e.findings.push(finding('mcp.servers-type', 'error', locate(managedFile), 'Managed MCP configuration needs a server map.', 'The exclusive file continues to suppress ordinary MCP sources.', 'Supply an mcpServers object, using an empty object to disable ordinary servers.', 'claude'));
     mcp(e, managedFile, managedFile.data.mcpServers, 'mcpServers', 'active');
   }
   const lock = valid.findLast(source => source.scope === 'system' && typeof source.data.allowManagedMcpServersOnly === 'boolean');
@@ -211,7 +220,7 @@ export function applyClaudeMcpPolicy(e: Effective, ctx: Context, layers: McpSett
     if (denied.length) { block(extension, 'deniedMcpServers', denied.map(rule => rule.location), 'A matching MCP denylist entry blocks this server.'); continue; }
     const provided = extension.location.key?.startsWith('managedMcpServers.');
     const expandsOutsideEnv = Object.entries(extension.config).some(([key, value]) => key !== 'env' && /\$\{[^}]+\}/.test(JSON.stringify(value) ?? ''));
-    if (provided || extension.location.path === exclusive?.path && !expandsOutsideEnv || !allowSources.length) continue;
+    if (provided || extension.location.path === managedFile?.path && !expandsOutsideEnv || !allowSources.length) continue;
     const remote = ['http', 'streamable-http', 'sse', 'ws'].includes(extension.config.type);
     const selector = remote ? 'serverUrl' : 'serverCommand';
     const specific = allow.some(rule => selector in rule.entry);

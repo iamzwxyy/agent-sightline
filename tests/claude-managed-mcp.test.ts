@@ -107,9 +107,18 @@ test('Claude managed MCP list repairs retain original entry keys and valid lower
   const denied = effective.extensions[0];
   assert.equal(denied.status, 'ignored');
   assert.ok(denied.origins?.some(origin => origin.location.key === 'deniedMcpServers.1'));
-  for (const [allowed, status] of [[42, 'ignored'], [null, 'active']] as const) {
+  for (const [allowed, status] of [[42, 'ignored'], [null, 'ignored']] as const) {
     const { effective: repaired } = await managedFixture(t, { 'managed-settings.json': { allowedMcpServers: allowed, deniedMcpServers: 42 } }, {}, {}, { fixture: { command: process.execPath } });
     assert.equal(repaired.extensions[0].status, status);
+  }
+});
+
+test('Claude malformed exclusive files keep ordinary MCP suppressed', async t => {
+  for (const content of ['{ broken JSON', '{}', '{"mcpServers":42}', '', '[]']) {
+    const { effective } = await managedFixture(t, { 'managed-mcp.json': content }, {}, {}, { fixture: { command: 'missing-malformed-managed-command' } });
+    assert.equal(effective.extensions.find(extension => extension.name === 'fixture')?.status, 'ignored', content);
+    assert.ok(!effective.findings.some(finding => finding.ruleId === 'mcp.command-missing'));
+    assert.equal(effective.decisions.find(decision => decision.path.endsWith('managed-mcp.json'))?.status, 'invalid');
   }
 });
 

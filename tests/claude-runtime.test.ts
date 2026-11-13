@@ -6,7 +6,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
-import { mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { claudeMetadata } from '../packages/adapters/claude.js';
 import { workspace } from './helpers.js';
@@ -89,6 +89,8 @@ test('Claude permission precedence and hook policies use the pinned CLI with a l
     { name: 'project false re-enables hooks after user true', user: { allow: [exact] }, userSettings: { disableAllHooks: true }, projectSettings: { disableAllHooks: false }, hookScopes: ['user', 'project', 'local'], hooksRun: ['user', 'project', 'local'], allowed: true },
     { name: 'local disableAllHooks wins over project false', user: { allow: [exact] }, projectSettings: { disableAllHooks: false }, localSettings: { disableAllHooks: true }, hookScopes: ['user', 'project', 'local'], hooksRun: [], allowed: true },
     { name: 'quoted ordinary disableAllHooks rejects the settings layer', user: { allow: [exact] }, userSettings: { disableAllHooks: 'true' }, hookScopes: ['user'], hooksRun: [], allowed: false, rejected: true },
+    { name: 'unreadable ordinary MCP allowlist retains other settings', user: { allow: [exact] }, userSettings: { allowedMcpServers: 42 }, allowed: true, rule: 'claude.mcp-policy-type' },
+    { name: 'invalid ordinary MCP policy entry retains other settings', user: { allow: [exact] }, userSettings: { deniedMcpServers: [42] }, allowed: true, rule: 'claude.mcp-policy-type' },
     { name: 'ordinary managed-only declarations do not restrict grants or hooks', user: { allow: [exact] }, userSettings: { allowManagedPermissionRulesOnly: true, allowManagedHooksOnly: true }, hookScopes: ['user'], hooksRun: ['user'], allowed: true },
     ...(managedEnabled ? [
       { name: 'managed-only policy ignores user grants', user: { allow: [exact] }, managed: { allowManagedPermissionRulesOnly: true }, allowed: false, status: 'ignored' },
@@ -464,7 +466,7 @@ test('Claude native managed MCP files agree with SDK, built CLI and portable rep
   const managedRoot = '/etc/claude-code';
   assert.deepEqual(await readdir(managedRoot), [], 'Native managed MCP checks require the isolated empty CI policy directory.');
   const remote = { type: 'http', url: 'https://127.0.0.1:1/Mcp' };
-  const cases: { name: string; managed?: Record<string, unknown>; user?: Record<string, unknown>; project?: Record<string, unknown>; dropins?: Record<string, unknown>; exclusive?: unknown; raw?: string; config?: Record<string, unknown>; allowed: boolean; source?: string }[] = [
+  const cases: { name: string; managed?: Record<string, unknown>; user?: Record<string, unknown>; project?: Record<string, unknown>; dropins?: Record<string, unknown>; exclusive?: unknown; raw?: string; config?: Record<string, unknown>; unreadable?: boolean; directory?: boolean; brokenSymlink?: boolean; allowed: boolean; source?: string }[] = [
     { name: 'managed empty allowlist', managed: { allowedMcpServers: [] }, allowed: false },
     { name: 'ordinary allowlist broadens managed list without lock', managed: { allowedMcpServers: [] }, user: { allowedMcpServers: [{ serverName: 'fixture' }] }, allowed: true },
     { name: 'managed-only lock excludes ordinary allowlist', managed: { allowedMcpServers: [], allowManagedMcpServersOnly: true }, user: { allowedMcpServers: [{ serverName: 'fixture' }] }, allowed: false },
@@ -474,7 +476,7 @@ test('Claude native managed MCP files agree with SDK, built CLI and portable rep
     { name: 'managed allowlist drops invalid predecessor', managed: { allowedMcpServers: [42, { serverName: 'fixture' }] }, allowed: true },
     { name: 'managed denylist drops invalid predecessor', managed: { deniedMcpServers: [42, { serverName: 'fixture' }] }, allowed: false },
     { name: 'invalid managed denylist is dropped', managed: { deniedMcpServers: 42 }, allowed: true },
-    { name: 'null managed allowlist is absent', managed: { allowedMcpServers: null }, allowed: true },
+    { name: 'null managed allowlist fails closed', managed: { allowedMcpServers: null }, allowed: false },
     { name: 'file allowlists merge with dropins', managed: { allowedMcpServers: [] }, dropins: { '20-allow.json': { allowedMcpServers: [{ serverName: 'fixture' }] } }, allowed: true },
     { name: 'provided server bypasses allowlist', managed: { managedMcpServers: { fixture: remote }, allowedMcpServers: [] }, allowed: true, source: 'managed-settings.json' },
     { name: 'provided HTTP alias', managed: { managedMcpServers: { fixture: { ...remote, type: 'streamable-http' } }, allowedMcpServers: [] }, allowed: true, source: 'managed-settings.json' },
@@ -488,9 +490,15 @@ test('Claude native managed MCP files agree with SDK, built CLI and portable rep
     { name: 'exclusive file takes priority over provided server', exclusive: { mcpServers: { fixture: remote } }, managed: { managedMcpServers: { fixture: { ...remote, type: 'sse' } } }, allowed: true, source: 'managed-mcp.json' },
     { name: 'empty exclusive retains provided server', exclusive: { mcpServers: {} }, managed: { managedMcpServers: { fixture: remote }, allowedMcpServers: [] }, allowed: true, source: 'managed-settings.json' },
     { name: 'exclusive outside-env expansion requires allowlist', exclusive: { mcpServers: { fixture: { type: 'http', url: 'https://${SIGHTLINE_MANAGED_HOST}:1/Mcp' } } }, managed: { allowedMcpServers: [] }, allowed: false },
-    { name: 'malformed exclusive file leaves project available', raw: '{ broken JSON', allowed: true, source: '.mcp.json' },
-    { name: 'exclusive file without server map leaves project available', exclusive: {}, allowed: true, source: '.mcp.json' },
-    { name: 'exclusive invalid server map leaves project available', exclusive: { mcpServers: 42 }, allowed: true, source: '.mcp.json' },
+    { name: 'malformed exclusive file suppresses project', raw: '{ broken JSON', allowed: false },
+    { name: 'exclusive file without server map suppresses project', exclusive: {}, allowed: false },
+    { name: 'exclusive invalid server map suppresses project', exclusive: { mcpServers: 42 }, allowed: false },
+    { name: 'empty exclusive file suppresses project', raw: '', allowed: false },
+    { name: 'nonobject exclusive file suppresses project', exclusive: [], allowed: false },
+    { name: 'malformed exclusive file retains provided server', raw: '{ broken JSON', managed: { managedMcpServers: { fixture: remote } }, allowed: true, source: 'managed-settings.json' },
+    { name: 'unreadable exclusive file suppresses project', exclusive: { mcpServers: { fixture: remote } }, unreadable: true, allowed: false },
+    { name: 'directory-shaped exclusive path suppresses project', directory: true, allowed: false },
+    { name: 'broken exclusive symlink leaves project available', brokenSymlink: true, allowed: true, source: '.mcp.json' },
   ];
   for (const scenario of cases) await t.test(scenario.name, async scenarioTest => {
     const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: { fixture: scenario.config ?? remote } }), '.claude/settings.json': JSON.stringify(scenario.project ?? {}) }, { '.claude/settings.json': JSON.stringify({ enableAllProjectMcpServers: true, ...scenario.user }) });
@@ -500,6 +508,9 @@ test('Claude native managed MCP files agree with SDK, built CLI and portable rep
     });
     await writeFile(path.join(managedRoot, 'managed-settings.json'), JSON.stringify(scenario.managed ?? {}, null, 2));
     if (scenario.raw !== undefined || scenario.exclusive !== undefined) await writeFile(path.join(managedRoot, 'managed-mcp.json'), scenario.raw ?? JSON.stringify(scenario.exclusive));
+    if (scenario.unreadable) await chmod(path.join(managedRoot, 'managed-mcp.json'), 0o000);
+    if (scenario.directory) await mkdir(path.join(managedRoot, 'managed-mcp.json'));
+    if (scenario.brokenSymlink) await symlink(path.join(w.root, 'missing-exclusive.json'), path.join(managedRoot, 'managed-mcp.json'));
     if (scenario.dropins) {
       await mkdir(path.join(managedRoot, 'managed-settings.d'));
       for (const [name, value] of Object.entries(scenario.dropins)) await writeFile(path.join(managedRoot, 'managed-settings.d', name), JSON.stringify(value));
