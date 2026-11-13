@@ -79,7 +79,7 @@ function omitPersonalValues(e: Effective, source: SettingsSource, data: Record<s
 function personalSettings(e: Effective, source: Source): SettingsSource | null {
   // Optional personal selectors are omitted before the native alias pass.
   const data = omitPersonalValues(e, source, source.data);
-  const personalValidator = (key: string) => key === 'skillDirectories' ? validateLocations : validators.get(key);
+  const personalValidator = (key: string) => ['skillDirectories', 'ignoredSkillsLocations'].includes(key) ? validateLocations : validators.get(key);
   const invalid = Object.entries(data).filter(([key, value]) => {
     const validate = personalValidator(key);
     return validate && !validate(value);

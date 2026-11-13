@@ -9,7 +9,7 @@ import { copilotSettings, copilotRepositorySettings } from './copilot-settings.j
 export const copilotMetadata: AdapterMetadata = {
   id: 'copilot', name: 'GitHub Copilot CLI', maturity: 'verified', ruleVersion: '1.0.110', verifiedOn: '2026-11-13',
   evidence: ['https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions', 'https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference', 'https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference', 'https://docs.github.com/en/copilot/reference/hooks-reference', 'https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/customization-locations'],
-  limitations: ['Copilot CLI rules only; VS Code, code review and cloud-agent rules differ.', 'Applicable instruction files have no documented general precedence; shown order is deterministic display order.', 'Session /instructions toggles, enterprise policy, saved tool permissions, plugin contents and ignoredSkillsLocations are not inferred.', 'Additional customization directories retain unresolved declarations and mark discovery incomplete.', 'Fourteen repository-overridable settings have native merge/type comparisons. Registered personal aliases and file loading have native comparisons. Other personal settings retain partial value-schema coverage.', 'Conflicting same-scope Copilot/Claude settings and workspace MCP file ties remain conditional.'],
+  limitations: ['Copilot CLI rules only; VS Code, code review and cloud-agent rules differ.', 'Applicable instruction files have no documented general precedence; shown order is deterministic display order.', 'Session /instructions toggles, enterprise policy, saved tool permissions and plugin contents are not inferred.', 'Additional customization directories retain unresolved declarations and mark discovery incomplete.', 'Fourteen repository-overridable settings have native merge/type comparisons. Registered personal aliases and file loading have native comparisons. Other personal settings retain partial value-schema coverage.', 'Conflicting same-scope Copilot/Claude settings and workspace MCP file ties remain conditional.'],
 };
 async function discover(ctx: Context): Promise<Source[]> {
   if (ctx.options.user !== false) {
@@ -74,11 +74,32 @@ export const copilot = adapter(copilotMetadata, discover, async ctx => {
     }
   }
   for (const s of ctx.sources.filter(s => s.kind === 'hooks' && s.owners.includes('copilot') && (s.scope === 'user' || within(path.join(ctx.repo, '.github/hooks'), s.path)))) { decision(e, s, 'active', 'User or repository hook definitions.'); if (s.data.version !== 1) e.findings.push(finding('hook.version', 'error', locate(s, 'version'), 'Copilot hook configuration requires version: 1.', 'The hook loader expects schema version 1.', 'Set version to the numeric value 1.', 'copilot')); else hooks(e, s, s.data.hooks, 'active'); }
-  await skills(e, ctx, [path.join(ctx.directory, '.github/skills'), path.join(ctx.directory, '.agents/skills'), path.join(ctx.directory, '.claude/skills'), ...ctx.dirs.slice(0, -1).reverse().map(d => path.join(d, '.github/skills')), ...(ctx.options.user !== false ? [path.join(ctx.copilotHome, 'skills'), path.join(ctx.home, '.agents/skills')] : [])], 'first');
+  const projectSkillRoots = [
+    path.join(ctx.directory, '.github/skills'),
+    path.join(ctx.directory, '.agents/skills'),
+    path.join(ctx.directory, '.claude/skills'),
+    ...ctx.dirs.slice(0, -1).reverse().map(d => path.join(d, '.github/skills')),
+  ];
+  const personalSkillRoots = ctx.options.user !== false ? [path.join(ctx.copilotHome, 'skills'), path.join(ctx.home, '.agents/skills')] : [];
+  const ignoredSetting = e.settings.findLast(setting => setting.key === 'ignoredSkillsLocations' && setting.status === 'active');
+  const ignoredLocations = ((ignoredSetting?.value ?? []) as string[]).map(location => {
+    if (location === '~') return ctx.home;
+    if (location.startsWith('~/') || location.startsWith('~' + path.sep)) return path.join(ctx.home, location.slice(2));
+    return path.normalize(location);
+  }).filter(location => path.isAbsolute(location));
+  const ignores = (root: string) => ignoredLocations.some(location => within(location, root));
+  // Native project discovery uses the physical session directory. Personal roots
+  // retain the configured home spelling, and exclusion paths stay lexical.
+  const ignoredRoots = [
+    ...projectSkillRoots.filter(root => ignores(path.resolve(directory, path.relative(ctx.directory, root)))),
+    ...personalSkillRoots.filter(ignores),
+  ];
+  await skills(e, ctx, [...projectSkillRoots, ...personalSkillRoots], 'first', ignoredRoots);
   const disabledServers = effectiveValue(e, 'disabledMcpServers', []) as string[];
   const disabledSkills = new Set((effectiveValue(e, 'disabledSkills', []) as string[]).map(name => name.toLowerCase()));
   const hookDisableUnknown = e.settings.some(setting => setting.key === 'disableAllHooks' && setting.status === 'conditional');
   for (const extension of e.extensions) {
+    if (extension.kind === 'skill' && ignoredSetting && ignoredRoots.some(root => within(root, extension.location.path))) extension.origins = [{ key: 'ignoredSkillsLocations', location: ignoredSetting.location }];
     if (extension.kind === 'hook' && hookDisableUnknown && extension.status === 'active') { extension.status = 'conditional'; extension.reason = 'Conflicting shared settings leave disableAllHooks unresolved.'; continue; }
     const setting = extension.kind === 'mcp' && disabledServers.includes(extension.name) ? 'disabledMcpServers'
       : extension.kind === 'skill' && disabledSkills.has(extension.name.toLowerCase()) ? 'disabledSkills'

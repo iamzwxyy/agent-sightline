@@ -180,6 +180,8 @@ test('Copilot native validation agrees on supported setting value types', async 
   await withRuntime(w.home, w.repo, async request => {
     for (const [topKey, value, expected] of [
       ['disabledSkills', ['valid'], true], ['disabledSkills', [42], false],
+      ['ignoredSkillsLocations', ['~/skills'], true], ['ignoredSkillsLocations', [42], false],
+      ['ignoredSkillsLocations', null, false], ['ignoredSkillsLocations', 'skills', false],
       ['disabledMcpServers', [], true], ['disabledMcpServers', false, false],
       ['deniedUrls', ['example.test'], true], ['deniedUrls', [false], false],
       ['model', 'custom-model', true], ['model', 42, false],
@@ -207,6 +209,64 @@ test('Copilot native validation agrees on supported setting value types', async 
       await writeFile(path.join(w.home, '.copilot/settings.json'), JSON.stringify({ [topKey]: value }));
       const report = await scan({ ...w, clients: ['copilot'] });
       assert.equal(report.clients[0].settings.some(setting => setting.key === topKey && setting.status === 'invalid'), !expected, `${topKey} static validation`);
+    }
+  });
+});
+
+test('Copilot skill directory exclusions and fallback match the native inventory', async t => {
+  const skill = (root: string) => `---\nname: shared\ndescription: Skill from ${root}.\n---\nFixture instructions.\n`;
+  const w = await workspace({
+    '.github/skills/shared/SKILL.md': skill('github'),
+    '.agents/skills/shared/SKILL.md': skill('agents'),
+    '.claude/skills/shared/SKILL.md': skill('claude'),
+    'src/.github/skills/shared/SKILL.md': skill('nested'),
+    'src/refund.ts': '',
+  }, {
+    '.copilot/skills/shared/SKILL.md': skill('personal-copilot'),
+    '.agents/skills/shared/SKILL.md': skill('personal-agents'),
+    '.copilot/settings.json': '{}',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  const env = isolatedEnvironment(w.home);
+  execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
+  const repository = await realpath(w.repo);
+  const github = path.join(repository, '.github/skills');
+  const agents = path.join(repository, '.agents/skills');
+  const scenarios = [
+    { name: 'normal priority', settings: {} },
+    { name: 'excluded first root', settings: { ignoredSkillsLocations: [github] } },
+    { name: 'excluded ancestor', settings: { ignoredSkillsLocations: [path.dirname(github)] } },
+    { name: 'excluded first two roots', settings: { ignoredSkillsLocations: [github, agents] } },
+    { name: 'personal fallback', settings: { ignoredSkillsLocations: [repository] } },
+    { name: 'second personal fallback', settings: { ignoredSkillsLocations: [repository, '~/.copilot/skills'] } },
+    { name: 'all conventional roots excluded', settings: { ignoredSkillsLocations: [repository, '~'] } },
+    { name: 'skill leaf keeps discovery root', settings: { ignoredSkillsLocations: [path.join(github, 'shared')] } },
+    { name: 'relative exclusion keeps absolute root', settings: { ignoredSkillsLocations: ['.github/skills'] } },
+    { name: 'path prefix keeps sibling', settings: { ignoredSkillsLocations: [path.join(repository, '.github/sk')] } },
+    { name: 'trailing separator', settings: { ignoredSkillsLocations: [github + path.sep] } },
+    { name: 'normalized parent segments', settings: { ignoredSkillsLocations: [github + path.sep + '..' + path.sep + 'skills'] } },
+    { name: 'personal path spelling', settings: { ignoredSkillsLocations: [repository, path.join(w.home, '.copilot/skills')] } },
+    { name: 'registered alias', settings: { ignored_skills_locations: [github] } },
+    { name: 'disabled fallback keeps chosen definition', settings: { ignoredSkillsLocations: [github], disabledSkills: ['SHARED'] } },
+    { name: 'invalid canonical rejects siblings', settings: { ignoredSkillsLocations: [42], disabledSkills: ['shared'] } },
+    { name: 'invalid alias retains canonical siblings', settings: { ignored_skills_locations: [42], disabledSkills: ['shared'] } },
+    { name: 'nested first root excluded', settings: { ignoredSkillsLocations: [path.join(repository, 'src/.github/skills')] }, target: 'src/refund.ts' },
+    { name: 'inherited root excluded', settings: { ignoredSkillsLocations: [github] }, target: 'src/refund.ts' },
+  ];
+  for (const scenario of scenarios) await t.test(scenario.name, async () => {
+    await writeFile(path.join(w.home, '.copilot/settings.json'), JSON.stringify(scenario.settings));
+    const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'skill', 'list', '--json'], {
+      cwd: scenario.target ? path.join(w.repo, 'src') : w.repo, env, encoding: 'utf8', timeout: 15000,
+    })).filter((entry: any) => entry.source !== 'builtin');
+    const report = await scan({ ...w, clients: ['copilot'], target: scenario.target });
+    const selected = report.clients[0].extensions.filter(extension => extension.kind === 'skill' && ['active', 'ignored'].includes(extension.status) && !extension.reason.includes('ignoredSkillsLocations'));
+    assert.deepEqual(await Promise.all(selected.map(async extension => ({
+      name: extension.name, directory: await realpath(path.dirname(extension.location.path)), enabled: extension.status === 'active',
+    }))), await Promise.all(native.map(async (entry: any) => ({ name: entry.name, directory: await realpath(entry.path), enabled: entry.enabled }))));
+    for (const excluded of report.clients[0].extensions.filter(extension => extension.kind === 'skill' && extension.reason.includes('ignoredSkillsLocations'))) {
+      assert.equal(excluded.status, 'ignored');
+      assert.equal(report.clients[0].decisions.find(decision => decision.path === excluded.location.path)?.status, 'ignored');
+      assert.ok(!report.findings.some(finding => finding.ruleId === 'skill.name-conflict' && finding.location.path === excluded.location.path));
     }
   });
 });

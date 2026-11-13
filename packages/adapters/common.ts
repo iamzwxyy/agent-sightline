@@ -113,20 +113,25 @@ export function permissions(e: Effective, s: Source, status: Status): void {
     p[action].forEach((rule: string, index: number) => e.extensions.push({ kind: 'permission', name: rule, config: { action }, status, location: locate(s, `permissions.${action}.${index}`), reason: 'Permission lists accumulate; deny precedes ask, which precedes allow.' }));
   }
 }
-export async function skills(e: Effective, ctx: Context, roots: string[], behavior: 'coexist' | 'first'): Promise<void> {
+export async function skills(e: Effective, ctx: Context, roots: string[], behavior: 'coexist' | 'first', ignoredRoots: string[] = []): Promise<void> {
   const candidates = ctx.sources.filter(s => s.kind === 'skill' && roots.some(r => within(r, s.path))).sort((a, b) => {
     const rank = (s: Source) => roots.findIndex(r => within(r, s.path)); return rank(a) - rank(b) || cmp(a.path, b.path);
   });
   for (const s of candidates) {
     const name = typeof s.data.name === 'string' ? s.data.name : path.basename(path.dirname(s.path));
-    const old = e.extensions.find(x => x.kind === 'skill' && x.name === name && x.status === 'active');
-    let status: Status = s.invalid ? 'invalid' : old && behavior === 'first' ? 'shadowed' : 'active';
+    const excluded = ignoredRoots.some(root => within(root, s.path));
+    const old = excluded ? undefined : e.extensions.find(x => x.kind === 'skill' && x.name === name && x.status === 'active');
+    let status: Status = excluded ? 'ignored' : s.invalid ? 'invalid' : old && behavior === 'first' ? 'shadowed' : 'active';
     if (e.client === 'codex') {
       const config = effectiveValue(e, 'skills.config', []);
       for (const x of Array.isArray(config) ? config : []) if ((x.path === s.path || x.name === name) && typeof x.enabled === 'boolean') status = x.enabled ? 'active' : 'ignored';
     }
-    decision(e, s, status, status === 'shadowed' ? 'A higher-priority skill with the same name wins.' : status === 'ignored' ? 'Disabled by skills.config.' : 'Skill metadata is discoverable; its body loads only on invocation.');
-    e.extensions.push({ kind: 'skill', name, status, location: locate(s, 'name'), config: s.data, reason: 'Metadata available; skill body is not automatically included in effective instructions.' });
+    const reason = excluded ? 'The skill discovery directory is excluded by the effective Copilot ignoredSkillsLocations setting.'
+      : status === 'shadowed' ? 'A higher-priority skill with the same name wins.'
+      : status === 'ignored' ? 'Disabled by skills.config.'
+      : 'Skill metadata is discoverable; its body loads only on invocation.';
+    decision(e, s, status, reason);
+    e.extensions.push({ kind: 'skill', name, status, location: locate(s, 'name'), config: s.data, reason: excluded ? reason : 'Metadata available; skill body is not automatically included in effective instructions.' });
     if (old) e.findings.push(finding('skill.name-conflict', behavior === 'coexist' ? 'warn' : 'info', locate(s, 'name'), `Skill name "${name}" is duplicated.`, behavior === 'coexist' ? 'Codex does not merge these skills; both can appear in selectors.' : 'The first/highest-priority skill wins and hides this definition.', 'Rename the skill or remove the redundant definition.', e.client, [old.location]));
   }
 }

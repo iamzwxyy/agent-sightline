@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 — 2026-11-13
+
+* Apply Copilot ignoredSkillsLocations before skill-name precedence, including home-relative paths and registered personal-setting aliases. Retain excluded sources with their reason while allowing the next eligible same-name skill to contribute.
+* Link excluded skills to the contributing setting's original source key and line in the inspector and portable HTML reports.
+* Validate this personal setting through the native file-loading and alias-fallback contract. Repository-only scans retain their independent skill selection.
+* Compare nineteen discovery/priority scenarios and four additional value types with the pinned Copilot CLI. Exercise installed-package behavior, source navigation and portable path privacy.
+
 ## 0.3.1 — 2026-11-13
 
 * Cancel obsolete inspector scans when their browser connection closes. Apply cancellation to the initial page, refreshed scans, exported reports and sample workspace while retaining caller cancellation.

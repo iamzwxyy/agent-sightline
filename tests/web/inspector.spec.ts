@@ -14,6 +14,54 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('Copilot excluded skill directories retain their explanation, fallback and setting source offline', async ({ page }) => {
+  const w = await workspace({
+    '.github/skills/shared/SKILL.md': '---\nname: shared\ndescription: Excluded project skill.\n---\nInstructions.\n',
+    '.agents/skills/shared/SKILL.md': '---\nname: shared\ndescription: Available fallback skill.\n---\nInstructions.\n',
+  }, { '.copilot/settings.json': '{}' });
+  await writeFile(path.join(w.home, '.copilot/settings.json'), '{\n"ignored_skills_locations":' + JSON.stringify([path.join(await realpath(w.repo), '.github/skills')]) + '\n}');
+  const server = await serve({ ...w, clients: ['copilot'] });
+  try {
+    await page.goto(server.url);
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('copilot-skill-exclusions.html');
+    await (await download).saveAs(file);
+    const content = await readFile(file, 'utf8');
+    expect(content).not.toContain(await realpath(w.repo));
+    expect(content).not.toContain(w.home);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.goto(url);
+      await page.locator('#extensions-tab').click();
+      const excluded = page.locator('.extension-row').filter({ hasText: 'Excluded project skill.' });
+      const fallback = page.locator('.extension-row').filter({ hasText: 'Available fallback skill.' });
+      await expect(excluded.locator('.status.ignored')).toHaveCount(1);
+      await expect(fallback.locator('.status.active')).toHaveCount(1);
+      await excluded.click();
+      await expect(page.locator('#detail-dialog')).toContainText('excluded by the effective Copilot ignoredSkillsLocations setting');
+      await page.locator('.extension-origins').getByRole('button', { name: /^ignoredSkillsLocations ·/ }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('"ignored_skills_locations"');
+      await expect(page.locator('.code-line.highlight .line-number')).toHaveText('2');
+      await page.locator('#extensions-tab').click();
+      await excluded.click();
+      await page.getByRole('button', { name: /Inspect source/ }).click();
+      await expect(page.locator('#source-title')).toHaveText('.github/skills/shared/SKILL.md');
+      await expect(page.locator('.code-line.highlight')).toContainText('name: shared');
+      await page.locator('#configuration-tab').click();
+      await page.getByLabel('Search settings').fill('ignoredSkillsLocations');
+      await page.locator('#setting-list tbody tr').getByRole('button', { name: 'ignoredSkillsLocations', exact: true }).click();
+      await page.getByRole('button', { name: /Inspect source/ }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('"ignored_skills_locations"');
+      await expect(page.locator('.code-line.highlight .line-number')).toHaveText('2');
+    }
+    await writeFile(path.join(w.home, '.copilot/settings.json'), '{"ignoredSkillsLocations":[]}');
+    await page.goto(server.url);
+    await page.locator('#extensions-tab').click();
+    await expect(page.locator('.extension-row').filter({ hasText: 'Excluded project skill.' }).locator('.status.active')).toHaveCount(1);
+    await expect(page.locator('.extension-row').filter({ hasText: 'Available fallback skill.' }).locator('.status.shadowed')).toHaveCount(1);
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('all client marks render locally and survive an offline portable export', async ({ page }) => {
   const w = await workspace({ 'AGENTS.md': 'Shared instructions.', 'GEMINI.md': 'Gemini instructions.' });
   const server = await serve({ ...w, user: false });
