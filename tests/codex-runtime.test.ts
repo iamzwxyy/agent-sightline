@@ -63,24 +63,21 @@ async function readRuntimeConfig(cwd: string, env: NodeJS.ProcessEnv): Promise<a
     child.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n');
     return await request('config/read', { cwd, includeLayers: true });
   } finally {
-    child.stdin.end();
-    const timer = setTimeout(() => {
-      if (finished || !child.pid) return;
+    // Stop the owned tree while its app-server wrapper is still running.
+    // This also stops background plugin clones before fixture cleanup.
+    if (!finished && child.pid) {
       if (process.platform === 'win32') {
         const killer = spawn(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32/taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
-        killer.once('error', () => child.kill('SIGKILL'));
+        await new Promise<void>(resolve => {
+          killer.once('close', () => resolve());
+          killer.once('error', () => { child.kill('SIGKILL'); resolve(); });
+        });
       } else {
         try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
       }
-    }, 1000);
-    await closed;
-    clearTimeout(timer);
-    // Native plugin clones can outlive the app-server wrapper and keep writing
-    // into its temporary home after the wrapper closes its stdio.
-    if (process.platform !== 'win32' && child.pid) {
-      try { process.kill(-child.pid, 'SIGKILL'); }
-      catch (error) { assert.equal((error as NodeJS.ErrnoException).code, 'ESRCH', 'Codex test process group could not be stopped.'); }
     }
+    child.stdin.end();
+    await closed;
     lines.close();
   }
 }
