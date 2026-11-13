@@ -377,6 +377,31 @@ test('Copilot native MCP loading leaves malformed sibling project configuration 
   assert.ok(sibling.findings.some(finding => finding.ruleId === 'parse.json'));
 });
 
+test('Copilot personal JSONC and disabled-server aliases survive an overlapping inspection boundary', async t => {
+  const w = await workspace({}, {
+    '.copilot/config.json': '{}',
+    '.copilot/settings.json': '// Personal settings\n{"disabled_mcp_servers":["blocked"],}',
+    '.copilot/mcp-config.json': '// Personal MCP\n' + JSON.stringify({ mcpServers: { personal: { command: process.execPath }, blocked: { command: process.execPath } } }),
+    '.mcp.json': JSON.stringify({ mcpServers: { workspace: { command: process.execPath } } }),
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  const env = isolatedEnvironment(w.home);
+  execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.home], { env });
+  const state = '// Personal state\n' + JSON.stringify({ trustedFolders: [await realpath(w.home)], internalValue: 'native-overlap-private-sentinel' });
+  await writeFile(path.join(w.home, '.copilot/config.json'), state);
+  const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd: w.home, env, encoding: 'utf8', timeout: 30000 }));
+  assert.equal(native.mcpServers.personal.enabled, true);
+  assert.equal(native.mcpServers.workspace.enabled, true);
+  assert.equal(native.mcpServers.blocked.enabled, false);
+  await writeFile(path.join(w.home, '.copilot/config.json'), state);
+  for (const repo of [w.home, w.root]) {
+    const report = await scan({ ...w, repo, target: path.relative(repo, w.home) || '.', clients: ['copilot'] });
+    for (const name of ['personal', 'blocked', 'workspace']) assert.equal(report.clients[0].extensions.find(extension => extension.name === name)?.status, native.mcpServers[name].enabled ? 'active' : 'ignored', name);
+    assert.ok(!report.findings.some(finding => finding.ruleId === 'parse.json'));
+    assert.ok(!JSON.stringify(report).includes('native-overlap-private-sentinel'));
+  }
+});
+
 test('Copilot native shared-rule inventory keeps root and cwd sources with their path metadata', async t => {
   const w = await workspace({
     '.claude/rules/all.md': 'Unconditional root rule.',

@@ -23,8 +23,9 @@ async function discover(ctx: Context): Promise<Source[]> {
 }
 export const copilot = adapter(copilotMetadata, discover, async ctx => {
   const e = await base(copilotMetadata, ctx);
-  const state = ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'config.json'));
-  const userSettings = ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'settings.json'));
+  const user = ctx.options.user !== false;
+  const state = user ? ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'config.json')) : undefined;
+  const userSettings = user ? ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'settings.json')) : undefined;
   if (state) decision(e, state, 'ignored', 'config.json contains internal state; user settings belong in settings.json in 1.0.110.');
   const directory = await realpath(ctx.directory);
   const trustedFolders = state?.data.trustedFolders ?? state?.data.trusted_folders;
@@ -40,7 +41,7 @@ export const copilot = adapter(copilotMetadata, discover, async ctx => {
     seen.set(content, s);
     if (include) await expand(e, ctx, s); else addInstruction(e, s, 'Applicable agent instructions; no general precedence is documented.');
   };
-  const personal = ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'copilot-instructions.md'));
+  const personal = user ? ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'copilot-instructions.md')) : undefined;
   if (personal) await apply(personal, true);
   for (const d of ctx.dirs) {
     for (const n of ['.github/copilot-instructions.md', 'AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md', 'GEMINI.md']) {
@@ -60,7 +61,7 @@ export const copilot = adapter(copilotMetadata, discover, async ctx => {
     if (patterns === null || matches(slash(path.relative(ctx.repo, ctx.target)), patterns)) addInstruction(e, source, patterns ? 'Claude paths metadata maps to Copilot applyTo and matches the opened target.' : 'Unconditional Claude rule discovered by Copilot at the repository root or current directory.');
     else decision(e, source, 'ignored', 'The shared rule paths do not match the target file.');
   }
-  const userMcp = ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'mcp-config.json'));
+  const userMcp = user ? ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'mcp-config.json')) : undefined;
   if (userMcp) { decision(e, userMcp, 'active', 'Personal MCP configuration.'); mcp(e, userMcp, userMcp.data.mcpServers, 'mcpServers', 'active'); }
   for (const d of ctx.dirs) {
     const files = ['.mcp.json', '.github/mcp.json'].map(n => ctx.sources.find(s => s.path === path.join(d, n))).filter((s): s is Source => !!s);

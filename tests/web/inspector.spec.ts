@@ -14,6 +14,47 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('overlapping personal configuration keeps state private and user inclusion correct live and offline', async ({ page }) => {
+  const w = await workspace({}, {
+    '.copilot/config.json': '{}',
+    '.copilot/settings.json': '{"disabled_mcp_servers":["personal"]}',
+    '.copilot/mcp-config.json': '// Personal server\n{"mcpServers":{"personal":{"command":"node"}},}',
+    '.mcp.json': '{"mcpServers":{"workspace":{"command":"node"}}}',
+  });
+  await writeFile(path.join(w.home, '.copilot/config.json'), '// Private state\n' + JSON.stringify({ trustedFolders: [w.home], internalValue: 'browser-overlap-private-state' }));
+  try {
+    for (const user of [true, false]) {
+      const server = await serve({ ...w, repo: w.home, clients: ['copilot'], user });
+      try {
+        await page.context().setOffline(false);
+        await page.goto(server.url);
+        const pending = page.waitForEvent('download');
+        await page.getByRole('button', { name: /Export report/ }).click();
+        const file = test.info().outputPath('personal-overlap-' + user + '.html');
+        await (await pending).saveAs(file);
+        const exported = await readFile(file, 'utf8');
+        for (const value of ['browser-overlap-private-state', w.home, await realpath(w.home)]) expect(exported).not.toContain(JSON.stringify(value).slice(1, -1));
+        for (const url of [server.url, pathToFileURL(file).href]) {
+          await page.context().setOffline(url.startsWith('file:'));
+          await page.setViewportSize({ width: 1440, height: 1000 });
+          await page.goto(url);
+          const data = await page.locator('#report-data').textContent();
+          expect(data).not.toContain('browser-overlap-private-state');
+          const report = JSON.parse(data!);
+          expect(report.sources.find((source: any) => source.relativePath === '.copilot/config.json').preview).toBeUndefined();
+          expect(report.findings.some((finding: any) => finding.ruleId === 'parse.json')).toBe(false);
+          await page.locator('#extensions-tab').click();
+          await expect(page.locator('.extension-row').filter({ hasText: 'workspace' }).locator(user ? '.status.active' : '.status.conditional')).toHaveCount(1);
+          await expect(page.locator('.extension-row').filter({ hasText: 'personal' })).toHaveCount(user ? 1 : 0);
+          if (user) await expect(page.locator('.extension-row').filter({ hasText: 'personal' }).locator('.status.ignored')).toHaveCount(1);
+          await page.setViewportSize({ width: 390, height: 844 });
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        }
+      } finally { await page.context().setOffline(false); await server.close(); }
+    }
+  } finally { await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('malformed sibling TOML masks copied private text in live and offline reports', async ({ page }) => {
   const secret = 'browser-malformed-toml-private-value';
   const w = await workspace({

@@ -248,6 +248,18 @@ test('the configuration oracle uses the pinned Codex binary', () => {
   assert.equal(execFileSync(process.execPath, [runtime, '--version'], { encoding: 'utf8' }).trim(), 'codex-cli ' + codexMetadata.ruleVersion);
 });
 
+test('Codex user-only settings retain their scope inside a wider inspection boundary', { timeout: 30000 }, async t => {
+  const w = await workspace({ 'index.ts': '' }, { '.codex/config.toml': 'notify=["synthetic-notification-command"]\n[analytics]\nenabled=false\n' });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  const env = isolatedEnvironment(w.home);
+  const actual = await readRuntimeConfig(w.repo, env);
+  const report = await scan({ ...w, repo: w.root, target: 'repo/index.ts', clients: ['codex'] });
+  assert.deepEqual(actual.config.notify, ['synthetic-notification-command']);
+  assert.deepEqual(report.clients[0].settings.find(setting => setting.key === 'notify' && setting.status === 'active')?.value, actual.config.notify);
+  assert.ok(!report.findings.some(finding => finding.ruleId === 'codex.project-setting-ignored'));
+  assert.equal(report.sources.find(source => source.path === path.join(w.home, '.codex/config.toml'))?.scope, 'user');
+});
+
 for (const fixture of cases) test(`Codex runtime configuration matches Sightline for ${fixture.name}`, { timeout: 30000 }, async t => {
   const w = await workspace(fixture.files);
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));

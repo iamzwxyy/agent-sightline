@@ -1,3 +1,5 @@
+import { basename, join } from 'node:path';
+import { realpath } from 'node:fs/promises';
 import { adapters } from '../adapters/index.js';
 import { finish, sourceInScope } from '../adapters/common.js';
 import { discoverRepository, makeContext, selectedClients } from './discovery.js';
@@ -64,6 +66,12 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
   }
   const privateValues = privateData(ctx);
   const scrub = createRedactor(privateValues.values);
+  const copilotState = join(ctx.copilotHome, 'config.json');
+  const privateStatePaths = new Set([copilotState]);
+  const canonicalState = await realpath(copilotState).catch(() => undefined);
+  if (canonicalState) await Promise.all(ctx.sources.filter(source => basename(source.path) === 'config.json').map(async source => {
+    if (await realpath(source.path).catch(() => undefined) === canonicalState) privateStatePaths.add(source.path);
+  }));
   const report: Report = {
     schemaVersion: '1.0', tool: { name: 'Agent Sightline', version: VERSION }, repository: ctx.repo, target: ctx.target, sessionDirectory: ctx.directory,
     ...(options.codexProfile ? { inputs: { codexProfile: options.codexProfile } } : {}),
@@ -73,7 +81,7 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
       const { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid } = source;
       // Syntax errors can discard private values during parsing, including overwritten duplicate keys.
       // Account/session state files only expose the parsed fields used by adapters.
-      const privateState = /[/\\]\.claude\.json$/.test(path) || source.scope === 'user' && source.owners.includes('copilot') && /[/\\]config\.json$/.test(path);
+      const privateState = /[/\\]\.claude\.json$/.test(path) || privateStatePaths.has(path);
       return { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid, ...(privateState || invalid ? {} : { preview: redactSourcePreview(source, scrub) }) };
     }),
     clients, findings: unique, diff: [...diff.values()], instructionDiff: compareInstructions(clients, ctx.sources, scrub),

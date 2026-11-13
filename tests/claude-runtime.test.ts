@@ -319,6 +319,19 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   console.log(JSON.stringify({jsonrpc:'2.0',id:request.id,result}));
 });`;
 
+test('Claude personal MCP approval retains its scope inside a wider inspection boundary', { timeout: 30000 }, async t => {
+  const w = await workspace({ 'server.mjs': fixtureServer }, { '.claude/settings.json': '{"enableAllProjectMcpServers":true}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const env = isolatedEnvironment(w.home);
+  await writeFile(path.join(w.root, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: [path.join(w.repo, 'server.mjs')] } } }));
+  const actual = readServer(w.root, env);
+  assert.equal(actual.status, 0, actual.text);
+  assert.match(actual.text, /Connected/);
+  const report = await scan({ ...w, repo: w.root, target: 'index.ts', clients: ['claude'] });
+  assert.equal(report.clients[0].extensions.find(extension => extension.name === 'fixture')?.status, 'active');
+  assert.equal(report.sources.find(source => source.path === path.join(w.home, '.claude/settings.json'))?.scope, 'user');
+});
+
 test('Claude native project approval boundaries agree with Sightline', { timeout: 30000 }, async t => {
   const w = await workspace({ '.mcp.json': '{}', '.claude/settings.json': '{}', '.claude/settings.local.json': '{}', 'server.mjs': fixtureServer }, { '.claude/settings.json': '{}' });
   t.after(() => rm(w.root, { recursive: true, force: true }));

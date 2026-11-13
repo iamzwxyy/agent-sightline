@@ -38,7 +38,7 @@ export const codex = adapter(codexMetadata, discover, async ctx => {
     validator = ajv.compile(schema);
   }
   const validate = validator;
-  const user = ctx.sources.find(s => s.path === path.join(ctx.codexHome, 'config.toml'));
+  const user = ctx.options.user !== false ? ctx.sources.find(s => s.path === path.join(ctx.codexHome, 'config.toml')) : undefined;
   const profilePath = ctx.options.codexProfile ? path.join(ctx.codexHome, `${ctx.options.codexProfile}.config.toml`) : undefined;
   const profile = ctx.sources.find(s => s.path === profilePath);
   if (profilePath && !profile) e.findings.push(finding('codex.profile-missing', 'warn', { path: profilePath, line: 1, column: 1 }, 'Selected Codex profile file was not loaded.', 'Codex uses an empty layer when the selected profile file is absent. No profile overrides can be proven here.', 'Create the named .config.toml file in CODEX_HOME or correct --profile.', 'codex'));

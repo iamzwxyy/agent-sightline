@@ -110,7 +110,23 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
     ctx.options.signal?.throwIfAborted();
     const abs = path.resolve(file);
     const existing = ctx.sources.find(s => s.path === abs);
-    if (existing) { if (!existing.owners.includes(owner)) existing.owners.push(owner); return existing; }
+    if (existing) {
+      if (!existing.owners.includes(owner)) existing.owners.push(owner);
+      // Explicit personal or managed discovery supplies the cached file's scope and parse rules.
+      if ((scope === 'user' || scope === 'system') && existing.scope !== scope && existing.scope !== 'system') {
+        existing.scope = scope;
+        existing.kind = kind;
+        existing.body = existing.text;
+        existing.bodyLine = 1;
+        existing.data = {};
+        existing.lines = {};
+        existing.invalid = false;
+        delete existing.valueRanges;
+        ctx.findings = ctx.findings.filter(finding => finding.location.path !== abs || !finding.ruleId.startsWith('parse.') && finding.ruleId !== 'source.empty');
+        ctx.findings.push(...parseSource(existing));
+      }
+      return existing;
+    }
     let info;
     try { info = await lstat(abs); } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {

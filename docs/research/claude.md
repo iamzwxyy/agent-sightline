@@ -59,3 +59,5 @@ Thirty-two native managed MCP cases exercise exclusive files, provided HTTPS ser
 Not resolved: filesystem ancestors outside --repo, session switches, account-synced/bundled/plugin components, worktree main-checkout fallback, full managed exceptions and all settings-specific scope/environment pairs. The tool does not claim to observe a running session.
 
 A native MCP check discovers a root-project server alongside malformed settings and MCP files in a sibling project. The public report selects syntax diagnostics from the root target scope. Inspecting the sibling with its own --repo boundary activates its parser findings. [MCP configuration scopes](https://code.claude.com/docs/en/mcp#scope-hierarchy-and-precedence)
+
+A native MCP health check verifies personal enableAllProjectMcpServers while the inspection boundary contains the personal settings directory. The source retains user scope and the approved project server remains active.

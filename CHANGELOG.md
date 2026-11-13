@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.11 — 2026-11-14
+
+* Fix a personal-state preview disclosure verified in v0.3.10. When the inspection root contained the active Copilot configuration directory, JSON and HTML previews could include internal config.json state. Review affected reports before sharing them.
+* Apply explicit user/system discovery metadata to cached sources and reparse with the correct file-format rules. Remove obsolete parse findings while preserving one source identity.
+* Retain Copilot personal JSONC, setting aliases, persisted trust and MCP definitions when personal files are also discovered inside the repository tree. Canonical state paths withhold raw previews during repository-only scans as well.
+* Exclude personal configuration from user-disabled resolution across adapters. Shared Copilot repository settings retain their project validation and trust contract beside an overlapping personal source.
+* Add native Codex, Claude and Copilot comparisons, wider-boundary and custom-root fixtures, installed-package checks and live/offline browser coverage.
+
 ## 0.3.10 — 2026-11-14
 
 * Fix copied-value redaction after a whole-file TOML parse failure. v0.3.9 could expose an environment value from malformed TOML when it was repeated in loaded instruction text. Review affected reports before sharing them.

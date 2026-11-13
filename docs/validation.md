@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.11
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* The 377-case core suite completed with 375 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* Synthetic fixtures reproduced internal Copilot state in JSON and HTML previews from an offline installation of the published v0.3.10 archive. Explicit personal discovery now refines cached scope/kind and parsing while retaining one source identity and replacing obsolete parser findings.
+* Native Codex, Claude and Copilot comparisons cover a user-only notification setting, personal MCP approval, personal JSONC, persisted trust and disabled-server aliases with overlapping inspection boundaries.
+* Fixtures cover the home root, a wider boundary, a custom COPILOT_HOME, directory aliases, personal setting normalization and user-disabled resolution across all six adapters. Shared Copilot project settings retain project trust beside a personal Claude source.
+* All 58 Chromium browser cases passed. The added live/offline journey checks private state absence, source metadata, active/ignored/conditional MCP states, user inclusion and phone layouts. Installed-package checks also cover repository-only and aliased-root privacy.
+
 ## v0.3.10
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.

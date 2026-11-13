@@ -22,7 +22,7 @@ async function discover(ctx: Context, id: ClientId): Promise<Source[]> {
 }
 export const gemini = adapter(geminiMetadata, ctx => discover(ctx, 'gemini'), async ctx => {
   const e = await base(geminiMetadata, ctx);
-  for (const file of [path.join(ctx.home, '.gemini/settings.json'), path.join(ctx.directory, '.gemini/settings.json')]) {
+  for (const file of [...(ctx.options.user !== false ? [path.join(ctx.home, '.gemini/settings.json')] : []), path.join(ctx.directory, '.gemini/settings.json')]) {
     const s = ctx.sources.find(s => s.path === file); if (s) { settings(e, s, 'active'); mcp(e, s, s.data.mcpServers, 'mcpServers', 'active'); }
   }
   const filenames = effectiveValue(e, 'context.fileName', 'GEMINI.md');
@@ -47,7 +47,7 @@ export const cursor = adapter(cursorMetadata, ctx => discover(ctx, 'cursor'), as
     if (s.data.alwaysApply === true || patterns && matches(slash(path.relative(rootOf(s, '.cursor'), ctx.target)), patterns)) addInstruction(e, s, s.data.alwaysApply ? 'alwaysApply is true; globs are ignored.' : 'globs match the target file.');
     else decision(e, s, patterns ? 'ignored' : 'conditional', patterns ? 'globs do not match this target.' : s.data.description ? 'The agent decides relevance; selection cannot be inferred locally.' : 'Manual @mention is required.', s.body);
   }
-  for (const file of [path.join(ctx.home, '.cursor/mcp.json'), path.join(ctx.repo, '.cursor/mcp.json')]) { const s = ctx.sources.find(s => s.path === file); if (s) { decision(e, s, 'active', 'Local Cursor MCP configuration.'); mcp(e, s, s.data.mcpServers, 'mcpServers', 'active'); } }
+  for (const file of [...(ctx.options.user !== false ? [path.join(ctx.home, '.cursor/mcp.json')] : []), path.join(ctx.repo, '.cursor/mcp.json')]) { const s = ctx.sources.find(s => s.path === file); if (s) { decision(e, s, 'active', 'Local Cursor MCP configuration.'); mcp(e, s, s.data.mcpServers, 'mcpServers', 'active'); } }
   e.notes.push(...cursorMetadata.limitations); return finish(e, ctx);
 });
 export const opencode = adapter(opencodeMetadata, ctx => discover(ctx, 'opencode'), async ctx => {

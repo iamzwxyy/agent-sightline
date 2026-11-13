@@ -10,6 +10,8 @@ Structured previews redact decoded values using internal parser ranges, includin
 
 v0.3.9 can expose an environment value from malformed TOML if that value also appears in loaded instructions. v0.3.10 captures readable private assignments after strict TOML parsing fails and uses them to mask copied values across reports. Recovery supplies redaction values only. The invalid file contributes no effective settings and has no raw preview. The regression matrix covers project, user and discovered sibling files, LF/CRLF, escaped and multiline strings, duplicate keys and unfinished private arrays or inline tables. Review affected older reports before sharing them.
 
+v0.3.10 can include internal Copilot config.json state in JSON and HTML source previews when the inspection root contains the active personal configuration directory. v0.3.11 withholds previews by the canonical configured state-file path, including repository-only inspection. Explicit personal discovery also corrects cached scope and file-format metadata. Fixtures cover the home directory, a wider inspection boundary, a custom COPILOT_HOME, directory aliases and user-disabled resolution. Review affected older reports before sharing them.
+
 `doctor --probe` is an explicit execution boundary: it launches a configured local MCP process, sends initialize and tools/list, and kills the process after completion or timeout. Server code can have startup side effects. It does not invoke tools or probe remote endpoints. Hook commands and dynamic skill shell snippets are never executed by Sightline.
 
 External import/symlink trees are skipped or marked incomplete. File reads are capped at 2 MiB. Repository discovery defaults to 50,000 entries and can be configured with --max-entries.

@@ -244,8 +244,8 @@ export function copilotRepositorySettings(e: Effective, ctx: Context, trust: Sta
         e.findings.push(finding('copilot.shared-setting-order', 'warn', locate(own, value.key), `Copilot and Claude settings disagree on "${value.key}" in the same scope.`, 'Both formats contribute, while their same-scope file order has no verified contract. The candidates remain conditional.', 'Keep this value in one format or give both sources the same value.', 'copilot', [locate(shared, value.key)]));
       }
     }
-    if (shared) copilotSettings(e, shared, trust, true, ambiguous);
-    if (own) copilotSettings(e, own, trust, false, ambiguous);
+    if (shared) copilotSettings(e, { ...shared, scope: 'repository' }, trust, true, ambiguous);
+    if (own) copilotSettings(e, { ...own, scope: 'repository' }, trust, false, ambiguous);
     for (const setting of e.settings) if (setting.status === 'active' && [...equivalent].some(key => setting.key === key || setting.key.startsWith(key + '.'))) setting.reason = 'Equivalent values are declared in the Copilot and Claude files in this scope. Both locations are retained without asserting their file order.';
   }
   e.findings = e.findings.filter(finding => finding.ruleId !== 'copilot.shared-setting-order' || e.settings.some(setting => setting.status === 'conditional' && (setting.key === finding.location.key || setting.key.startsWith(finding.location.key + '.'))));

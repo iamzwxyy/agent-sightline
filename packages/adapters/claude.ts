@@ -35,7 +35,7 @@ async function discover(ctx: Context): Promise<Source[]> {
 const sessionEnvironments = new WeakMap<Context, NodeJS.ProcessEnv>();
 const claudeAdapter = adapter(claudeMetadata, discover, async ctx => {
   const e = await base(claudeMetadata, ctx);
-  const user = ctx.sources.find(s => s.path === path.join(ctx.claudeHome, 'settings.json'));
+  const user = ctx.options.user !== false ? ctx.sources.find(s => s.path === path.join(ctx.claudeHome, 'settings.json')) : undefined;
   const layers = [user, ctx.sources.find(s => s.path === path.join(ctx.repo, '.claude/settings.json')), ctx.sources.find(s => s.path === path.join(ctx.repo, '.claude/settings.local.json')), ...ctx.sources.filter(s => s.scope === 'system' && s.owners.includes('claude') && s.kind === 'settings')].filter((s): s is Source => !!s).map(source => {
     let strict = source;
     if (!source.invalid && source.owners.includes('copilot')) {
@@ -115,7 +115,7 @@ const claudeAdapter = adapter(claudeMetadata, discover, async ctx => {
     if (patterns && s.body.length > 40000) { decision(e, s, 'conditional', 'On-demand rule exceeds the 200K-context per-file character limit; exact truncation depends on model/context size.', s.body); e.findings.push(finding('claude.conditional-truncation', 'warn', locate(s), 'Path-scoped rule may be truncated by the model-specific character limit.', '2.1.309+ uses 40,000 characters for 200K context and larger limits for 1M context.', 'Shorten the rule or verify the session context limit.', 'claude')); }
     else addInstruction(e, s, patterns ? 'paths frontmatter matches the opened target file.' : 'Unconditional rule in the user/project rules directory.');
   }
-  const globalMcp = ctx.sources.find(s => s.path === path.join(ctx.home, '.claude.json'));
+  const globalMcp = ctx.options.user !== false ? ctx.sources.find(s => s.path === path.join(ctx.home, '.claude.json')) : undefined;
   const exclusiveMcp = claudeExclusiveMcpLocation(ctx);
   const ordinaryMcpStatus = exclusiveMcp ? 'ignored' : 'active';
   const exclusiveReason = 'The exclusive managed MCP file suppresses ordinary MCP sources.';
