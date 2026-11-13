@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { serve } from '../../packages/web/server.js';
 import { workspace } from '../helpers.js';
+import { trustWorkspace } from '../copilot-trust-fixture.js';
 import { readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { html } from '../../packages/reporter/index.js';
@@ -13,6 +14,51 @@ import { scan } from '../../packages/core/index.js';
 import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
+
+test('saved trust aliases and malformed-state correction update live and portable workspace states', async ({ page }) => {
+  const w = await trustWorkspace();
+  const stateFile = path.join(w.home, '.copilot/config.json');
+  await writeFile(stateFile, JSON.stringify({ trustedFolders: [w.otherAlias], internalValue: 'browser-private-trust-state' }));
+  const server = await serve({ ...w, repo: w.alias, clients: ['copilot'] });
+  try {
+    for (const valid of [true, false]) {
+      if (!valid) await writeFile(stateFile, JSON.stringify({ trustedFolders: [w.otherAlias], trusted_folders: [42], internalValue: 'browser-private-trust-state' }, null, 2));
+      await page.context().setOffline(false);
+      await page.goto(server.url);
+      const pending = page.waitForEvent('download');
+      await page.getByRole('button', { name: /Export report/ }).click();
+      const file = test.info().outputPath('saved-trust-' + valid + '.html');
+      await (await pending).saveAs(file);
+      const exported = await readFile(file, 'utf8');
+      for (const value of ['browser-private-trust-state', w.home, await realpath(w.home), w.otherAlias]) expect(exported).not.toContain(JSON.stringify(value).slice(1, -1));
+      for (const url of [server.url, pathToFileURL(file).href]) {
+        await page.context().setOffline(url.startsWith('file:'));
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.goto(url);
+        expect(await page.locator('#report-data').textContent()).not.toContain('browser-private-trust-state');
+        await page.locator('#extensions-tab').click();
+        await expect(page.locator('.extension-row').filter({ hasText: 'fixture' }).locator(valid ? '.status.active' : '.status.conditional')).toHaveCount(1);
+        await page.locator('#configuration-tab').click();
+        await expect(page.locator('#setting-list')).toContainText(valid ? 'repository-trust-model' : 'personal-trust-model');
+        if (!valid) {
+          await page.locator('#findings-tab').click();
+          await page.locator('#findings-list .finding').filter({ hasText: 'Saved Copilot folder trust' }).click();
+          await page.getByRole('button', { name: /Inspect source/ }).click();
+          await expect(page.locator('#source-title')).toContainText('config.json');
+          await expect(page.locator('#instructions')).toContainText('No source preview available');
+        }
+        await page.setViewportSize({ width: 390, height: 844 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      }
+    }
+    await page.context().setOffline(false);
+    await writeFile(stateFile, JSON.stringify({ trusted_folders: [], trustedFolders: [w.otherAlias] }));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(server.url);
+    await page.locator('#extensions-tab').click();
+    await expect(page.locator('.extension-row').filter({ hasText: 'fixture' }).locator('.status.active')).toHaveCount(1);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
 
 test('overlapping personal configuration keeps state private and user inclusion correct live and offline', async ({ page }) => {
   const w = await workspace({}, {

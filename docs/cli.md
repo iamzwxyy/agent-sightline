@@ -57,3 +57,5 @@ Use rule IDs for CI integrations; prose is not a compatibility API. JSON keeps a
 
 
 JSON may include additive `pathMappings` entries with `path` and `replacement`. They retain the path spellings verified during inspection so a JSON round trip or a later offline HTML render can use the same context. JSON retains absolute diagnostic paths. Portable HTML replaces those paths and removes `pathMappings`. Source byte counts and line numbers describe the original files.
+
+Copilot saved folder trust uses the last declared trustedFolders/trusted_folders key. Valid absolute folder paths are resolved before comparison with the session directory. Explicit --trust values override saved trust, and --no-user excludes it. The copilot.trust-type warning identifies a malformed final list at its original key and line. Internal state contents stay withheld from previews.

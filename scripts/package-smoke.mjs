@@ -44,7 +44,12 @@ try {
   const overlapAlias = path.join(temp, 'overlap-alias');
   symlinkSync(overlapHome, overlapAlias, process.platform === 'win32' ? 'junction' : 'dir');
   const aliasedOverlap = execFileSync(process.execPath, [cli, '--repo', overlapAlias, '--home', overlapHome, '--client', 'copilot', '--no-user', '--json'], { encoding: 'utf8' });
+  const aliasedTrust = JSON.parse(execFileSync(process.execPath, [cli, '--repo', overlapAlias, '--home', overlapHome, '--client', 'copilot', '--json'], { encoding: 'utf8' }));
+  if (aliasedTrust.clients[0].extensions.find(extension => extension.name === 'workspace')?.status !== 'active') throw new Error('Installed persisted trust lost an aliased directory.');
   for (const output of [JSON.stringify(overlap), JSON.stringify(overlapRepositoryOnly), aliasedOverlap, readFileSync(overlapFile, 'utf8')]) if (output.includes('installed-overlap-private-state')) throw new Error('Installed overlapping source preview exposed personal state.');
+  writeFileSync(path.join(overlapHome, '.copilot/config.json'), JSON.stringify({ trustedFolders: [overlapHome], trusted_folders: [42] }));
+  const malformedTrust = JSON.parse(execFileSync(process.execPath, [cli, ...overlapArgs, '--json'], { encoding: 'utf8' }));
+  if (malformedTrust.clients[0].extensions.find(extension => extension.name === 'workspace')?.status !== 'conditional' || !malformedTrust.findings.some(finding => finding.ruleId === 'copilot.trust-type' && finding.location.key === 'trusted_folders')) throw new Error('Installed persisted trust accepted a malformed later alias.');
   const output = execFileSync(process.execPath, [cli, '--repo', repo, '--no-user', '--trust', 'trusted', '--client', 'codex', '--json'], { encoding: 'utf8' });
   const report = JSON.parse(output); if (report.clients[0].instructions !== 'Installed package works.') throw new Error('Installed resolver failed.');
   mkdirSync(path.join(repo, 'sibling/.codex'), { recursive: true });

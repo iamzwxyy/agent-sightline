@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.12
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* The 409-case core suite completed with 407 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* A targeted regression failed before the implementation. Post-publication v0.3.11 evidence also reproduced native acceptance of logical saved paths while Sightline reported conditional trust.
+* Twenty-seven isolated native MCP inventories compare canonical/logical paths, directory aliases, ancestor and path-prefix boundaries, symlink escapes, missing paths, relative/tilde entries, alias declaration order and complete typed lists. Unmatched strings leave other absolute matches eligible. Marker checks verify configuration-only inventories.
+* Public scan fixtures cover trust-dependent project models, explicit trust overrides, user exclusion, malformed syntax, private JSON/terminal/HTML output and an explicit probe skipped after a symlink escape. CLI correction checks source keys, warning thresholds, portable privacy and restored active state.
+* All 59 Chromium browser cases passed. The added live/offline journey verifies saved aliases, conditional state after a later malformed declaration, model selection, source navigation with a withheld private preview, correction and phone layouts. Installed-package checks verify alias trust and rejection of a malformed later key.
+
 ## v0.3.11
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.

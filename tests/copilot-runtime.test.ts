@@ -9,6 +9,7 @@ import { copilotMetadata } from '../packages/adapters/copilot.js';
 import { flatten } from '../packages/adapters/common.js';
 import { copilotPersonalKeys, normalizeCopilotSettings } from '../packages/adapters/copilot-aliases.js';
 import { fixture, workspace } from './helpers.js';
+import { trustCases, trustWorkspace } from './copilot-trust-fixture.js';
 
 const require = createRequire(import.meta.url);
 const runtimePackage = require('@github/copilot/package.json');
@@ -308,6 +309,26 @@ test('Copilot native workspace MCP inventory follows trustedFolders and disabled
     assert.equal(report.clients[0].extensions.find(extension => extension.name === 'fixture')?.status, 'ignored');
     await assert.rejects(readFile(path.join(w.repo, 'native-mcp-started')), { code: 'ENOENT' });
   }
+});
+
+test('Copilot native persisted trust uses canonical boundaries, declared alias order and complete typed lists', { timeout: 240000 }, async t => {
+  for (const fixture of trustCases) await t.test(fixture.name, async scenario => {
+    const w = await trustWorkspace();
+    scenario.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+    const cwd = fixture.cwd ? w[fixture.cwd] : w.alias;
+    const env = isolatedEnvironment(w.home);
+    const text = JSON.stringify({ ...fixture.state(w), internalValue: 'native-private-trust-state' });
+    const stateFile = path.join(w.home, '.copilot/config.json');
+    await writeFile(stateFile, text);
+    const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd, env, encoding: 'utf8', timeout: 30000 }));
+    assert.equal(!!native.mcpServers.fixture, fixture.trusted);
+    await writeFile(stateFile, text);
+    const report = await scan({ ...w, repo: cwd, clients: ['copilot'] });
+    assert.equal(report.clients[0].extensions.find(extension => extension.name === 'fixture')?.status, fixture.trusted ? 'active' : 'conditional');
+    assert.equal(report.findings.some(finding => finding.ruleId === 'copilot.trust-type'), !!fixture.invalidKey);
+    assert.ok(!JSON.stringify(report).includes('native-private-trust-state'));
+    await assert.rejects(readFile(path.join(cwd, 'trust-server-started')), { code: 'ENOENT' });
+  });
 });
 
 test('Copilot native inventories distinguish personal JSONC and strict workspace MCP files', async t => {

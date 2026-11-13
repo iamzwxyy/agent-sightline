@@ -28,8 +28,13 @@ export const copilot = adapter(copilotMetadata, discover, async ctx => {
   const userSettings = user ? ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'settings.json')) : undefined;
   if (state) decision(e, state, 'ignored', 'config.json contains internal state; user settings belong in settings.json in 1.0.110.');
   const directory = await realpath(ctx.directory);
-  const trustedFolders = state?.data.trustedFolders ?? state?.data.trusted_folders;
-  const trusted = ctx.options.trust === 'trusted' || ctx.options.trust !== 'untrusted' && !state?.invalid && Array.isArray(trustedFolders) && trustedFolders.some((folder: unknown) => typeof folder === 'string' && (within(folder, ctx.directory) || within(folder, directory)));
+  const trustDeclaration = Object.entries(state?.data ?? {}).findLast(([key]) => key === 'trustedFolders' || key === 'trusted_folders');
+  const declaredFolders = trustDeclaration?.[1];
+  const folders = Array.isArray(declaredFolders) && declaredFolders.every((folder): folder is string => typeof folder === 'string') ? declaredFolders : undefined;
+  if (state && !state.invalid && trustDeclaration && !folders) e.findings.push(finding('copilot.trust-type', 'warn', locate(state, trustDeclaration[0]), 'Saved Copilot folder trust must be an array of strings.', 'Copilot ignores a malformed persisted trust list.', 'Use an array of absolute folder paths, then rerun the inspection.', 'copilot'));
+  const canonicalFolders = folders && !state?.invalid && (ctx.options.trust ?? 'auto') === 'auto'
+    ? await Promise.all(folders.filter(folder => path.isAbsolute(folder)).map(folder => realpath(folder).catch(() => folder))) : [];
+  const trusted = ctx.options.trust === 'trusted' || ctx.options.trust !== 'untrusted' && canonicalFolders.some(folder => within(folder, directory));
   const status: Status = trusted ? 'active' : ctx.options.trust === 'untrusted' ? 'ignored' : 'conditional';
   if (userSettings) copilotSettings(e, userSettings, status);
   copilotRepositorySettings(e, ctx, status);

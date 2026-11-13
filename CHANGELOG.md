@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.12 — 2026-11-14
+
+* Correct persisted Copilot trust matching by resolving existing absolute folder paths before comparing canonical directory boundaries. Saved aliases can establish trust, and a session reached through a symlink outside a trusted logical parent retains conditional workspace contributions.
+* Normalize trustedFolders and trusted_folders in declaration order. The last spelling supplies the complete list, including an empty list or malformed value.
+* Require a complete string list and ignore relative/tilde entries for persisted path matching. Add copilot.trust-type with the controlling source key and line for malformed declarations.
+* Apply explicit trust overrides and repository-only resolution. Withhold previews of private state, cover trust-dependent project settings and skip explicit workspace MCP probes while trust is unresolved.
+* Compare 27 isolated native trust scenarios and exercise CLI correction, live/offline browser states, portable privacy and installed-package behavior.
+
 ## 0.3.11 — 2026-11-14
 
 * Fix a personal-state preview disclosure verified in v0.3.10. When the inspection root contained the active Copilot configuration directory, JSON and HTML previews could include internal config.json state. Review affected reports before sharing them.

@@ -3,10 +3,38 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, readFile, readdir, realpath, rm, watch, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, realpath, rm, symlink, watch, writeFile } from 'node:fs/promises';
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
+
+test('CLI resolves saved trust aliases and diagnoses the last malformed declaration through correction', async t => {
+  const w = await workspace({ '.mcp.json': '{"mcpServers":{"fixture":{"command":"node"}}}' }, { '.copilot/config.json': '{}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const alias = path.join(w.root, 'alias');
+  const storedAlias = path.join(w.root, 'stored-alias');
+  for (const link of [alias, storedAlias]) await symlink(w.repo, link, process.platform === 'win32' ? 'junction' : 'dir');
+  const stateFile = path.join(w.home, '.copilot/config.json');
+  const flags = ['--repo', alias, '--home', w.home, '--client', 'copilot'];
+  await writeFile(stateFile, JSON.stringify({ trustedFolders: [storedAlias], internalValue: 'cli-private-trust-state' }));
+  const trusted = run(['ci', ...flags, '--fail-on', 'warn'], alias);
+  assert.equal(trusted.status, 0, trusted.stderr);
+  assert.equal(JSON.parse(trusted.stdout).clients[0].extensions[0].status, 'active');
+  await writeFile(stateFile, JSON.stringify({ trustedFolders: [storedAlias], trusted_folders: [42], internalValue: 'cli-private-trust-state' }, null, 2));
+  const invalid = run(['ci', ...flags, '--fail-on', 'warn'], alias);
+  assert.equal(invalid.status, 1, invalid.stderr);
+  const report = JSON.parse(invalid.stdout);
+  assert.equal(report.clients[0].extensions[0].status, 'conditional');
+  const warning = report.findings.find((finding: any) => finding.ruleId === 'copilot.trust-type');
+  assert.equal(warning.location.key, 'trusted_folders');
+  const file = path.join(w.root, 'trust.html');
+  assert.equal(run(['report', ...flags, '--format', 'html', '--output', file], alias).status, 0);
+  for (const output of [invalid.stdout, await readFile(file, 'utf8')]) assert.ok(!output.includes('cli-private-trust-state'));
+  await writeFile(stateFile, JSON.stringify({ trusted_folders: [], trustedFolders: [storedAlias] }));
+  const corrected = run(['ci', ...flags, '--fail-on', 'warn'], alias);
+  assert.equal(corrected.status, 0, corrected.stderr);
+  assert.equal(JSON.parse(corrected.stdout).clients[0].extensions[0].status, 'active');
+});
 
 test('CI findings follow the selected target while sibling project sources remain discoverable', async t => {
   const w = await workspace({
