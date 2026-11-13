@@ -1,6 +1,6 @@
 # Visual assets
 
-Client marks identify the compatible tools. Their names and marks belong to their respective owners. The same SVG files are used by the website, local inspector and portable reports. Portable reports embed the marks as data URLs.
+Client marks identify the compatible tools. Their names and marks belong to their respective owners. The same SVG files are used by the website, local inspector and portable reports. Portable reports embed the marks as data URLs together with the upstream MIT and font OFL notices.
 
 | Client | Source | Included asset |
 | --- | --- | --- |
