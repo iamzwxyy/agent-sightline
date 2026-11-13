@@ -100,7 +100,7 @@ test('unknown/untrusted project does not claim proven effective settings', async
   const u = await scan({ ...w, clients: ['codex'], trust: 'untrusted' }); assert.ok(u.clients[0].decisions.filter(d => d.scope !== 'user').every(d => d.status === 'ignored'));
 });
 test('MCP command/env/cwd errors and same-name drift have stable findings', async t => {
-  const w = await workspace({ '.mcp.json': '{"mcpServers":{"db":{"command":"missing-sightline-command","env":{"AUTH":"${SIGHTLINE_MISSING}"},"cwd":"missing-directory"}}}' }, { '.codex/config.toml': '[mcp_servers.db]\ncommand="different-missing-command"\nenv_vars=["SIGHTLINE_MISSING"]' }); t.after(() => rm(w.root, { recursive: true, force: true }));
+  const w = await workspace({ '.mcp.json': '{"mcpServers":{"db":{"command":"missing-sightline-command","env":{"AUTH":"${SIGHTLINE_MISSING}"},"cwd":"missing-directory"}}}' }, { '.codex/config.toml': '[mcp_servers.db]\ncommand="different-missing-command"\ncwd="missing-directory"\nenv_vars=["SIGHTLINE_MISSING"]' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = await scan({ ...w, clients: ['codex', 'claude'], trust: 'trusted' });
   for (const rule of ['mcp.command-missing', 'mcp.env-missing', 'extension.cwd-missing', 'mcp.cross-client-drift']) assert.ok(r.findings.some(f => f.ruleId === rule), rule);
   assert.ok(r.findings.every(f => f.id && f.location.line > 0 && f.why && f.suggestion && Array.isArray(f.related)));

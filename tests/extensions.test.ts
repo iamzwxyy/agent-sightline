@@ -62,7 +62,7 @@ test('JSON MCP errors point to individual fields and collect all references to a
   for (const client of report.clients) {
     const command = client.findings.find(finding => finding.ruleId === 'mcp.command-missing')!;
     assert.ok(text.split('\n')[command.location.line - 1].includes('"command"'));
-    const cwd = client.findings.find(finding => finding.ruleId === 'extension.cwd-missing')!;
+    const cwd = client.findings.find(finding => finding.ruleId === (client.client === 'claude' ? 'mcp.unsupported-field' : 'extension.cwd-missing') && finding.location.key === 'mcpServers.fixture.cwd')!;
     assert.ok(text.split('\n')[cwd.location.line - 1].includes('"cwd"'));
     const missing = client.findings.filter(finding => finding.ruleId === 'mcp.env-missing');
     assert.equal(missing.length, 1);
@@ -220,7 +220,7 @@ test('malformed MCP fields are invalid while valid sibling servers remain discov
     badCwd: { command: 'node', cwd: 42 },
     badArgs: { command: 'node', args: 'argument' },
     badEnv: { command: 'node', env: { PATH: 42 } },
-    badHeaders: { command: 'node', headers: [] },
+    badHeaders: { type: 'http', url: 'https://example.test/mcp', headers: [] },
     badHttpHeaders: { command: 'node', http_headers: { header: false } },
     badEnvHeaders: { command: 'node', env_http_headers: 42 },
     badEndpoint: { url: 'file:///local-server' },
@@ -232,11 +232,12 @@ test('malformed MCP fields are invalid while valid sibling servers remain discov
   const report = await scan({ ...w, user: false, clients: ['claude', 'copilot'], trust: 'trusted' });
   for (const client of report.clients) {
     assert.equal(client.extensions.find(extension => extension.name === 'good')?.status, 'active');
-    for (const name of Object.keys(servers).filter(name => name !== 'good')) assert.equal(client.extensions.find(extension => extension.name === name)?.status, 'invalid', `${client.client} ${name}`);
+    const ignoredFields = client.client === 'claude' ? ['badUrl', 'badCwd', 'badHttpHeaders', 'badEnvHeaders'] : [];
+    for (const name of Object.keys(servers).filter(name => name !== 'good')) assert.equal(client.extensions.find(extension => extension.name === name)?.status, ignoredFields.includes(name) ? 'active' : 'invalid', `${client.client} ${name}`);
     const env = client.findings.find(finding => finding.ruleId === 'mcp.env-type' && finding.location.key === 'mcpServers.badEnv.env.PATH');
     assert.ok(env);
     assert.ok(content.split('\n')[env.location.line - 1].includes('"PATH": 42'));
-    assert.ok(client.findings.some(finding => finding.ruleId === 'extension.cwd-type' && finding.location.key === 'mcpServers.badCwd.cwd'));
+    assert.ok(client.findings.some(finding => finding.ruleId === (client.client === 'claude' ? 'mcp.unsupported-field' : 'extension.cwd-type') && finding.location.key === 'mcpServers.badCwd.cwd'));
     assert.ok(!client.findings.some(finding => finding.ruleId === 'mcp.command-missing'));
   }
 });
@@ -254,11 +255,11 @@ test('MCP collection type errors preserve valid Copilot definitions in another w
 
 test('MCP environment references resolve before endpoint and executable checks', async t => {
   const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: {
-    remote: { url: '${SIGHTLINE_REMOTE_URL}' },
+    remote: { type: 'http', url: '${SIGHTLINE_REMOTE_URL}' },
     local: { command: '${SIGHTLINE_EXECUTABLE}', cwd: '${SIGHTLINE_WORKDIR}' },
     missing: { command: '${SIGHTLINE_MISSING_COMMAND}' },
-    unresolved: { url: '${SIGHTLINE_ABSENT_URL}' },
-    fallback: { url: '${SIGHTLINE_FALLBACK_URL:-https://example.test/mcp}' },
+    unresolved: { type: 'http', url: '${SIGHTLINE_ABSENT_URL}' },
+    fallback: { type: 'http', url: '${SIGHTLINE_FALLBACK_URL:-https://example.test/mcp}' },
   } }) });
   t.after(() => rm(w.root, { recursive: true, force: true }));
   const report = await scan({ ...w, user: false, clients: ['claude', 'copilot'], trust: 'trusted', env: {

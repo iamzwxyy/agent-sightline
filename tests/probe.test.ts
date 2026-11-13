@@ -22,12 +22,12 @@ import readline from 'node:readline';
 if(process.argv[2]==='invalid')writeFileSync('INVALID_EXECUTED','invalid');
 readline.createInterface({input:process.stdin}).on('line',line=>{const request=JSON.parse(line);if(request.id)console.log(JSON.stringify({jsonrpc:'2.0',id:request.id,result:request.id===1?{protocolVersion:'2024-11-05'}:{tools:[]}}));});`;
   const w = await workspace({ 'server.mjs': code, '.mcp.json': JSON.stringify({ mcpServers: {
-    invalid: { command: process.execPath, args: ['server.mjs', 'invalid'], cwd: 42 },
+    invalid: { command: process.execPath, args: ['server.mjs', 'invalid'], env: { NORMAL: 42 } },
     valid: { command: process.execPath, args: ['server.mjs'] },
   } }) });
   t.after(() => rm(w.root, { recursive: true, force: true }));
   const report = await scan({ ...w, user: false, clients: ['claude'], trust: 'trusted', probe: true });
-  assert.ok(report.findings.some(finding => finding.ruleId === 'extension.cwd-type'));
+  assert.ok(report.findings.some(finding => finding.ruleId === 'mcp.env-type'));
   assert.ok(report.findings.some(finding => finding.ruleId === 'probe.mcp-ready' && finding.message.includes('"valid"')));
   assert.ok(!(await readdir(w.repo)).includes('INVALID_EXECUTED'));
 });

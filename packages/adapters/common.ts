@@ -2,7 +2,7 @@ import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import type { Adapter, AdapterMetadata, Context, Decision, Effective, Extension, Source, Status } from '../core/types.js';
 import { bytes, cmp, executable, finding, locate, plainObject, prefix, slash, splitGlobs, within } from '../core/utils.js';
-import { hookCommandField, validateExtensions, probeMcp } from '../core/extensions.js';
+import { hookCommandField, validateExtensions, validateMcpConfiguration, probeMcp } from '../core/extensions.js';
 
 export async function base(metadata: AdapterMetadata, ctx: Context): Promise<Effective> {
   const exec = await executable(metadata.id === 'cursor' ? 'cursor-agent' : metadata.id, ctx.directory, ctx.env);
@@ -46,18 +46,26 @@ export function mcp(e: Effective, s: Source, servers: unknown, key: string, stat
   for (const [name, data] of Object.entries(servers)) {
     const previousStatuses = merge && status === 'conditional' ? ['active', 'conditional'] : ['active'];
     const old = e.extensions.findLast(x => x.kind === 'mcp' && x.name === name && previousStatuses.includes(x.status));
-    if (old && status === 'active') {
+    const inherited = merge && old && ['active', 'conditional'].includes(status) ? old : undefined;
+    const config = plainObject(data) ? (inherited ? mergeTables(inherited.config, data) : data) : { _invalid: true };
+    const reason = status === 'conditional' ? 'Workspace trust or server approval is required.' : inherited ? 'Server fields merge across applicable configuration layers.' : 'Discovered in this client’s MCP configuration.';
+    const extension: Extension = { kind: 'mcp', name, config, status, location: locate(s, `${key}.${name}`), reason,
+      ...(plainObject(data) ? { origins: mcpOrigins(s, config, data, `${key}.${name}`, inherited) } : {}),
+    };
+    const errors = e.client === 'claude' ? validateMcpConfiguration(extension, e.client, s) : [];
+    if (errors.length) {
+      if (old) {
+        old.reason = 'A higher-priority declaration failed structural validation. This definition remains applicable.';
+        for (const error of errors) error.related.push(old.location);
+      }
+      extension.status = 'invalid'; extension.reason = errors.at(-1)!.why; e.findings.push(...errors);
+    } else if (old && status === 'active') {
       old.status = 'shadowed'; old.reason = 'Higher-priority server configuration with the same name.';
       e.findings.push(finding('mcp.redefined', 'warn', locate(s, `${key}.${name}`), `MCP server "${name}" is defined in multiple layers.`, merge ? 'Codex merges server fields; the final command may come from a different layer than its arguments.' : 'The higher-priority definition replaces the whole server entry.', 'Keep one definition or inspect the effective server below.', e.client, [old.location]));
     } else if (merge && old?.status === 'conditional' && status === 'conditional') {
       old.status = 'shadowed'; old.reason = 'A closer conditional layer includes these fields in its merged server.';
     }
-    const inherited = merge && old && ['active', 'conditional'].includes(status) ? old : undefined;
-    const config = plainObject(data) ? (inherited ? mergeTables(inherited.config, data) : data) : { _invalid: true };
-    const reason = status === 'conditional' ? 'Workspace trust or server approval is required.' : inherited ? 'Server fields merge across applicable configuration layers.' : 'Discovered in this client’s MCP configuration.';
-    e.extensions.push({ kind: 'mcp', name, config, status, location: locate(s, `${key}.${name}`), reason,
-      ...(plainObject(data) ? { origins: mcpOrigins(s, config, data, `${key}.${name}`, inherited) } : {}),
-    });
+    e.extensions.push(extension);
   }
 }
 function mcpOrigins(source: Source, config: Record<string, any>, incoming: Record<string, any>, baseKey: string, previous?: Extension): NonNullable<Extension['origins']> {

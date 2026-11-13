@@ -10,7 +10,7 @@ if (!npm) throw new Error('Run this script using npm run smoke.');
 const runNpm = args => execFileSync(process.execPath, [npm, ...args], { encoding: 'utf8' });
 try {
   const result = JSON.parse(runNpm(['pack', '--ignore-scripts', '--json', '--pack-destination', temp]));
-  if (result[0].files.some(file => /node_modules\/(?:@openai\/codex(?:[/-]|$)|typescript\/|@playwright\/|eslint\/|tsx\/|esbuild\/)/.test(file.path))) throw new Error('The production archive includes development tools.');
+  if (result[0].files.some(file => /node_modules\/(?:@openai\/codex(?:[/-]|$)|@anthropic-ai\/claude-code(?:[/-]|$)|typescript\/|@playwright\/|eslint\/|tsx\/|esbuild\/)/.test(file.path))) throw new Error('The production archive includes development tools.');
   const tarball = path.join(temp, result[0].filename);
   runNpm(['install', '--offline', '--cache', path.join(temp, 'empty-cache'), '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', path.join(temp, 'install'), tarball]);
   const cli = path.join(temp, 'install/node_modules/agent-sightline/dist/cli/index.js');
@@ -83,6 +83,17 @@ try {
   if (merged.findings.find(finding => finding.ruleId === 'extension.cwd-missing')?.location.line !== 3) throw new Error('Installed inherited working-directory diagnostic failed.');
   const conditional = JSON.parse(execFileSync(process.execPath, [cli, ...mergedArgs, '--json'], { encoding: 'utf8' }));
   if (conditional.findings.some(finding => finding.ruleId === 'mcp.transport') || !conditional.clients[0].extensions.some(extension => extension.status === 'conditional' && extension.config.command === 'missing-installed-source-fixture')) throw new Error('Installed conditional MCP merge failed.');
+  const claudeRepo = path.join(temp, 'claude-repository');
+  mkdirSync(path.join(claudeRepo, '.claude'), { recursive: true });
+  writeFileSync(path.join(claudeRepo, '.claude/settings.json'), '{"enableAllProjectMcpServers":true}');
+  writeFileSync(path.join(claudeRepo, '.mcp.json'), JSON.stringify({ mcpServers: { remote: { url: 'https://example.test/mcp' }, local: { command: process.execPath, cwd: 'missing-directory' } } }));
+  const claudeArgs = ['--repo', claudeRepo, '--no-user', '--client', 'claude', '--json'];
+  const claude = JSON.parse(execFileSync(process.execPath, [cli, ...claudeArgs], { encoding: 'utf8' }));
+  if (claude.clients[0].extensions.find(extension => extension.name === 'remote')?.status !== 'invalid' || claude.clients[0].extensions.find(extension => extension.name === 'local')?.status !== 'conditional') throw new Error('Installed Claude transport or approval diagnosis failed.');
+  if (claude.findings.some(finding => finding.ruleId === 'extension.cwd-missing') || !claude.findings.some(finding => finding.ruleId === 'mcp.unsupported-field' && finding.location.key === 'mcpServers.local.cwd')) throw new Error('Installed Claude directory semantics failed.');
+  writeFileSync(path.join(claudeRepo, '.mcp.json'), JSON.stringify({ mcpServers: { remote: { type: 'http', url: 'https://example.test/mcp' }, local: { command: process.execPath } } }));
+  const approvedClaude = JSON.parse(execFileSync(process.execPath, [cli, ...claudeArgs, '--trust', 'trusted'], { encoding: 'utf8' }));
+  if (approvedClaude.clients[0].extensions.some(extension => extension.status !== 'active') || approvedClaude.findings.some(finding => finding.severity === 'error')) throw new Error('Installed corrected Claude transport failed.');
   const demo = JSON.parse(execFileSync(process.execPath, [cli, 'demo', '--clients', 'codex,claude,copilot', '--json'], { encoding: 'utf8' }));
   if (new Set(demo.findings.map(f => f.ruleId)).size < 5) throw new Error('Bundled demo failed to demonstrate real findings.');
   if (!demo.findings.some(finding => finding.ruleId === 'instructions.truncated') || demo.clients.find(client => client.client === 'codex')?.settings.find(setting => setting.key === 'project_doc_max_bytes' && setting.status === 'active')?.value !== 160) throw new Error('The installed Git-free sample lost its Codex byte-budget configuration.');

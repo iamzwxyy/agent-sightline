@@ -12,6 +12,77 @@ import type { Report } from '../../packages/core/types.js';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('Claude transport diagnosis follows source correction, refresh and explicit trust', async ({ page }) => {
+  const servers = { remote: { url: 'https://example.test/mcp' }, local: { command: process.execPath } };
+  const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: servers }, null, 2), '.claude/settings.json': '{"enableAllProjectMcpServers":true}' });
+  const server = await serve({ ...w, user: false, clients: ['claude'] });
+  try {
+    await page.goto(server.url);
+    await page.locator('#findings-tab').click();
+    await page.locator('#findings-list .finding').filter({ hasText: 'needs an explicit type' }).click();
+    await page.getByRole('button', { name: /Inspect source/ }).click();
+    await expect(page.locator('.code-line.highlight')).toContainText('"url": "https://example.test/mcp"');
+    await writeFile(path.join(w.repo, '.mcp.json'), JSON.stringify({ mcpServers: { ...servers, remote: { type: 'http', ...servers.remote } } }, null, 2));
+    await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+    await page.locator('#extensions-tab').click();
+    await expect(page.locator('.extension-row .status.conditional')).toHaveCount(2);
+    await page.locator('#trust').selectOption('trusted');
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+    await expect(page.locator('.extension-row .status.active')).toHaveCount(2);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('corrected-claude-transport.html');
+    await (await pending).saveAs(file);
+    await page.goto(pathToFileURL(file).href);
+    await page.locator('#extensions-tab').click();
+    await expect(page.locator('.extension-row .status.active')).toHaveCount(2);
+    await expect(page.locator('.extension-row').filter({ hasText: 'remote' }).locator('.extension-command')).toHaveText('https://example.test/mcp');
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('Claude ignored MCP fields remain marked and inspectable in live and portable reports', async ({ page }) => {
+  const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: {
+    remote: { type: 'http', url: 'https://example.test/mcp', command: 'ignored-browser-command', env: { UNUSED: 'browser-ignored-private-sentinel' } },
+    local: { command: process.execPath, cwd: 'missing-browser-directory', url: 'https://example.test/ignored' },
+  } }, null, 2) });
+  const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    for (const offline of [false, true]) {
+      if (offline) {
+        const pending = page.waitForEvent('download');
+        await page.getByRole('button', { name: /Export report/ }).click();
+        const file = test.info().outputPath('claude-ignored-fields.html');
+        await (await pending).saveAs(file);
+        expect(await readFile(file, 'utf8')).not.toContain('browser-ignored-private-sentinel');
+        await page.goto(pathToFileURL(file).href);
+      }
+      await page.locator('#extensions-tab').click();
+      const remote = page.locator('.extension-row').filter({ hasText: 'remote' });
+      await expect(remote.locator('.extension-command')).toHaveText('https://example.test/mcp');
+      await remote.click();
+      await expect(page.locator('#detail-dialog')).toContainText('Declared configuration');
+      await expect(page.locator('.extension-origins')).toContainText('command (ignored)');
+      await expect(page.locator('.extension-origins')).toContainText('env.UNUSED (ignored)');
+      if (!offline) await page.screenshot({ path: test.info().outputPath('claude-ignored-fields.png') });
+      await page.locator('.extension-origins').getByRole('button', { name: /^command \(ignored\)/ }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('ignored-browser-command');
+      await page.locator('#findings-tab').click();
+      await page.locator('#findings-list .finding').filter({ hasText: '"local" ignores the field "cwd"' }).click();
+      await page.getByRole('button', { name: /Inspect source/ }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('missing-browser-directory');
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: 'Toggle navigation' }).click();
+    await page.locator('#extensions-tab').click();
+    await page.locator('.extension-row').filter({ hasText: 'remote' }).click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: test.info().outputPath('claude-ignored-fields-phone.png') });
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('merged MCP field definitions navigate across user and project sources online and offline', async ({ page }) => {
   const w = await workspace({ '.codex/config.toml': '[mcp_servers.fixture]\nargs=["project-argument"]\n' }, {
     '.codex/config.toml': '[mcp_servers.fixture]\ncommand="missing-browser-source-fixture"\ncwd="missing-workdir"\n[mcp_servers.fixture.env]\nAPI_TOKEN="browser-private-origin-sentinel"\n',

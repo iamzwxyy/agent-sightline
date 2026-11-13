@@ -5,12 +5,12 @@
 One file. Several agents. Different instructions. Sightline shows every discovered source, why it applies, what is shadowed or truncated, and the effective configuration—with source lines you can inspect.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.2.9/agent-sightline-0.2.9.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.2.10/agent-sightline-0.2.10.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.2.8.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.2.10.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -61,13 +61,15 @@ The companion website includes an interactive example, a complete installation g
 | Client | Rule target | Status | Focus |
 | --- | --- | --- | --- |
 | OpenAI Codex CLI | 0.167.2 binary/source/schema | Runtime + fixtures | Instruction chain, trust, overrides, raw-byte budget, TOML layers, selected profile files, MCP, skill metadata, hook discovery |
-| Claude Code | 2.1.322 official docs | Fixture-verified | CLAUDE/AGENTS fallback, imports, path rules, settings, MCP scope, skills, hooks, exact permissions |
+| Claude Code | 2.1.322 binary + official docs | Native MCP + fixtures | CLAUDE/AGENTS fallback, imports, path rules, settings, MCP transport/scope, skills, hooks, exact permissions |
 | GitHub Copilot CLI | 1.0.109 official docs | Fixture-verified | Combined instructions, applyTo, import bounds, JSONC user settings, workspace MCP, skills, hooks |
 | Gemini CLI | Docs snapshot 2026-11-12 | Experimental | Local settings and global/ancestor/JIT context files |
 | Cursor | Docs snapshot 2026-11-12 | Experimental | AGENTS.md and .mdc always/glob/manual/intelligent states, local MCP |
 | OpenCode V2 | Docs snapshot 2026-11-12 | Experimental | V2 local configuration and nearest-first AGENTS.md; no V1 fallback assertion |
 
 Codex base/project scalar and MCP values and their winning files are compared with the real 0.167.2 configuration API in twenty-one isolated scenarios. Instruction bodies, profiles and source line numbers retain source/schema fixture coverage. Run `npm run test:codex` to reproduce the configuration comparisons.
+
+Claude MCP transport parsing, approval boundaries, directory behavior and fallback from invalid higher-priority definitions are compared with the pinned 2.1.322 CLI. The checks use temporary homes and synthetic local MCP servers. Other Claude capabilities retain official-document fixtures. Run `npm run test:claude` to reproduce these comparisons.
 
 Rules and known limits are visible through `agent-sightline adapters` and the [evidence ledgers](docs/research/). “Fixture-verified” means the recorded official contracts have executable fixtures; it is not an authenticated live-client conformance claim. Copilot CLI rules differ from VS Code/code review/cloud agent rules.
 
@@ -87,7 +89,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.2.8.tgz
+npm install -g ./agent-sightline-0.2.10.tgz
 agent-sightline demo
 ```
 

@@ -560,7 +560,7 @@
       const row = node('tr'); const nameCell = node('td'); nameCell.append(node('strong', name), node('span', kind, 'source-path')); row.append(nameCell);
       definitions.forEach((items, index) => {
         const cell = node('td');
-        if (items.length) cell.append(button(extensionSummary(items[0]), () => showExtension(items[0], clients[index].client), 'source-link'));
+        if (items.length) cell.append(button(extensionSummary(items[0], clients[index].client), () => showExtension(items[0], clients[index].client), 'source-link'));
         else cell.append(node('span', '—', 'subtle'));
         row.append(cell);
       });
@@ -570,8 +570,11 @@
     const wrapper = node('div', undefined, 'table-scroll'); wrapper.append(extensionTable);
     $('comparison-extensions').replaceChildren(extensionBody.children.length ? wrapper : empty('No extension differences', 'Try selecting another client or turning off Differences only.'));
   }
-  function extensionSummary(extension) {
-    if (extension.kind === 'mcp') return extension.config.command ?? extension.config.url ?? 'Invalid definition';
+  function extensionSummary(extension, client) {
+    if (extension.kind === 'mcp') {
+      if (client === 'claude' && ['http', 'streamable-http', 'sse', 'ws'].includes(extension.config.type)) return extension.config.url || 'No endpoint configured';
+      return extension.config.command ?? extension.config.url ?? 'Invalid definition';
+    }
     if (extension.kind === 'hook') return extension.config.command ?? extension.config.bash ?? extension.config.powershell ?? extension.config.type ?? 'Hook';
     if (extension.kind === 'permission') return extension.config.action;
     return extension.config.description ?? 'No description';
@@ -580,7 +583,8 @@
     $('detail-category').textContent = `${names[client]} / ${extension.kind}`;
     const content = node('div', undefined, 'dialog-content');
     const title = node('h2', extension.name); title.id = 'detail-title';
-    content.append(badge(extension.status), title, node('p', extension.reason), node('p', `${short(extension.location.path)} · line ${extension.location.line}`, 'path'), node('h3', 'Configuration'), node('pre', JSON.stringify(extension.config, null, 2)));
+    const ignored = report.findings.filter(finding => finding.client === client && finding.ruleId === 'mcp.unsupported-field' && finding.location.path === extension.location.path && extension.location.key && finding.location.key?.startsWith(extension.location.key + '.'));
+    content.append(badge(extension.status), title, node('p', extension.reason), node('p', `${short(extension.location.path)} · line ${extension.location.line}`, 'path'), node('h3', client === 'claude' && extension.kind === 'mcp' ? 'Declared configuration' : 'Configuration'), node('pre', JSON.stringify(extension.config, null, 2)));
     if (extension.origins?.length) {
       const origins = node('div', undefined, 'extension-origins setting-origins');
       origins.append(node('h3', 'Field definitions'));
@@ -591,7 +595,8 @@
         const label = mapping ? mapping.replacement + filename.slice(mapping.path.length).replace(/\\/g, '/') : short(filename);
         const link = button('', () => inspectSourceLocation(origin.location, client), 'source-link');
         link.title = `${filename}:${origin.location.line}`;
-        link.append(node('span', origin.key + ' ·'), node('span', `${label}:${origin.location.line}`));
+        const unused = ignored.some(finding => origin.location.key === finding.location.key || origin.location.key?.startsWith(finding.location.key + '.'));
+        link.append(node('span', origin.key + (unused ? ' (ignored) ·' : ' ·')), node('span', `${label}:${origin.location.line}`));
         origins.append(link);
       }
       content.append(origins);
@@ -608,7 +613,7 @@
     const list = node('div', undefined, 'issue-list');
     for (const { extension, client } of extensions) {
       const row = button('', () => showExtension(extension, client), 'extension-row');
-      const label = node('div'); label.append(node('strong', extension.name), node('span', extensionSummary(extension), 'extension-command'));
+      const label = node('div'); label.append(node('strong', extension.name), node('span', extensionSummary(extension, client), 'extension-command'));
       row.append(avatar(client), label, node('span', extension.kind === 'mcp' ? 'MCP server' : extension.kind, 'extension-kind'), badge(extension.status), node('span', '›', 'row-arrow')); list.append(row);
     }
     $('extension-list').replaceChildren(extensions.length ? list : empty('No extensions in this view', 'Choose another type or client to see its discovered definitions.'));

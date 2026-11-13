@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { Context, Effective, Finding } from './types.js';
 import { cmp, finding, locate, splitGlobs } from './utils.js';
-import { extensionFieldLocation } from './extensions.js';
+import { extensionFieldLocation, mcpRuntimeConfig } from './extensions.js';
 
 export function diagnose(ctx: Context, clients: Effective[]): Finding[] {
   const out: Finding[] = [];
@@ -24,7 +24,7 @@ export function diagnose(ctx: Context, clients: Effective[]): Finding[] {
       for (const g of globs) if (typeof g === 'string' && (g.startsWith('../') || /^[A-Za-z]:[\\/]/.test(g) || g.includes('\0') || /\[[^\]]*$/.test(g))) out.push(finding('glob.impossible', 'warn', locate(s, s.data.applyTo ? 'applyTo' : s.data.globs ? 'globs' : 'paths'), 'Glob cannot match the inspected repository-relative target convention.', 'Parent traversal, platform drive prefixes or unclosed character classes do not match these relative paths.', 'Use a valid relative glob such as src/**/*.ts.', e.client));
     }
   }
-  const servers = clients.flatMap(e => e.extensions.filter(x => x.kind === 'mcp' && ['active', 'conditional'].includes(x.status)).map(x => ({ ...x, client: e.client })));
+  const servers = clients.flatMap(e => e.extensions.filter(x => x.kind === 'mcp' && ['active', 'conditional'].includes(x.status)).map(x => ({ ...x, config: mcpRuntimeConfig(x.config, e.client), client: e.client })));
   const names = [...new Set(servers.map(s => s.name))].sort(cmp);
   for (const name of names) {
     const group = servers.filter(s => s.name === name);

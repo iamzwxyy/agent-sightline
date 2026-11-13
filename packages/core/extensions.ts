@@ -6,7 +6,11 @@ import type { ClientId, Context, Effective, Extension, Finding, Location, Source
 import { executable, finding, locate, plainObject, within } from './utils.js';
 import { VERSION } from './version.js';
 
-const mcpKeys = new Set(['command', 'args', 'env', 'env_vars', 'cwd', 'url', 'type', 'transport', 'headers', 'http_headers', 'env_http_headers', 'bearer_token_env_var', 'startup_timeout_sec', 'startup_timeout_ms', 'tool_timeout_sec', 'enabled', 'required', 'enabled_tools', 'disabled_tools', 'tools', 'timeout', 'description', 'name', 'oauth', 'headersHelper', 'output_token_budget', 'sandbox']);
+const mcpKeys = new Set(['command', 'args', 'env', 'env_vars', 'cwd', 'url', 'type', 'transport', 'headers', 'http_headers', 'env_http_headers', 'bearer_token_env_var', 'startup_timeout_sec', 'startup_timeout_ms', 'tool_timeout_sec', 'enabled', 'required', 'enabled_tools', 'disabled_tools', 'tools', 'timeout', 'description', 'name', 'oauth', 'headersHelper', 'alwaysLoad', 'output_token_budget', 'sandbox']);
+const claudeRemoteTransports = new Set(['http', 'streamable-http', 'sse', 'ws']);
+const claudeIgnoredMcpFields = new Set(['cwd', 'enabled', 'transport', 'env_vars', 'env_http_headers', 'http_headers', 'bearer_token_env_var']);
+const claudeStdioFields = new Set(['command', 'args', 'env']);
+const claudeRemoteFields = new Set(['url', 'headers', 'headersHelper', 'oauth']);
 const events: Record<string, Set<string>> = {
   codex: new Set(['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'PreModelRequest', 'PostModelRequest', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Stop', 'SubagentStart', 'SubagentStop', 'PreCompact', 'PostCompact', 'Interrupt']),
   claude: new Set(['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'PermissionDenied', 'Notification', 'Stop', 'StopFailure', 'SubagentStart', 'SubagentStop', 'PreCompact', 'PostCompact', 'TaskCompleted', 'TeammateIdle', 'ConfigChange', 'InstructionsLoaded', 'WorktreeCreate', 'WorktreeRemove', 'Elicitation', 'ElicitationResult']),
@@ -32,6 +36,47 @@ export function extensionFieldLocation(extension: Extension, field: string, sour
     key = separator < 0 ? '' : key.slice(0, separator);
   }
   return source && extension.location.key ? locate(source, extension.location.key + '.' + field) : extension.location;
+}
+
+export function mcpRuntimeConfig(config: Record<string, any>, client?: ClientId): Record<string, any> {
+  if (client !== 'claude') return config;
+  const ignoredTransportFields = claudeRemoteTransports.has(config.type) ? claudeStdioFields : claudeRemoteFields;
+  return Object.fromEntries(Object.entries(config).filter(([key]) => !claudeIgnoredMcpFields.has(key) && !ignoredTransportFields.has(key)));
+}
+
+export function validateMcpConfiguration(extension: Extension, client: ClientId, source?: Source): Finding[] {
+  const out: Finding[] = [];
+  const error = (rule: string, message: string, why: string, suggestion: string, field?: string): void => {
+    out.push(finding(rule, 'error', field ? extensionFieldLocation(extension, field, source) : extension.location, message, why, suggestion, client));
+  };
+  const config = extension.config;
+  if (config._invalid) {
+    error('mcp.type', `MCP server "${extension.name}" must be an object.`, 'The client skips invalid server definitions.', 'Use a documented MCP server object.'); return out;
+  }
+  if (client === 'claude') {
+    const type = config.type === undefined ? 'stdio' : config.type;
+    if (type !== 'stdio' && !claudeRemoteTransports.has(type)) {
+      error('mcp.transport-type', `Claude MCP server "${extension.name}" has an unsupported transport type.`, type === 'sdk' ? 'SDK servers are registered by an embedding application.' : 'Claude file-based MCP definitions use stdio, http, streamable-http, sse or ws.', 'Set type to a supported transport.', 'type'); return out;
+    }
+    if (config.type === undefined && config.command === undefined && config.url !== undefined) {
+      error('mcp.transport-type', `Claude remote MCP server "${extension.name}" needs an explicit type.`, 'An omitted type selects the stdio schema in Claude Code.', 'Add type "http", "sse" or "ws" for this endpoint.', 'url'); return out;
+    }
+    const field = type === 'stdio' ? 'command' : 'url';
+    if (config[field] === undefined) {
+      error('mcp.transport', `Claude MCP server "${extension.name}" needs ${field} for its transport.`, 'The selected transport requires this field.', `Add a string ${field} to the server definition.`, config.type === undefined ? undefined : 'type'); return out;
+    }
+  }
+  const declared = mcpRuntimeConfig(config, client);
+  for (const key of ['command', 'url', 'cwd']) if (declared[key] !== undefined && typeof declared[key] !== 'string') error(key === 'cwd' ? 'extension.cwd-type' : 'mcp.field-type', `MCP server "${extension.name}" ${key} must be a string.`, 'This field has an invalid configuration type.', 'Replace the value with a string.', key);
+  if (declared.args !== undefined) {
+    const invalidIndex = Array.isArray(declared.args) ? declared.args.findIndex((arg: unknown) => typeof arg !== 'string') : -1;
+    if (!Array.isArray(declared.args) || invalidIndex >= 0) error('mcp.args-type', `MCP server "${extension.name}" args must be strings.`, 'Arguments are passed as a string array, not a shell command.', 'Use args: ["argument"].', invalidIndex >= 0 ? `args.${invalidIndex}` : 'args');
+  }
+  for (const key of ['env', 'headers', 'http_headers', 'env_http_headers']) if (declared[key] !== undefined && (!plainObject(declared[key]) || Object.values(declared[key]).some(value => typeof value !== 'string'))) {
+    const invalidName = plainObject(declared[key]) ? Object.keys(declared[key]).find(name => typeof declared[key][name] !== 'string') : undefined;
+    error('mcp.env-type', `${key} must map names to strings.`, 'This client’s MCP format expects a string mapping.', 'Replace non-string values.', invalidName === undefined ? key : `${key}.${invalidName}`);
+  }
+  return out;
 }
 
 function expandEnvironmentReferences(value: any, env: NodeJS.ProcessEnv, strict = true): any {
@@ -61,32 +106,24 @@ export async function validateExtensions(ctx: Context, e: Effective): Promise<Fi
       issue(rule, message, why, suggestion, 'error', field);
     };
     if (x.kind === 'mcp') {
-      if (x.config.enabled === false) { x.status = 'ignored'; x.reason = 'Server is explicitly disabled.'; continue; }
-      if (x.config._invalid) { invalid('mcp.type', `MCP server "${x.name}" must be an object.`, 'The client skips invalid server definitions.', 'Use a documented MCP server object.'); continue; }
-      for (const k of Object.keys(x.config)) if (!mcpKeys.has(k)) issue('mcp.unknown-field', `Unknown MCP field "${k}".`, 'This field is absent from the supported server schema.', 'Check spelling and this client’s MCP format.', 'warn', k);
-      for (const key of ['command', 'url', 'cwd']) if (x.config[key] !== undefined && typeof x.config[key] !== 'string') {
-        invalid(key === 'cwd' ? 'extension.cwd-type' : 'mcp.field-type', `MCP server "${x.name}" ${key} must be a string.`, 'This field has an invalid configuration type.', 'Replace the value with a string.', key);
-      }
-      if (x.config.args !== undefined) {
-        const invalidIndex = Array.isArray(x.config.args) ? x.config.args.findIndex((arg: unknown) => typeof arg !== 'string') : -1;
-        if (!Array.isArray(x.config.args) || invalidIndex >= 0) invalid('mcp.args-type', `MCP server "${x.name}" args must be strings.`, 'Arguments are passed as a string array, not a shell command.', 'Use args: ["argument"].', invalidIndex >= 0 ? `args.${invalidIndex}` : 'args');
-      }
-      for (const key of ['env', 'headers', 'http_headers', 'env_http_headers']) if (x.config[key] !== undefined && (!plainObject(x.config[key]) || Object.values(x.config[key]).some(v => typeof v !== 'string'))) {
-        const invalidName = plainObject(x.config[key]) ? Object.keys(x.config[key]).find(name => typeof x.config[key][name] !== 'string') : undefined;
-        invalid('mcp.env-type', `${key} must map names to strings.`, 'This client’s MCP format expects a string mapping.', 'Replace non-string values.', invalidName === undefined ? key : `${key}.${invalidName}`);
-      }
-      if (x.status === 'invalid') continue;
-      const remote = typeof x.config.url === 'string';
-      if (!remote && typeof x.config.command !== 'string') { x.status = 'invalid'; issue('mcp.transport', `MCP server "${x.name}" has neither a command nor a URL.`, 'Stdio requires a command; remote transport requires a URL.', 'Add command or url.'); continue; }
+      if (e.client !== 'claude' && x.config.enabled === false) { x.status = 'ignored'; x.reason = 'Server is explicitly disabled.'; continue; }
+      const errors = validateMcpConfiguration(x, e.client, source);
+      if (errors.length) { x.status = 'invalid'; x.reason = errors.at(-1)!.why; out.push(...errors); continue; }
+      for (const key of Object.keys(x.config)) if (!mcpKeys.has(key)) issue('mcp.unknown-field', `Unknown MCP field "${key}".`, 'This field is absent from the supported server schema.', 'Check spelling and this client’s MCP format.', 'warn', key);
+      const declared = mcpRuntimeConfig(x.config, e.client);
+      if (e.client === 'claude') for (const field of Object.keys(x.config)) if (!Object.hasOwn(declared, field)) issue('mcp.unsupported-field', `Claude MCP server "${x.name}" ignores the field "${field}".`, field === 'cwd' ? 'Claude starts stdio MCP processes in the session directory.' : 'This field is outside the selected Claude MCP transport schema.', field === 'cwd' ? 'Use a wrapper command to change directories.' : 'Remove the field or use the documented transport fields.', 'warn', field);
+      const remote = typeof declared.url === 'string';
+      if (e.client === 'claude' && remote && declared.url === '') { x.status = 'ignored'; x.reason = 'The remote MCP endpoint is empty and awaits configuration.'; continue; }
+      if (!remote && typeof declared.command !== 'string') { x.status = 'invalid'; issue('mcp.transport', `MCP server "${x.name}" has neither a command nor a URL.`, 'Stdio requires a command; remote transport requires a URL.', 'Add command or url.'); continue; }
       const required = new Map<string, Set<string>>();
       const requireVariable = (name: unknown, field: string): void => {
         if (typeof name !== 'string') return;
         const fields = required.get(name) ?? new Set<string>();
         fields.add(field); required.set(name, fields);
       };
-      if (Array.isArray(x.config.env_vars)) x.config.env_vars.forEach((name: unknown, index: number) => requireVariable(name, 'env_vars.' + index));
-      requireVariable(x.config.bearer_token_env_var, 'bearer_token_env_var');
-      for (const [key, name] of Object.entries(x.config.env_http_headers ?? {})) requireVariable(name, 'env_http_headers.' + key);
+      if (Array.isArray(declared.env_vars)) declared.env_vars.forEach((name: unknown, index: number) => requireVariable(name, 'env_vars.' + index));
+      requireVariable(declared.bearer_token_env_var, 'bearer_token_env_var');
+      for (const [key, name] of Object.entries(declared.env_http_headers ?? {})) requireVariable(name, 'env_http_headers.' + key);
       if (e.client === 'claude' || e.client === 'copilot') {
         const pattern = e.client === 'claude' ? /\$\{([A-Za-z_][\w]*)(?:(:-|-)([^}]*))?\}/g : /\$\{(?:env:)?([A-Za-z_][\w]*)\}/g;
         const references = (value: unknown, field = ''): void => {
@@ -96,14 +133,14 @@ export async function validateExtensions(ctx: Context, e: Effective): Promise<Fi
             for (const [key, child] of Object.entries(value)) references(child, field ? field + '.' + key : key);
           }
         };
-        references(x.config);
+        references(declared);
       }
       for (const [name, fields] of required) if (ctx.env[name] === undefined) {
         const [first, ...rest] = fields;
         issue('mcp.env-missing', `MCP server "${x.name}" requires missing environment variable ${name}.`, 'Only variable presence is inspected; values are never exported.', `Set ${name} in the launching environment or configure a supported default.`, 'error', first, rest.map(field => extensionFieldLocation(x, field, source)));
       }
       const expandsEnvironment = e.client === 'claude' || e.client === 'copilot';
-      const config = expandsEnvironment ? expandEnvironmentReferences(x.config, ctx.env, false) : x.config;
+      const config = expandsEnvironment ? expandEnvironmentReferences(declared, ctx.env, false) : declared;
       if (remote && (!expandsEnvironment || !config.url.includes('${'))) {
         try { const u = new URL(config.url); if (!['http:', 'https:', ...(e.client === 'claude' ? ['ws:', 'wss:'] : [])].includes(u.protocol)) throw new Error(); }
         catch { invalid('mcp.url', `MCP server "${x.name}" has an invalid remote URL.`, 'Remote MCP URLs must use supported transport schemes.', 'Provide a valid endpoint with a supported scheme.', 'url'); continue; }
@@ -170,10 +207,11 @@ export async function validateExtensions(ctx: Context, e: Effective): Promise<Fi
 }
 
 export async function probeMcp(extension: Extension, ctx: Context, client?: ClientId): Promise<Finding[]> {
-  if (extension.kind !== 'mcp' || extension.status !== 'active' || extension.config.url || typeof extension.config.command !== 'string') return [];
-  let x = extension;
+  const runtimeConfig = mcpRuntimeConfig(extension.config, client);
+  if (extension.kind !== 'mcp' || extension.status !== 'active' || runtimeConfig.url || typeof runtimeConfig.command !== 'string') return [];
+  let x = { ...extension, config: runtimeConfig };
   if (client === 'claude' || client === 'copilot') {
-    try { x = { ...extension, config: expandEnvironmentReferences(extension.config, ctx.env) }; } catch { return [finding('probe.env-missing', 'error', extension.location, 'MCP startup probe has unresolved environment references.', 'The client would need these variables before starting the server.', 'Set the missing variables and retry the explicit probe.', client)]; }
+    try { x = { ...extension, config: expandEnvironmentReferences(runtimeConfig, ctx.env) }; } catch { return [finding('probe.env-missing', 'error', extension.location, 'MCP startup probe has unresolved environment references.', 'The client would need these variables before starting the server.', 'Set the missing variables and retry the explicit probe.', client)]; }
   }
   const cwd = x.config.cwd ? path.resolve(ctx.directory, x.config.cwd) : ctx.directory;
   const cwdLocation = typeof x.config.cwd === 'string' ? extensionFieldLocation(x, 'cwd') : x.location;

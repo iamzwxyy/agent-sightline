@@ -7,6 +7,30 @@ import { mkdir, readFile, readdir, realpath, rm, watch, writeFile } from 'node:f
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
+test('CLI follows a Claude transport error through correction and explicit trust', async t => {
+  const servers = { remote: { url: 'https://example.test/mcp' }, local: { command: process.execPath } };
+  const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: servers }, null, 2), '.claude/settings.json': '{"enableAllProjectMcpServers":true}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const flags = ['--no-user', '--client', 'claude'];
+  const invalid = run(['ci', ...flags], w.repo);
+  assert.equal(invalid.status, 1, invalid.stderr);
+  const report = JSON.parse(invalid.stdout);
+  assert.equal(report.clients[0].extensions.find((extension: any) => extension.name === 'remote').status, 'invalid');
+  assert.equal(report.clients[0].extensions.find((extension: any) => extension.name === 'local').status, 'conditional');
+  assert.ok(report.findings.some((finding: any) => finding.ruleId === 'mcp.transport-type' && finding.location.key === 'mcpServers.remote.url'));
+  const corrected = { ...servers, remote: { type: 'http', ...servers.remote } };
+  await writeFile(path.join(w.repo, '.mcp.json'), JSON.stringify({ mcpServers: corrected }, null, 2));
+  const checked = run(['ci', ...flags], w.repo);
+  assert.equal(checked.status, 0, checked.stderr);
+  assert.ok(JSON.parse(checked.stdout).clients[0].extensions.every((extension: any) => extension.status === 'conditional'));
+  const trusted = run(['ci', ...flags, '--trust', 'trusted'], w.repo);
+  assert.equal(trusted.status, 0, trusted.stderr);
+  assert.ok(JSON.parse(trusted.stdout).clients[0].extensions.every((extension: any) => extension.status === 'active'));
+  const file = path.join(w.root, 'claude-transport.html');
+  const exported = run(['report', ...flags, '--trust', 'trusted', '--format', 'html', '--output', file], w.repo);
+  assert.equal(exported.status, 0, exported.stderr);
+  assert.ok((await readFile(file, 'utf8')).includes('mcpServers.remote.url'));
+});
 test('CLI preserves merged MCP field locations through explain, CI and portable export', async t => {
   const w = await workspace({ '.codex/config.toml': '[mcp_servers.fixture]\nargs=["project-argument"]\n' }, {
     '.codex/config.toml': '[mcp_servers.fixture]\ncommand="missing-cli-source-fixture"\ncwd="missing-workdir"\nenv_vars=["SIGHTLINE_SOURCE_MISSING"]\n',

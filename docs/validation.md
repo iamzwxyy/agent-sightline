@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.2.10
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 163-case core suite completed with 162 passes and one Windows-only skip.
+* The pinned Claude 2.1.322 binary check and twenty-eight MCP comparisons cover fifteen transport configurations, seven approval cases, four invalid higher-priority fallback cases, stdio directory behavior and an empty remote endpoint. Temporary homes isolate client state. Remote cases stay pending approval, and synthetic stdio servers answer health-check requests.
+* The native comparisons reproduced remote entries without types, SDK declarations, ignored transport fields, repository/local self-approval and working-directory differences. Public scan fixtures verify the resulting diagnostics, selected transport fields, exact source lines, malformed approval types and explicit probes.
+* CLI CI checks follow an invalid remote declaration through correction and explicit trust. Installed-package smoke verifies those states and Claude's ignored cwd behavior. Production archive inspection excludes both native client dependency trees. Production dependency audit reported zero vulnerabilities.
+* All twenty-eight Chromium browser cases passed. New flows navigate from a transport finding to its source, refresh after correction, apply explicit trust and export the corrected snapshot. Ignored fields retain markers and source links online and offline. The remote endpoint summary, private values and phone layout have dedicated checks. The ignored-field dialog was visually inspected.
+* The pinned Codex configuration comparisons and existing parser, resolver, discovery, privacy, CLI, source-navigation, comparison and export regressions remain included.
+
 ## v0.2.9
 
 Verified locally on macOS on 2026-11-13.

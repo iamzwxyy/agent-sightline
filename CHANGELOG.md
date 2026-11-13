@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.10 — 2026-11-13
+
+* Validate Claude MCP transport declarations, including HTTP aliases, explicit remote types and file-based SDK rejection. Keep empty remote endpoints awaiting configuration.
+* Respect Claude's transport-specific fields in executable checks, environment references, cross-client drift and explicit stdio probes. Explain ignored working-directory and transport fields at their source lines.
+* Require explicit workspace trust before repository MCP approval settings contribute. Honor user/managed approvals and explicit rejections, and diagnose malformed approval settings.
+* Preserve lower-priority Claude servers when a higher-priority definition fails structural validation.
+* Mark ignored fields in extension details and display the selected remote endpoint in the browser list and comparison view.
+* Add pinned Claude 2.1.322 native MCP conformance checks alongside CLI correction/refresh flows and installed-package coverage. Native client binaries stay in development dependencies.
+
 ## 0.2.9 — 2026-11-13
 
 * Track MCP field origins through nested Codex configuration merges, including inherited environment maps and replaced arrays. Show each field's file and line in terminal explanations and extension details.
