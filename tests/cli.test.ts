@@ -18,12 +18,13 @@ test('CLI preserves merged MCP field locations through explain, CI and portable 
   const report = JSON.parse(checked.stdout);
   assert.equal(report.findings.find((finding: any) => finding.ruleId === 'mcp.command-missing').location.line, 2);
   const server = report.clients[0].extensions.find((extension: any) => extension.status === 'active');
-  assert.equal(server.origins.find((origin: any) => origin.key === 'args.0').location.path, path.join(await realpath(w.repo), '.codex/config.toml'));
+  const argsLocation = server.origins.find((origin: any) => origin.key === 'args.0').location;
+  assert.equal(await realpath(argsLocation.path), await realpath(path.join(w.repo, '.codex/config.toml')));
   const explained = run(['explain', '.', ...flags, '--trust', 'trusted'], w.repo);
   assert.equal(explained.status, 0, explained.stderr);
   assert.ok(explained.stdout.includes(path.join(w.home, '.codex/config.toml') + ':2:1'));
   assert.ok(explained.stdout.includes('command ← ' + path.join(w.home, '.codex/config.toml') + ':2'));
-  assert.ok(explained.stdout.includes('args.0 ← ' + path.join(await realpath(w.repo), '.codex/config.toml') + ':2'));
+  assert.ok(explained.stdout.includes('args.0 ← ' + argsLocation.path + ':2'));
   const conditional = JSON.parse(run(['scan', ...flags, '--json'], w.repo).stdout);
   assert.ok(!conditional.findings.some((finding: any) => finding.ruleId === 'mcp.transport'));
   assert.ok(conditional.clients[0].extensions.some((extension: any) => extension.status === 'conditional' && extension.config.command === 'missing-cli-source-fixture'));
