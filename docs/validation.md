@@ -8,7 +8,7 @@ Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
 * Twenty-five native Claude 2.1.322 permission, trust and ordinary-hook scenarios passed against the loopback scripted Messages API. The invalid ordinary hook-switch case demonstrated that the whole settings layer is rejected, and the resolver follows that behavior.
 * The isolated Linux file-policy step passed all 51 native scenarios through the real system directory. It compares actual marker writes, hook execution, tool inventory and startup failure against the public scan API and built CLI. A portable managed report retains controlling origins and removes private home paths.
 * Fixtures cover managed-only permissions and hooks, alphabetical drop-ins, supported Boolean and permission-list repairs, empty policy files, malformed-policy startup blocking, source attribution and preserved skill discovery with withheld tool pre-approval.
-* Browser coverage includes ignored-hook navigation to the controlling setting online and offline, correction, phone layout and portable-path privacy. Desktop and phone views received visual review.
+* All 53 Chromium browser cases passed, including ignored-hook navigation to the controlling setting online and offline, correction, phone layout and portable-path privacy. Desktop and phone views received visual review. The production dependency audit reported zero vulnerabilities.
 * Hosted macOS verification uses the documented macos-15-intel runner after repeated hosted ARM runner-capacity failures in the preceding release. Local verification also covers macOS ARM64.
 
 ## v0.3.5
