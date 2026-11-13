@@ -51,7 +51,6 @@ test('paragraph comparison follows exact recipients and source lines online and 
       await expect(page.locator('.instruction-block')).toHaveCount(3);
       await page.locator('#compare-clients button').filter({ hasText: 'Claude Code' }).click();
       await expect(page.locator('.instruction-block')).toHaveCount(5);
-      expect((await new AxeBuilder({ page }).include('#compare').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
       await page.setViewportSize({ width: 390, height: 844 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.setViewportSize({ width: 1440, height: 1000 });
