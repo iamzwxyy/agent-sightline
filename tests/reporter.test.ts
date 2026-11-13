@@ -165,6 +165,11 @@ test('portable Claude project MCP origins conceal repository paths and preserve 
   } } } }, null, 2));
   await writeFile(path.join(w.home, '.codex/config.toml'), `[projects.${JSON.stringify(neighbor)}]\ntrust_level="trusted"\n`);
   const report = await scan({ ...w, repo, clients: ['claude', 'codex'] });
+  const neighborReport = reportWithFindings();
+  neighborReport.repository = repo;
+  neighborReport.assumptions = [`projects.${neighbor}.trust_level`];
+  const expectedNeighbor = portable(neighborReport).assumptions[0];
+  assert.ok(!expectedNeighbor.includes('<repo>'));
   for (const legacy of [false, true]) {
     const input = JSON.parse(json(report)) as Report;
     if (legacy) for (const client of input.clients) for (const extension of client.extensions) delete extension.origins;
@@ -179,7 +184,7 @@ test('portable Claude project MCP origins conceal repository paths and preserve 
     }
     assert.equal(claude.findings.find(finding => finding.ruleId === 'mcp.command-missing')?.location.key, 'projects.<repo>.mcpServers.fixture.command');
     const codex = exported.clients.find(client => client.client === 'codex')!;
-    assert.equal(codex.settings.find(setting => setting.key.endsWith('.trust_level'))?.key, `projects.${neighbor}.trust_level`);
+    assert.equal(codex.settings.find(setting => setting.key.endsWith('.trust_level'))?.key, expectedNeighbor);
     assert.ok(!JSON.stringify(claude).includes(JSON.stringify(repo).slice(1, -1)));
     for (const text of [json(exported), html(input)]) assert.ok(!text.includes('private-origin-sentinel'));
     assert.deepEqual(portable(exported), exported);
