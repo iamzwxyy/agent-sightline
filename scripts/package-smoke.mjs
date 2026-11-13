@@ -96,7 +96,10 @@ try {
   execFileSync(process.execPath, [cli, 'report', ...copilotArgs, '--format', 'html', '--output', skillHtmlFile]);
   const skillHtml = readFileSync(skillHtmlFile, 'utf8');
   const skillSnapshot = JSON.parse(skillHtml.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)[1]);
-  if (skillSnapshot.clients[0].settings.find(setting => setting.key === 'ignoredSkillsLocations' && setting.status === 'active')?.value[0] !== '<repo>/.github/skills' || skillHtml.includes(realpathSync(copilotRepo)) || skillHtml.includes(copilotHome)) throw new Error('Installed skill exclusion paths leaked into portable HTML.');
+  const exportedSkillDirectory = skillSnapshot.clients[0].settings.find(setting => setting.key === 'ignoredSkillsLocations' && setting.status === 'active')?.value[0];
+  if (typeof exportedSkillDirectory !== 'string' || exportedSkillDirectory.replaceAll('\\', '/') !== '<repo>/.github/skills') throw new Error('Installed skill exclusion root replacement failed.');
+  const privateSkillPaths = [copilotRepo, realpathSync(copilotRepo), copilotHome, realpathSync(copilotHome)];
+  if (privateSkillPaths.some(root => skillHtml.includes(JSON.stringify(root).slice(1, -1)))) throw new Error('Installed skill exclusion paths leaked into portable HTML.');
   const profileHome = path.join(temp, 'profile-home');
   mkdirSync(path.join(profileHome, '.codex'), { recursive: true });
   writeFileSync(path.join(profileHome, '.codex/config.toml'), 'model = "base-model"\n[hooks.state.fixture]\nenabled=false\ntrusted_hash="fixture-hash"\n');
