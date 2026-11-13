@@ -322,6 +322,7 @@
     const sources = decisions();
     const selected = sources.find(source => source.path === state.source) ?? sources.find(source => ['active', 'truncated'].includes(source.status) && ['instructions', 'rules'].includes(source.kind)) ?? sources[0];
     state.source = selected?.path ?? null;
+    $('copy-source').disabled = !selected;
     renderSourceList();
     if (selected) renderSource(selected);
     else {
@@ -794,6 +795,10 @@
     $('target-shortcut').hidden = true; $('trust-control').hidden = true; $('snapshot-label').hidden = false;
     $('mode-label').textContent = 'Report snapshot'; $('project-caption').textContent = 'Shared configuration report';
   }
+  document.querySelectorAll('[data-startup-disabled]').forEach(control => {
+    control.disabled = false;
+    control.removeAttribute('data-startup-disabled');
+  });
   renderScanStatus();
   render();
 })();

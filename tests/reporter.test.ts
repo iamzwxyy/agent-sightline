@@ -231,3 +231,20 @@ test('HTML is self-contained, inert against script injection, and redacted again
   assert.ok(!snapshot.includes('private-sentinel'));
   assert.ok(!snapshot.includes('second-secret'));
 });
+
+test('HTML starts with disabled controls and loading feedback while preserving source markup', async t => {
+  const content = '<button>Instruction example</button>\n<input value="example">';
+  const w = await workspace({ 'AGENTS.md': content });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+  for (const live of [false, true]) {
+    const output = html(report, { live });
+    const initial = output.slice(0, output.lastIndexOf('<script>'));
+    const controls = [...initial.matchAll(/<(?:button|input|select|textarea)\b[^>]*>/g)];
+    assert.ok(controls.length > 0);
+    for (const [control] of controls) assert.match(control, /\sdisabled\sdata-startup-disabled\b/);
+    assert.ok(initial.includes('Loading report…'));
+    const data = JSON.parse(output.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
+    assert.equal(data.sources.find((source: any) => source.relativePath === 'AGENTS.md').preview, content);
+  }
+});

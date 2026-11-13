@@ -51,6 +51,8 @@ The scanner captures logical/canonical repository and home roots plus filesystem
 
 The browser renders source content with `textContent`. One HTML template embeds CSS, JS and escaped JSON. It serves both offline reports and the live read-only UI. Local endpoints accept GET only and recheck repository bounds for target requests.
 
+The HTML template disables its controls during initialization and shows loading feedback. Once event handlers are installed, the application enables those controls before the first render applies content-specific copy and read-only states. Browser regressions pause the streamed HTML before its executable script to verify initialization and the first navigation action in live and portable reports.
+
 Live pages include a portable HTML export produced from their initial report. Browser scan requests use `include=html` to receive the redacted report and its portable HTML together. The browser replaces both after a successful current request and retains them during pending or failed refreshes. Export downloads the retained snapshot, preserving the inspected contents across subsequent disk edits. The default scan and export endpoints retain their existing response formats.
 
 Resolution uses the target parent as the assumed session directory. This is a static view of documented inputs, not an inspection of an already-running agent transcript. Session toggles, command-line overrides, remote policy, bundled plugins and model decisions require future explicit inputs/integration.

@@ -9,8 +9,65 @@ import { readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { html } from '../../packages/reporter/index.js';
 import type { Report } from '../../packages/core/types.js';
+import { scan } from '../../packages/core/index.js';
+import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
+
+test('streamed reports keep controls unavailable until their handlers are ready', async ({ page }) => {
+  const report = await scan({ ...sampleOptions, clients: [...sampleOptions.clients], target: 'src/payments/refund.ts' });
+  for (const live of [false, true]) {
+    const document = html(report, { live });
+    const scriptStart = document.lastIndexOf('<script>');
+    expect(scriptStart).toBeGreaterThan(0);
+    let release = () => {};
+    const server = createServer((request, response) => {
+      if (request.url !== '/') { response.writeHead(204); response.end(); return; }
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      response.write(document.slice(0, scriptStart));
+      release = () => { if (!response.writableEnded) response.end(document.slice(scriptStart)); };
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address();
+      expect(address && typeof address === 'object').toBeTruthy();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'commit' });
+      await expect(page.locator('#compare-tab')).toBeVisible();
+      await expect(page.locator('#compare-tab')).toBeDisabled();
+      await expect(page.locator('#target')).toBeDisabled();
+      await expect(page.locator('#scan-status')).toContainText('Loading report');
+      expect(await page.locator('button,input,select,textarea').evaluateAll(controls => controls.every(control => (control as HTMLInputElement).disabled))).toBe(true);
+      const firstClick = page.locator('#compare-tab').click();
+      release();
+      await firstClick;
+      await expect(page.locator('#comparison-matrix')).toContainText('AGENTS.override.md');
+      await expect(page.locator('#compare-tab')).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('[data-startup-disabled]')).toHaveCount(0);
+      await expect(page.locator('#target')).toHaveJSProperty('readOnly', !live);
+    } finally {
+      release();
+      const closed = new Promise<void>(resolve => server.close(() => resolve()));
+      server.closeAllConnections(); await closed;
+    }
+  }
+});
+
+test('snapshot initialization preserves disabled copy controls and read-only targets', async ({ page }) => {
+  const w = await workspace();
+  try {
+    const report = await scan({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+    const file = test.info().outputPath('empty-initialized-report.html');
+    await writeFile(file, html(report));
+    await page.goto(pathToFileURL(file).href + '#view=effective&client=codex');
+    await expect(page.locator('#copy-source')).toBeDisabled();
+    await expect(page.locator('#copy-effective')).toBeDisabled();
+    await expect(page.locator('#target')).toBeEnabled();
+    await expect(page.locator('#target')).toHaveJSProperty('readOnly', true);
+    await expect(page.locator('#inspect')).toBeHidden();
+    await expect(page.locator('#refresh')).toBeHidden();
+  } finally { await rm(w.root, { recursive: true, force: true }); }
+});
 
 test('Claude transport diagnosis follows source correction, refresh and explicit trust', async ({ page }) => {
   const servers = { remote: { url: 'https://example.test/mcp' }, local: { command: process.execPath } };

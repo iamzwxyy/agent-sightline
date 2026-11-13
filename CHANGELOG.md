@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.11 — 2026-11-13
+
+* Keep inspector controls disabled while the report initializes, with loading feedback for streamed pages. Enable them after event handlers are installed.
+* Keep source-copy actions unavailable when no source is selected, and retain snapshot read-only targets and unavailable-copy states.
+* Reproduce delayed-script loading in live and portable reports, including the first navigation action after initialization.
+
 ## 0.2.10 — 2026-11-13
 
 * Validate Claude MCP transport declarations, including HTTP aliases, explicit remote types and file-based SDK rejection. Keep empty remote endpoints awaiting configuration.

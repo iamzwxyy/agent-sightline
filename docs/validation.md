@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.2.11
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 164-case core suite completed with 163 passes and one Windows-only skip. Production dependency audit reported zero vulnerabilities.
+* Public v0.2.10 testing reproduced an immediate navigation action lost while the report script was still loading. A controlled HTTP stream reproduces that timing for live and portable reports. The browser regression failed before the initialization fix and passed afterward.
+* All thirty Chromium browser cases passed. The streamed-report case holds the executable script, verifies disabled controls and loading feedback, releases initialization and follows the first available comparison action. Empty snapshots retain disabled copy actions, read-only targets and hidden live controls.
+* Reporter fixtures verify initialization attributes in both HTML modes while preserving instruction examples containing HTML controls. Installed-package smoke checks the same initial comparison state and loading feedback.
+* Existing native Codex and Claude comparisons, privacy, configuration correction, source navigation, exports, accessibility and phone-layout checks remain included.
+
 ## v0.2.10
 
 Verified locally on macOS on 2026-11-13.

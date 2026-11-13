@@ -59,6 +59,8 @@ try {
   const htmlFile = path.join(temp, 'report.html'); execFileSync(process.execPath, [cli, 'report', '--repo', repo, '--no-user', '--format', 'html', '--output', htmlFile]);
   const exportedHtml = readFileSync(htmlFile, 'utf8');
   if (!exportedHtml.includes('Sightline — Agent configuration')) throw new Error('Installed HTML reporter failed.');
+  const compareControl = exportedHtml.match(/<button[^>]+id="compare-tab"[^>]*>/)?.[0] ?? '';
+  if (!compareControl.includes('disabled data-startup-disabled') || !exportedHtml.includes('Loading report…')) throw new Error('Installed report initialization state failed.');
   const exportedReport = JSON.parse(exportedHtml.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)[1]);
   const exportedMcp = exportedReport.clients.find(client => client.client === 'claude').extensions.find(extension => extension.name === 'fixture');
   if (exportedMcp.config.cwd !== '<repo>' || exportedMcp.config.args[0] !== '--root=<repo>' || exportedReport.pathMappings !== undefined || exportedHtml.includes(JSON.stringify(alias).slice(1, -1))) throw new Error('Installed portable path replacement failed.');
