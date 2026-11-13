@@ -36,9 +36,18 @@ rmSync(path.join(destination, 'hero-scene.js'));
 const motionNotices = ['GSAP 3.15.1\nCopyright GreenSock. Distributed under the GSAP Standard License.\nhttps://gsap.com/standard-license/\n', ...['lenis', 'three'].map(name => name + '\n' + readFileSync(new URL('../node_modules/' + name + '/LICENSE', import.meta.url), 'utf8'))];
 writeFileSync(path.join(destination, 'motion/licenses.txt'), motionNotices.join('\n'));
 cpSync(new URL('../dist/web/assets/clients', import.meta.url), path.join(destination, 'icons'), { recursive: true });
+const digest = data => createHash('sha256').update(data).digest('hex');
+const socialRevision = digest(readFileSync(path.join(destination, 'social.png'))).slice(0, 12);
+const faviconRevision = digest(readFileSync(path.join(destination, 'favicon.png'))).slice(0, 12);
+const posterRevision = digest(readFileSync(path.join(destination, 'images/context-field.jpg'))).slice(0, 12);
 for (const name of ['index.html', 'guide.html', 'robots.txt', 'sitemap.xml']) {
   const file = path.join(destination, name);
-  let content = readFileSync(file, 'utf8').replaceAll('{{VERSION}}', pkg.version).replaceAll(originalSite, configuredSite);
+  let content = readFileSync(file, 'utf8')
+    .replaceAll('{{VERSION}}', pkg.version)
+    .replaceAll('{{SOCIAL_REV}}', socialRevision)
+    .replaceAll('{{FAVICON_REV}}', faviconRevision)
+    .replaceAll('{{POSTER_REV}}', posterRevision)
+    .replaceAll(originalSite, configuredSite);
   if (name.endsWith('.html')) content = content.replace(/\b(href|src)="\/(?!\/)/g, (_match, attribute) => `${attribute}="${basePath}`);
   writeFileSync(file, content);
 }
@@ -50,7 +59,6 @@ writeFileSync(path.join(destination, 'demo-report.json'), JSON.stringify(publicR
 cpSync('LICENSE', path.join(destination, 'license.txt'));
 mkdirSync(path.join(destination, 'downloads'), { recursive: true });
 if (!values['released-package']) cpSync(filename, path.join(destination, 'downloads', filename));
-const digest = data => createHash('sha256').update(data).digest('hex');
 for (const release of releases) {
   if (release.filename === filename && !values['released-package']) continue;
   let data = existsSync(release.filename) ? readFileSync(release.filename) : null;

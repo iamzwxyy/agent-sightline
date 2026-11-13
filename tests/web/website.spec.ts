@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { serveStatic } from '../../scripts/static-server.mjs';
 import { VERSION } from '../../packages/core/version.js';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
 test('opening motion follows client selection and supports pause and reduced motion', async ({ page }) => {
   const server = await serveStatic('website/dist');
@@ -74,7 +75,21 @@ test('website connects the real client demo, workflow walkthrough, guide and dow
     page.on('response', response => { if (response.status() >= 400) failedResponses.push(response.url()); });
     await page.goto(server.url);
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://agent-sightline.williamtse700.chatgpt.site/');
-    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', 'https://agent-sightline.williamtse700.chatgpt.site/social.png');
+    const socialImage = await readFile('website/public/social.png');
+    const socialHash = createHash('sha256').update(socialImage).digest('hex');
+    const socialPath = '/social.png?v=' + socialHash.slice(0, 12);
+    const socialUrl = 'https://agent-sightline.williamtse700.chatgpt.site' + socialPath;
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', socialUrl);
+    const preview = await page.request.get(server.url + socialPath);
+    expect(preview.ok()).toBe(true);
+    expect(preview.headers()['content-type']).toContain('image/png');
+    const previewData = await preview.body();
+    expect(createHash('sha256').update(previewData).digest('hex')).toBe(socialHash);
+    expect([previewData.readUInt32BE(16), previewData.readUInt32BE(20)]).toEqual([1200, 630]);
+    const posterHash = createHash('sha256').update(await readFile('website/public/images/context-field.jpg')).digest('hex');
+    await expect(page.locator('.hero-poster')).toHaveAttribute('src', '/images/context-field.jpg?v=' + posterHash.slice(0, 12));
+    const faviconHash = createHash('sha256').update(await readFile('website/public/favicon.png')).digest('hex');
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/favicon.png?v=' + faviconHash.slice(0, 12));
     const robots = await page.request.get(server.url + '/robots.txt');
     expect(robots.ok()).toBeTruthy();
     expect(await robots.text()).toContain('Sitemap: https://agent-sightline.williamtse700.chatgpt.site/sitemap.xml');
@@ -100,6 +115,10 @@ test('website connects the real client demo, workflow walkthrough, guide and dow
     expect(createHash('sha256').update(await legacy.body()).digest('hex')).toBe('0cefb329bd544f0ce0275680b51e98fb059e6c895cef5f5d592639ad01740a4f');
     await page.getByRole('link', { name: /Installation guide/ }).click();
     await expect(page.getByRole('heading', { name: 'Install Sightline', exact: true })).toBeVisible();
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', socialUrl);
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://agent-sightline.williamtse700.chatgpt.site/guide.html');
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', 'The Sightline guide');
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute('content', 'summary_large_image');
     await page.getByRole('link', { name: 'Share a report', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Share what you found' })).toBeInViewport();
     expect(errors).toEqual([]);

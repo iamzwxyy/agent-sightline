@@ -28,7 +28,16 @@ test('project-hosted website loads assets, demo, guide and the exact released pa
     await page.route('**/demo-report.json', async route => { await dataGate.promise; await route.continue(); });
     await page.goto(server.url + prefix);
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', publicUrl);
-    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', publicUrl + 'social.png');
+    const socialHash = createHash('sha256').update(await readFile('website/public/social.png')).digest('hex');
+    const socialPath = 'social.png?v=' + socialHash.slice(0, 12);
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', publicUrl + socialPath);
+    const preview = await page.request.get(server.url + prefix + socialPath);
+    expect(preview.ok()).toBe(true);
+    expect(createHash('sha256').update(await preview.body()).digest('hex')).toBe(socialHash);
+    const faviconHash = createHash('sha256').update(await readFile('website/public/favicon.png')).digest('hex');
+    const faviconPath = 'favicon.png?v=' + faviconHash.slice(0, 12);
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', prefix + faviconPath);
+    expect((await page.request.get(server.url + prefix + faviconPath)).ok()).toBe(true);
     await expect(page.locator('#demo-status')).toHaveText('Truncated');
     await page.getByRole('tab', { name: /Claude Code/ }).click();
     dataGate.resolve();
@@ -43,6 +52,9 @@ test('project-hosted website loads assets, demo, guide and the exact released pa
     await expect(page).toHaveURL(server.url + prefix + 'guide.html#install');
     await expect(page.getByRole('heading', { name: 'Inspect a Codex profile' })).toBeVisible();
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', publicUrl + 'guide.html');
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', publicUrl + 'guide.html');
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', publicUrl + socialPath);
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', prefix + faviconPath);
     await page.getByRole('link', { name: 'Interactive demo', exact: true }).click();
     await expect(page.locator('#mode-label')).toHaveText('Report snapshot');
     await page.locator('#compare-tab').click();
