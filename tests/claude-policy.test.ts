@@ -50,6 +50,7 @@ test('Claude managed permission lock excludes every ordinary rule list and retai
   assert.deepEqual(effective.settings.find(setting => setting.key === 'permissions.allow' && setting.status === 'active')?.value, ['Read']);
   assert.deepEqual(effective.settings.find(setting => setting.key === 'permissions.additionalDirectories' && setting.status === 'active')?.value, ['../docs']);
   assert.ok(!effective.findings.some(finding => finding.ruleId.startsWith('permission.')));
+  assert.equal(effective.findings.filter(finding => finding.ruleId === 'claude.policy-ignored').length, 4);
   const skill = effective.extensions.find(extension => extension.kind === 'skill')!;
   assert.equal(skill.status, 'active');
   assert.equal(skill.config['allowed-tools'], undefined);
@@ -86,6 +87,7 @@ test('Claude hook disable precedence and managed hook protection retain controll
     { managed: { disableAllHooks: false }, user: true, project: undefined, ordinary: 'active', system: 'active' },
     { managed: { disableAllHooks: true }, user: false, project: false, ordinary: 'ignored', system: 'ignored' },
     { managed: { allowManagedHooksOnly: true }, user: false, project: false, ordinary: 'ignored', system: 'active' },
+    { managed: { allowManagedHooksOnly: true, disableAllHooks: false }, user: true, project: undefined, ordinary: 'ignored', system: 'active' },
     { managed: { disableAllHooks: 'true' }, user: false, project: undefined, ordinary: 'active', system: 'active' },
   ];
   for (const scenario of cases) {
@@ -97,6 +99,8 @@ test('Claude hook disable precedence and managed hook protection retain controll
       if (entry.status === 'ignored') assert.equal(entry.origins?.length, 1);
     }
     assert.equal(effective.findings.filter(finding => finding.ruleId === 'hook.command-missing').length, (scenario.ordinary === 'active' ? 2 : 0) + (scenario.system === 'active' ? 1 : 0));
+    assert.equal(effective.findings.filter(finding => finding.ruleId === 'claude.policy-ignored').length, (scenario.ordinary === 'ignored' ? 2 : 0) + (scenario.system === 'ignored' ? 1 : 0));
+    for (const finding of effective.findings.filter(finding => finding.ruleId === 'claude.policy-ignored')) assert.equal(finding.related[0].key, scenario.managed.allowManagedHooksOnly === true ? 'allowManagedHooksOnly' : 'disableAllHooks');
   }
 });
 

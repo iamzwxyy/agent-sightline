@@ -3,7 +3,7 @@
 ## 0.3.6 — 2026-11-14
 
 * Discover Claude's optional managed-settings.d JSON files in alphabetical order after the base system policy.
-* Apply managed-only permission and hook controls. Retain ignored declarations and link their controlling policy source. Skill discovery retains eligibility while managed permission policy removes personal/project allowed-tools grants.
+* Apply managed-only permission and hook controls. Surface excluded declarations in scan findings and link their controlling policy source. Skill discovery retains eligibility while managed permission policy removes personal/project allowed-tools grants.
 * Resolve disableAllHooks across settings layers and preserve managed hooks under ordinary-scope disabling. Reject ordinary settings layers with an invalid Boolean hook switch.
 * Handle supported managed Boolean repairs, per-entry permission lists, grants withheld beside an unreadable restriction, empty policy files and startup blocking from malformed managed JSON objects.
 * Add isolated native Linux policy checks through the real system directory and built CLI, plus local/offline browser source navigation and installed-package hook checks.

@@ -9,7 +9,14 @@ import { applyClaudePolicy, claudeSettingsSource, discoverClaudeManagedSettings 
 export const claudeMetadata: AdapterMetadata = {
   id: 'claude', name: 'Claude Code', maturity: 'verified', ruleVersion: '2.1.322', verifiedOn: '2026-11-14',
   evidence: ['https://code.claude.com/docs/en/memory', 'https://code.claude.com/docs/en/settings', 'https://code.claude.com/docs/en/mcp', 'https://code.claude.com/docs/en/skills', 'https://code.claude.com/docs/en/permissions', 'https://code.claude.com/docs/en/hooks', 'https://code.claude.com/docs/en/managed-settings', 'https://code.claude.com/docs/en/settings-reference'],
-  limitations: ['Repository boundary excludes filesystem ancestors outside --repo; they may contribute instructions.', 'No account-synced or plugin/managed-cloud configuration. AGENTS.md fallback models the documented 2.1.277+ default.', 'Path-scoped rules over 40,000 characters are conditional because model/context-specific limits cannot be inferred. No universal CLAUDE.md truncation budget is invented.', 'Nested skills may also be directory-qualified at runtime; bare-name preference is shown.', 'Local permission grants without explicit workspace trust depend on native Git and session checks; shown as conditional. Session permission modes and the remaining tool inventory are outside this static inspection.'],
+  limitations: [
+    'Repository boundary excludes filesystem ancestors outside --repo; they may contribute instructions.',
+    'No account-synced or plugin/managed-cloud configuration. AGENTS.md fallback models the documented 2.1.277+ default.',
+    'Path-scoped rules over 40,000 characters are conditional because model/context-specific limits cannot be inferred. No universal CLAUDE.md truncation budget is invented.',
+    'Nested skills may also be directory-qualified at runtime; bare-name preference is shown.',
+    'Local permission grants without explicit workspace trust depend on native Git and session checks; shown as conditional. Session permission modes and the remaining tool inventory are outside this static inspection.',
+    'Managed file-policy results assume the file-based tier is selected. Remote, MDM, registry and embedding-host selection require session evidence. Managed schema repairs cover the implemented Boolean controls and permission-list types.',
+  ],
 };
 async function discover(ctx: Context): Promise<Source[]> {
   if (ctx.options.user !== false) {
@@ -40,14 +47,16 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
   for (const s of layers) {
     const excluded = ctx.options.trust !== 'trusted' && s.scope !== 'user' && s.scope !== 'system' ? ['enableAllProjectMcpServers', 'enabledMcpjsonServers'] : [];
     let hookGate: Source | undefined;
-    if (hookDisable?.data.disableAllHooks === true && (s.scope !== 'system' || hookDisable.scope === 'system')) hookGate = hookDisable;
+    let hookGateKey = 'allowManagedHooksOnly';
+    if (hookDisable?.data.disableAllHooks === true && (s.scope !== 'system' || hookDisable.scope === 'system')) { hookGate = hookDisable; hookGateKey = 'disableAllHooks'; }
     else if (s.scope !== 'system' && hookPolicy?.data.allowManagedHooksOnly === true) hookGate = hookPolicy;
     if (hookGate) excluded.push('hooks');
     const data = Object.fromEntries(Object.entries(s.data).filter(([key]) => !excluded.includes(key)));
-    if (permissionPolicy?.data.allowManagedPermissionRulesOnly === true && s.scope !== 'system' && plainObject(data.permissions)) {
+    if (!s.invalid && permissionPolicy?.data.allowManagedPermissionRulesOnly === true && s.scope !== 'system' && plainObject(data.permissions)) {
       data.permissions = { ...data.permissions };
       for (const key of ['allow', 'ask', 'deny']) if (Object.hasOwn(data.permissions, key)) {
         e.settings.push({ key: 'permissions.' + key, value: data.permissions[key], status: 'ignored', location: locate(s, 'permissions.' + key), reason: `Only managed permission rules apply under ${permissionPolicy.path}.`, overrides: [] });
+        e.findings.push(finding('claude.policy-ignored', 'info', locate(s, 'permissions.' + key), `Claude ignores permissions.${key} under managed-only policy.`, 'allowManagedPermissionRulesOnly restricts settings-file permission rules to managed policy.', 'Review the controlling managed policy before changing this declaration.', 'claude', [locate(permissionPolicy, 'allowManagedPermissionRulesOnly')]));
         delete data.permissions[key];
       }
       if (Object.keys(data.permissions).length === 0) delete data.permissions;
@@ -67,7 +76,10 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
     }
     settings(e, s, 'active', true, data);
     if (!s.invalid) for (const [key, value] of grants) e.settings.push({ key: 'permissions.' + key, value, status: grantStatus, location: locate(s, 'permissions.' + key), reason: grantReason, overrides: [] });
-    if (!s.invalid) for (const key of excluded) if (s.data[key] !== undefined) e.settings.push({ key, value: s.data[key], location: locate(s, key), status: 'ignored', reason: key === 'hooks' ? `Hooks are disabled by policy in ${hookGate!.path}.` : 'Workspace MCP approval settings require explicit trust.', overrides: [] });
+    if (!s.invalid) for (const key of excluded) if (s.data[key] !== undefined) {
+      e.settings.push({ key, value: s.data[key], location: locate(s, key), status: 'ignored', reason: key === 'hooks' ? `Hooks are disabled by ${hookGateKey}.` : 'Workspace MCP approval settings require explicit trust.', overrides: [] });
+      if (key === 'hooks') e.findings.push(finding('claude.policy-ignored', 'info', locate(s, key), `Claude ignores these hooks under ${hookGateKey}.`, 'The effective hook control excludes handlers from this settings layer.', 'Review the controlling setting to confirm which hooks can run.', 'claude', [locate(hookGate!, hookGateKey)]));
+    }
     hooks(e, s, s.data.hooks, 'active'); permissions(e, s, 'active', { status: grantStatus, reason: grantReason });
   }
   const excludes = effectiveValue(e, 'claudeMdExcludes', []);

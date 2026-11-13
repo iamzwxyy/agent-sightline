@@ -23,7 +23,10 @@ try {
   const claudeHookArgs = ['--repo', claudeHookRepo, '--home', claudeHookHome, '--client', 'claude', '--trust', 'trusted'];
   const claudeHookReport = JSON.parse(execFileSync(process.execPath, [cli, ...claudeHookArgs, '--json'], { encoding: 'utf8' }));
   const disabledClaudeHook = claudeHookReport.clients[0].extensions.find(extension => extension.kind === 'hook');
-  if (disabledClaudeHook?.status !== 'ignored' || disabledClaudeHook.origins?.[0].location.key !== 'disableAllHooks' || disabledClaudeHook.origins[0].location.line !== 2 || claudeHookReport.findings.some(finding => finding.ruleId === 'hook.command-missing')) throw new Error('Installed Claude hook policy or controlling source failed.');
+  if (disabledClaudeHook?.status !== 'ignored') throw new Error('Installed Claude hook policy failed.');
+  const hookPolicyOrigin = disabledClaudeHook.origins?.[0].location;
+  if (hookPolicyOrigin?.key !== 'disableAllHooks' || hookPolicyOrigin.line !== 2) throw new Error('Installed Claude controlling source failed.');
+  if (!claudeHookReport.findings.some(finding => finding.ruleId === 'claude.policy-ignored') || claudeHookReport.findings.some(finding => finding.ruleId === 'hook.command-missing')) throw new Error('Installed Claude policy summary failed.');
   const repo = path.join(temp, 'repository'); mkdirSync(path.join(repo, '.git'), { recursive: true }); writeFileSync(path.join(repo, 'AGENTS.md'), 'Installed package works.');
   const output = execFileSync(process.execPath, [cli, '--repo', repo, '--no-user', '--trust', 'trusted', '--client', 'codex', '--json'], { encoding: 'utf8' });
   const report = JSON.parse(output); if (report.clients[0].instructions !== 'Installed package works.') throw new Error('Installed resolver failed.');
