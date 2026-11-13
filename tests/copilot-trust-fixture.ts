@@ -20,7 +20,10 @@ export async function trustWorkspace() {
   for (const [target, link] of [[w.repo, alias], [w.repo, otherAlias], [w.root, parentAlias], [homeProject, escapedDirectory], [path.join(w.root, 'missing'), brokenAlias]]) {
     await symlink(target, link, process.platform === 'win32' ? 'junction' : 'dir');
   }
-  return { ...w, alias, otherAlias, parentAlias, homeProject, escapedDirectory, brokenAlias, sibling, canonicalRepo: await realpath(w.repo), canonicalParent: await realpath(w.root) };
+  const canonicalRepo = await realpath(w.repo);
+  const relativeRepo = path.relative(process.cwd(), canonicalRepo);
+  const relativeInspectorPath = path.isAbsolute(relativeRepo) ? path.join('..', 'repo') : relativeRepo;
+  return { ...w, alias, otherAlias, parentAlias, homeProject, escapedDirectory, brokenAlias, sibling, canonicalRepo, canonicalParent: await realpath(w.root), relativeInspectorPath };
 }
 
 type TrustWorkspace = Awaited<ReturnType<typeof trustWorkspace>>;
@@ -46,7 +49,7 @@ export const trustCases: TrustCase[] = [
   { name: 'symlink escape from a trusted logical parent', state: w => ({ trustedFolders: [w.repo] }), cwd: 'escapedDirectory', trusted: false },
   { name: 'relative current directory', state: () => ({ trustedFolders: ['.'] }), trusted: false },
   { name: 'relative parent', state: () => ({ trustedFolders: ['..'] }), trusted: false },
-  { name: 'relative inspector path', state: w => ({ trustedFolders: [path.relative(process.cwd(), w.canonicalRepo)] }), trusted: false },
+  { name: 'relative inspector path', state: w => ({ trustedFolders: [w.relativeInspectorPath] }), trusted: false },
   { name: 'tilde home', state: () => ({ trustedFolders: ['~'] }), cwd: 'homeProject', trusted: false },
   { name: 'tilde project', state: () => ({ trustedFolders: ['~/project'] }), cwd: 'homeProject', trusted: false },
   { name: 'legacy folder alias', state: w => ({ trusted_folders: [w.otherAlias] }), trusted: true },

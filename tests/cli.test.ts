@@ -18,7 +18,7 @@ test('CLI resolves saved trust aliases and diagnoses the last malformed declarat
   const flags = ['--repo', alias, '--home', w.home, '--client', 'copilot'];
   await writeFile(stateFile, JSON.stringify({ trustedFolders: [storedAlias], internalValue: 'cli-private-trust-state' }));
   const trusted = run(['ci', ...flags, '--fail-on', 'warn'], alias);
-  assert.equal(trusted.status, 0, trusted.stderr);
+  assert.equal(trusted.status, 0, trusted.stderr + trusted.stdout);
   assert.equal(JSON.parse(trusted.stdout).clients[0].extensions[0].status, 'active');
   await writeFile(stateFile, JSON.stringify({ trustedFolders: [storedAlias], trusted_folders: [42], internalValue: 'cli-private-trust-state' }, null, 2));
   const invalid = run(['ci', ...flags, '--fail-on', 'warn'], alias);
@@ -32,7 +32,7 @@ test('CLI resolves saved trust aliases and diagnoses the last malformed declarat
   for (const output of [invalid.stdout, await readFile(file, 'utf8')]) assert.ok(!output.includes('cli-private-trust-state'));
   await writeFile(stateFile, JSON.stringify({ trusted_folders: [], trustedFolders: [storedAlias] }));
   const corrected = run(['ci', ...flags, '--fail-on', 'warn'], alias);
-  assert.equal(corrected.status, 0, corrected.stderr);
+  assert.equal(corrected.status, 0, corrected.stderr + corrected.stdout);
   assert.equal(JSON.parse(corrected.stdout).clients[0].extensions[0].status, 'active');
 });
 
