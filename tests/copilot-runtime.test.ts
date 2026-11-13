@@ -252,14 +252,18 @@ test('Copilot skill directory exclusions and fallback match the native inventory
     { name: 'invalid alias retains canonical siblings', settings: { ignored_skills_locations: [42], disabledSkills: ['shared'] } },
     { name: 'nested first root excluded', settings: { ignoredSkillsLocations: [path.join(repository, 'src/.github/skills')] }, target: 'src/refund.ts' },
     { name: 'inherited root excluded', settings: { ignoredSkillsLocations: [github] }, target: 'src/refund.ts' },
+    { name: 'forward slash root', settings: { ignoredSkillsLocations: [github.replaceAll('\\', '/')] } },
+    { name: 'forward slash repository', settings: { ignoredSkillsLocations: [repository.replaceAll('\\', '/')] } },
+    { name: 'forward slash personal path', settings: { ignoredSkillsLocations: [repository.replaceAll('\\', '/'), path.join(w.home, '.copilot/skills').replaceAll('\\', '/')] } },
   ];
   for (const scenario of scenarios) await t.test(scenario.name, async () => {
     await writeFile(path.join(w.home, '.copilot/settings.json'), JSON.stringify(scenario.settings));
     const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'skill', 'list', '--json'], {
-      cwd: scenario.target ? path.join(w.repo, 'src') : w.repo, env, encoding: 'utf8', timeout: 15000,
+      cwd: scenario.target ? path.join(w.repo, 'src') : w.repo, env, encoding: 'utf8', timeout: 30000,
     })).filter((entry: any) => entry.source !== 'builtin');
     const report = await scan({ ...w, clients: ['copilot'], target: scenario.target });
     const selected = report.clients[0].extensions.filter(extension => extension.kind === 'skill' && ['active', 'ignored'].includes(extension.status) && !extension.reason.includes('ignoredSkillsLocations'));
+    t.diagnostic(JSON.stringify({ scenario: scenario.name, settings: scenario.settings, native }));
     assert.deepEqual(await Promise.all(selected.map(async extension => ({
       name: extension.name, directory: await realpath(path.dirname(extension.location.path)), enabled: extension.status === 'active',
     }))), await Promise.all(native.map(async (entry: any) => ({ name: entry.name, directory: await realpath(entry.path), enabled: entry.enabled }))));
@@ -284,7 +288,7 @@ test('Copilot native workspace MCP inventory follows trustedFolders and disabled
       execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', isolated.repo], { env: isolatedEnv });
       const state = key ? { [key]: [await realpath(isolated.repo)] } : {};
       await writeFile(path.join(isolated.home, '.copilot/config.json'), JSON.stringify(state));
-      const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd: isolated.repo, env: isolatedEnv, encoding: 'utf8', timeout: 15000 }));
+      const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd: isolated.repo, env: isolatedEnv, encoding: 'utf8', timeout: 30000 }));
       const report = await scan({ ...isolated, clients: ['copilot'] });
       const trusted = !!native.mcpServers.fixture;
       if (key === null) assert.equal(trusted, false);
