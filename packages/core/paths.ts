@@ -6,6 +6,7 @@ import { cmp, slash, within } from './utils.js';
 export async function collectPathMappings(ctx: Context, configuration: unknown[]): Promise<NonNullable<Report['pathMappings']>> {
   const resolved = new Map<string, string | null | undefined>();
   const resolve = async (filename: string): Promise<string | null | undefined> => {
+    ctx.options.signal?.throwIfAborted();
     if (!resolved.has(filename)) resolved.set(filename, await realpath(filename).catch((error: NodeJS.ErrnoException) => {
       return error.code === 'ENOENT' || error.code === 'ENOTDIR' ? undefined : null;
     }));

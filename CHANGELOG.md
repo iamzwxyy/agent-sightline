@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-11-13
+
+* Cancel obsolete inspector scans when their browser connection closes. Apply cancellation to the initial page, refreshed scans, exported reports and sample workspace while retaining caller cancellation.
+* Pass scan cancellation into configuration file reads and honor it through final portable-path mapping. Closed responses skip error delivery.
+* Extend the existing benchmark with a configuration-heavy fixture of nested instructions, path rules and an optional skill count. Validate complete discovery and effective inputs before reporting timings.
+
 ## 0.3.0 — 2026-11-13
 
 * Introduce a Three.js configuration-layer opening with layered contours, moving light, film grain and pointer parallax. Client selection updates the real example result and its lighting.

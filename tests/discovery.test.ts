@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import fs, { mkdir, rm, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { scan } from '../packages/core/index.js';
 import { findRepositoryRoot, makeContext, readUserTree } from '../packages/core/discovery.js';
 import { filter, json, terminal } from '../packages/reporter/index.js';
@@ -102,4 +103,22 @@ test('invalid discovery budgets fail before inspection', async t => {
     await assert.rejects(scan({ ...w, user: false, maxFiles: value }), /limit/i);
     await assert.rejects(scan({ ...w, user: false, maxUserFiles: value }), /limit/i);
   }
+});
+
+
+test('scan cancellation also applies during final portable-path mapping', async t => {
+  const w = await workspace({ 'AGENTS.md': 'Repository instructions.' });
+  const controller = new AbortController();
+  const originalRealpath = fs.realpath;
+  t.mock.method(fs, 'realpath', async (filename: Parameters<typeof fs.realpath>[0], options: any) => {
+    if (filename === w.home) controller.abort();
+    return originalRealpath(filename, options);
+  });
+  syncBuiltinESMExports();
+  t.after(async () => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+    await rm(w.root, { recursive: true, force: true });
+  });
+  await assert.rejects(scan({ ...w, user: false, clients: ['codex'], signal: controller.signal }), { name: 'AbortError' });
 });

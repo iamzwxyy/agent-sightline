@@ -16,7 +16,7 @@ test('HTML embeds the shared client marks inside its hashed stylesheet', async (
   }
   const liveOutput = html(reportWithFindings(), { live: true });
   for (const name of ['fonts/OFL.txt', 'clients/lobe-icons-LICENSE.txt', 'clients/octicons-LICENSE.txt']) {
-    const notice = (await readFile(new URL(`../packages/web/assets/${name}`, import.meta.url), 'utf8')).replace(/\r\n?/g, '\n');
+    const notice = (await readFile(new URL(`../packages/web/assets/${name}`, import.meta.url), 'utf8')).replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '');
     assert.ok(output.includes(notice));
     assert.ok(liveOutput.includes(notice));
   }

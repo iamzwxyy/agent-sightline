@@ -81,5 +81,6 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
   result.pathMappings = (await collectPathMappings(ctx, configuration)).map(mapping => ({
     path: scrub(mapping.path), replacement: scrub(mapping.replacement),
   }));
+  options.signal?.throwIfAborted();
   return result;
 }

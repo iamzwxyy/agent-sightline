@@ -1,5 +1,17 @@
 # Release validation
 
+## v0.3.1
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 202-case core suite completed with 201 passes and one Windows-only skip.
+* Two cancellation regressions failed before the fix and passed afterward. Controlled pending reads verify connection cancellation for the initial inspector, refreshed scans, exported reports and sample workspace. The same server accepts a subsequent healthy scan, and caller cancellation remains effective. A separate case aborts during final portable-path mapping and requires the scan promise to reject.
+* Configuration reads use the scan's cancellation signal. Path resolution checks cancellation between filesystem operations, and the scan checks it after its final asynchronous mapping step. Closed HTTP responses skip error delivery.
+* Node 22.23.5 on macOS arm64 measured a fresh CLI process at 282 ms for 10,000 source files and one instruction source. With 100 nested instruction files, 100 path rules and 100 skills, it measured 433 ms and discovered all 301 sources. With 1,000 skills, it measured 1,239 ms and discovered all 1,201 sources. From a source checkout, build and reproduce these configurations with `node scripts/benchmark.mjs --skills 100` and `node scripts/benchmark.mjs --skills 1000`. The default command retains the original single-instruction workload.
+* In a local Chromium inspector with the 10,000-file/1,201-source fixture, three trust changes 100 ms apart completed in 3,637–4,184 ms before cancellation propagation and 1,616–1,617 ms afterward, across two fresh-process samples per revision. The final trust state, target and configuration remained inspectable. The filesystem cache was warmed by fixture creation. These measurements describe this synthetic setup.
+* All forty-seven Chromium browser cases passed, including refresh, trust changes, inspection history and snapshot export. The production dependency audit reported zero vulnerabilities.
+* The bundled terminal demonstration, inspector screenshot and portable example report were regenerated from the current CLI. Existing native-client, privacy, source-navigation and export regressions remain included.
+
 ## v0.3.0
 
 Verified locally on macOS on 2026-11-13.

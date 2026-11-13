@@ -129,11 +129,12 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
       info = await stat(abs);
       if (!info.isFile()) return null;
       if (info.size > 2 * 1024 * 1024) { discovery.complete = false; ctx.findings.push(finding('source.read-limit', 'warn', { path: abs, line: 1, column: 1 }, 'Configuration exceeds the 2 MiB inspection limit.', 'This is a Sightline safety limit, not a client truncation rule.', 'Split the file into smaller instruction sources.', owner)); return null; }
-      const text = await readFile(abs, 'utf8');
+      const text = await readFile(abs, { encoding: 'utf8', signal: ctx.options.signal });
       const owners = scope === undefined ? classify(abs)?.owners ?? [owner] : [owner];
       const s: Source = { id: hash(abs), path: abs, relativePath: within(repo, abs) ? slash(path.relative(repo, abs)) : abs, owners, kind, scope: scope ?? (path.dirname(abs) === repo ? 'repository' : 'directory'), baseDir: path.dirname(abs), bytes: bytes(text), text, body: text, bodyLine: 1, data: {}, lines: {}, invalid: false };
       ctx.findings.push(...parseSource(s)); ctx.sources.push(s); return s;
     } catch (error) {
+      ctx.options.signal?.throwIfAborted();
       discovery.complete = false;
       const code = (error as NodeJS.ErrnoException).code;
       ctx.findings.push(finding(code === 'ENOENT' ? 'source.broken-symlink' : 'source.unreadable', 'error', { path: abs, line: 1, column: 1 }, code === 'ENOENT' ? 'Broken configuration symlink.' : 'Configuration cannot be read.', 'The source exists but cannot be opened.', 'Repair the symlink or check file permissions.', owner)); return null;
