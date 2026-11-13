@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.5
+
+Verified locally on macOS with Node 22.23.5 on 2026-11-13.
+
+* Lint, strict TypeScript, build and empty-cache offline package installation passed. The 277-case core suite completed with 276 passes and one Windows-only skip.
+* Controlled fixtures reproduced v0.3.4 paragraph disclosure for CRLF-normalized and cross-paragraph private values before the fix. Captured multi-line values now match LF, CRLF and mixed line endings in logical longest-match order.
+* Comparison content retains whole-contribution redaction context. A group intersecting a cross-paragraph private value is masked across its recipients, including an earlier public occurrence, while raw membership, source ranges and occurrence order remain inspectable.
+* Private-key blocks crossing paragraph boundaries retain redaction in public scan output, JSON, terminal diff and HTML. Safe neighboring paragraphs remain visible. Installed-package smoke checks mixed-ending private comparisons and portable exports.
+* All fifty-two Chromium browser cases passed. The added live and offline case verifies absent private sentinels in JSON and exported HTML, masked paragraph rows and original source-line navigation. The independent full-page WCAG AA audits remain included.
+* v0.3.4 has an explicit privacy notice and is marked as a prerelease. Its published archive and tag retain their original contents. The v0.3.5 public installation route is advanced after complete local validation, with hosted cross-platform verification continuing through completion.
+
 ## v0.3.4
 
 Verified locally on macOS with Node 22.23.5 on 2026-11-13.

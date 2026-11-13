@@ -75,7 +75,7 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
       const privateState = /[/\\]\.claude\.json$/.test(path) || source.scope === 'user' && source.owners.includes('copilot') && /[/\\]config\.json$/.test(path);
       return { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid, ...(privateState || invalid ? {} : { preview: redactSourcePreview(source, scrub) }) };
     }),
-    clients, findings: unique, diff: [...diff.values()], instructionDiff: compareInstructions(clients, ctx.sources),
+    clients, findings: unique, diff: [...diff.values()], instructionDiff: compareInstructions(clients, ctx.sources, scrub),
   };
   const result = redactScanReport(report, scrub, privateValues.settings);
   const configuration = [result.clients, result.findings];

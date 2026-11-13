@@ -113,6 +113,15 @@ try {
   const comparisonHtml = readFileSync(comparisonFile, 'utf8');
   const comparisonSnapshot = JSON.parse(comparisonHtml.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)[1]);
   if (!comparisonSnapshot.instructionDiff.every(block => block.origins.every(origin => origin.location.path.replaceAll('\\', '/').startsWith('<repo>/'))) || comparisonHtml.includes(JSON.stringify(realpathSync(comparisonRepo)).slice(1, -1))) throw new Error('Installed paragraph export lost portable origins.');
+  const privateParagraph = 'installed-private-first\r\n\r\ninstalled-private-last';
+  writeFileSync(path.join(comparisonRepo, 'AGENTS.md'), privateParagraph);
+  writeFileSync(path.join(comparisonRepo, 'CLAUDE.md'), privateParagraph.replaceAll('\r\n', '\n'));
+  writeFileSync(path.join(comparisonRepo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, env: { NORMAL: privateParagraph } } } }));
+  const privateComparison = execFileSync(process.execPath, [cli, ...comparisonArgs, '--json'], { encoding: 'utf8' });
+  execFileSync(process.execPath, [cli, ...comparisonArgs, '--format', 'html', '--output', comparisonFile]);
+  for (const output of [privateComparison, readFileSync(comparisonFile, 'utf8')]) {
+    if (output.includes('installed-private-first') || output.includes('installed-private-last')) throw new Error('Installed paragraph comparison exposed a multi-line private value.');
+  }
   const permissionRepo = path.join(temp, 'permission-repository');
   mkdirSync(path.join(permissionRepo, '.claude'), { recursive: true });
   writeFileSync(path.join(permissionRepo, '.claude/settings.json'), JSON.stringify({ permissions: { allow: ['Bash(fixture)', 'Read'], ask: ['Bash'] } }));

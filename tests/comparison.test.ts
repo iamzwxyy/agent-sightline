@@ -5,6 +5,53 @@ import { rm } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { html, json, portable, terminal } from '../packages/reporter/index.js';
 import { workspace } from './helpers.js';
+import { createRedactor } from '../packages/core/redact.js';
+
+test('captured multi-line values match mixed line endings in logical longest-match order', () => {
+  const scrub = createRedactor(['private-first\r\n\r\n', 'private-first\n\nprivate-last']);
+  for (const text of ['private-first\n\nprivate-last', 'private-first\r\n\r\nprivate-last', 'private-first\n\r\nprivate-last']) {
+    const output = scrub(text);
+    assert.ok(!output.includes('private-first'));
+    assert.ok(!output.includes('private-last'));
+    assert.equal(output.match(/\n/g)?.length, 2);
+  }
+});
+
+test('private-key blocks crossing paragraphs stay redacted in every public representation', async t => {
+  const key = '-----BEGIN PRIVATE KEY-----\nprivate-key-material-first\n\nprivate-key-material-last\n-----END PRIVATE KEY-----';
+  const w = await workspace({ 'AGENTS.md': 'Safe introduction.\n\n' + key + '\n\nSafe ending.' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+  for (const output of [JSON.stringify(report), json(report), terminal(report, 'diff'), html(report)]) {
+    assert.ok(!output.includes('private-key-material-first'));
+    assert.ok(!output.includes('private-key-material-last'));
+  }
+  assert.ok(report.instructionDiff?.some(block => block.content === 'Safe introduction.'));
+  assert.ok(report.instructionDiff?.some(block => block.content === 'Safe ending.'));
+});
+
+test('paragraph comparison redacts multi-line private values before normalization and splitting', async t => {
+  const values = [
+    'paragraph-private-first\r\nparagraph-private-last',
+    'paragraph-private-first\n\nparagraph-private-last',
+    'paragraph-private-first\r\n\r\nparagraph-private-last',
+  ];
+  for (const value of values) await t.test(JSON.stringify(value.match(/\r?\n/g)), async subtest => {
+    const w = await workspace({
+      'AGENTS.md': value.split(/\r?\n\r?\n/)[0].replace(/\r\n/g, '\n'),
+      'CLAUDE.md': 'Safe introduction.\n\n' + value + '\n\nSafe ending.',
+      '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { NORMAL: value } } } }),
+    });
+    subtest.after(() => rm(w.root, { recursive: true, force: true }));
+    const report = await scan({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+    const comparison = JSON.stringify(report.instructionDiff);
+    assert.ok(!comparison.includes('paragraph-private-first'));
+    assert.ok(!comparison.includes('paragraph-private-last'));
+    assert.ok(report.instructionDiff?.some(block => block.content === 'Safe introduction.'));
+    assert.ok(report.instructionDiff?.some(block => block.content === 'Safe ending.'));
+    assert.ok(report.instructionDiff?.every(block => block.origins.length > 0));
+  });
+});
 
 test('the shipped demo shares a payment paragraph across all three clients and different source files', async () => {
   const report = await scan({ repo: path.resolve('examples/broken-agent-config'), target: 'src/payments/refund.ts', user: false, trust: 'trusted', clients: ['codex', 'claude', 'copilot'] });

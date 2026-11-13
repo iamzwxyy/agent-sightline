@@ -18,8 +18,12 @@ export function redactText(text: string): string {
     .replace(/(--(?:token|password|api-key|secret)(?:=|\s+))("[^"]*"|'[^']*'|[^\s]+)/gi, (_match, prefix: string, value: string) => prefix + mask(value));
 }
 export function createRedactor(envValues: string[] = []): <T>(value: T) => T {
-  const values = [...new Set(envValues.filter(Boolean))].sort((a, b) => b.length - a.length);
-  const pattern = values.length ? new RegExp(values.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g') : undefined;
+  const values = [...new Set(envValues.filter(Boolean).map(value => value.replace(/\r\n/g, '\n')))].sort((a, b) => b.length - a.length);
+  const patterns = values.map(value => {
+    const lines = value.split('\n');
+    return lines.map(line => line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\r?\\n');
+  });
+  const pattern = patterns.length ? new RegExp(patterns.join('|'), 'g') : undefined;
   const scrub = (text: string): string => redactText(pattern ? text.replace(pattern, value => mask(value)) : text);
   const walk = (v: any, key = '', parent = ''): any => {
     if (privateMappings.has(parent)) return '[REDACTED]';

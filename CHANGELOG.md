@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.5 — 2026-11-13
+
+* Fix a v0.3.4 privacy regression in paragraph comparison. Multi-line captured values and private-key blocks could become visible after paragraph splitting or CRLF normalization. Review affected v0.3.4 reports before sharing them and use v0.3.5 for new reports.
+* Match captured private values across LF, CRLF and mixed line endings in logical longest-match order.
+* Preserve whole-contribution redaction context while grouping raw paragraph membership. Paragraphs intersecting a cross-paragraph private value are masked across their receiving group, with source locations and order retained.
+* Cover multi-line values, overlapping private values, key blocks, public JSON/terminal/HTML, live and portable browsers, and installed-package output.
+
 ## 0.3.4 — 2026-11-13
 
 * Compare exact instruction paragraphs across different source files, retaining each receiving client, repeated occurrence, loading order and original line range.

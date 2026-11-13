@@ -14,6 +14,39 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('multi-line private paragraphs stay masked in live and portable comparisons', async ({ page }) => {
+  const value = 'private-browser-first\r\n\r\nprivate-browser-last';
+  const w = await workspace({
+    'AGENTS.md': 'Safe introduction.\n\n' + value + '\n\nSafe ending.',
+    'CLAUDE.md': 'Safe introduction.\n\n' + value.replace(/\r\n/g, '\n') + '\n\nSafe ending.',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { NORMAL: value } } } }),
+  });
+  const server = await serve({ ...w, user: false, trust: 'trusted', clients: ['codex', 'claude'] });
+  try {
+    await page.goto(server.url);
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('private-paragraphs.html');
+    await (await download).saveAs(file);
+    const exported = await readFile(file, 'utf8');
+    for (const sentinel of ['private-browser-first', 'private-browser-last']) expect(exported).not.toContain(sentinel);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.goto(url);
+      const data = await page.locator('#report-data').textContent();
+      expect(data).not.toContain('private-browser-first');
+      expect(data).not.toContain('private-browser-last');
+      await page.locator('#compare-tab').click();
+      await expect(page.locator('#comparison-blocks')).toContainText('Safe introduction.');
+      const masked = page.locator('.instruction-block').filter({ has: page.locator('pre', { hasText: /^\[REDACTED\]$/ }) });
+      await expect(masked).toHaveCount(2);
+      await masked.first().locator('.instruction-block-origin').filter({ hasText: 'Codex' }).click();
+      await expect(page.locator('.code-line.highlight .line-number')).toHaveText('3');
+      await expect(page.locator('.code-line.highlight')).toContainText('[REDACTED]');
+    }
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('paragraph comparison follows exact recipients and source lines online and offline', async ({ page }) => {
   const shared = 'Run the checks.\nKeep changes focused.';
   const w = await workspace({
