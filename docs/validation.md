@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.0
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 200-case core suite completed with 199 passes and one Windows-only skip. Production dependency audit reported zero vulnerabilities.
+* All thirty-six Chromium browser cases passed. The motion case verifies a successfully compiled WebGL renderer when the browser supports it, stable paused frames, resume, reduced-motion changes, client selection and context-loss fallback. A separate case disables WebGL and completes the phone-to-demo journey.
+* Every client mark decodes in the local inspector and an offline portable export. Reporter checks compare embedded SVG bytes with the shared source assets. Existing privacy, source-navigation, delayed-initialization and report-export regressions remain included.
+* Desktop and phone visual review covers the moving opening, client-state changes, the product example and inspector marks. Automated WCAG AA checks cover the website, guide and core inspector views.
+* Project-prefix hosting verifies the additional script and image paths alongside exact historical package downloads. Website JavaScript is included in the normal lint command.
+* The Codex mark comes from the community-maintained Lobe Icons library. Claude, Copilot, Gemini CLI, Cursor and OpenCode marks come from their official sites or official libraries. The asset ledger records the sources and notices.
+
 ## v0.2.13
 
 Verified locally on macOS on 2026-11-13.

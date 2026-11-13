@@ -1,11 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import type { Finding, Report } from '../packages/core/types.js';
 import { failed, html, json, portable, terminal } from '../packages/reporter/index.js';
 import { workspace } from './helpers.js';
+import { CLIENTS } from '../packages/core/types.js';
+
+test('HTML embeds the shared client marks inside its hashed stylesheet', async () => {
+  const output = html(reportWithFindings());
+  for (const client of CLIENTS) {
+    const asset = await readFile(new URL(`../packages/web/assets/clients/${client}.svg`, import.meta.url));
+    assert.ok(output.includes(`.client-avatar.${client}{background-image:url("data:image/svg+xml;base64,${asset.toString('base64')}")}`));
+  }
+  assert.ok(output.includes('img-src data:'));
+});
 
 const missingCommand: Finding = {
   id: 'codex-missing-command', ruleId: 'mcp.command-missing', severity: 'error', client: 'codex',

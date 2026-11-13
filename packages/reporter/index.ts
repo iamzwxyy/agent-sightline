@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import type { Extension, Finding, Report, Severity } from '../core/types.js';
+import { CLIENTS } from '../core/types.js';
 import { redact, redactText } from '../core/redact.js';
 export function json(report: Report): string { return JSON.stringify(redact(report), null, 2) + '\n'; }
 export function filter(report: Report, severity?: Severity): Report {
@@ -135,7 +136,11 @@ export function html(report: Report, options: { live?: boolean; portable?: boole
   // HTML parsing normalizes CRLF before CSP hashing; Windows checkouts must agree.
   const script = readFileSync(new URL('../web/assets/app.js', import.meta.url), 'utf8').replace(/\r\n?/g, '\n');
   const font = readFileSync(new URL('../web/assets/fonts/instrument-sans.woff2', import.meta.url)).toString('base64');
-  const style = `@font-face{font-family:'Instrument Sans';font-style:normal;font-weight:400 700;font-display:swap;src:url(data:font/woff2;base64,${font}) format('woff2')}\n` + readFileSync(new URL('../web/assets/style.css', import.meta.url), 'utf8').replace(/\r\n?/g, '\n');
+  const icons = CLIENTS.map(client => {
+    const data = readFileSync(new URL(`../web/assets/clients/${client}.svg`, import.meta.url)).toString('base64');
+    return `.client-avatar.${client}{background-image:url("data:image/svg+xml;base64,${data}")}`;
+  }).join('\n');
+  const style = `@font-face{font-family:'Instrument Sans';font-style:normal;font-weight:400 700;font-display:swap;src:url(data:font/woff2;base64,${font}) format('woff2')}\n` + readFileSync(new URL('../web/assets/style.css', import.meta.url), 'utf8').replace(/\r\n?/g, '\n') + '\n' + icons;
   const sha = (s: string) => createHash('sha256').update(s).digest('base64');
   const safeJson = (value: Report | string | null) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const csp = `default-src 'none'; script-src 'sha256-${sha(script)}'; style-src 'sha256-${sha(style)}'; font-src data:; connect-src ${options.live ? "'self'" : "'none'"}; img-src data:; base-uri 'none'; form-action 'none'`;

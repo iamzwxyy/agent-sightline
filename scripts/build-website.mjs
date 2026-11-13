@@ -19,6 +19,7 @@ const destination = path.resolve('website/dist');
 rmSync(destination, { recursive: true, force: true });
 mkdirSync(destination, { recursive: true });
 cpSync('website/public', destination, { recursive: true });
+cpSync(new URL('../dist/web/assets/clients', import.meta.url), path.join(destination, 'icons'), { recursive: true });
 for (const name of ['index.html', 'guide.html', 'robots.txt', 'sitemap.xml']) {
   const file = path.join(destination, name);
   let content = readFileSync(file, 'utf8').replaceAll('{{VERSION}}', pkg.version).replaceAll(originalSite, configuredSite);

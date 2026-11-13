@@ -5,7 +5,6 @@
   const originalDocument = document.documentElement.outerHTML;
   let exportDocument = live ? JSON.parse(document.getElementById('export-data').textContent) : '<!doctype html>\n' + originalDocument;
   const names = { codex: 'Codex', claude: 'Claude Code', copilot: 'GitHub Copilot', gemini: 'Gemini CLI', cursor: 'Cursor', opencode: 'OpenCode' };
-  const initials = { codex: 'C', claude: '✳', copilot: 'G', gemini: 'G', cursor: '↗', opencode: 'O' };
   const viewLabels = { overview: 'Overview', effective: 'Instructions', configuration: 'Settings', compare: 'Compare clients', extensions: 'Extensions', findings: 'Findings' };
   const state = {
     view: 'overview',
@@ -38,10 +37,12 @@
   const selectedClient = () => report.clients.find(client => client.client === state.client) ?? report.clients[0];
   const statusNames = { active: 'Loaded', conditional: 'Conditional', shadowed: 'Shadowed', ignored: 'Not loaded', truncated: 'Truncated', invalid: 'Invalid' };
   const badge = status => node('span', statusNames[status] ?? status, `status ${status}`);
-  const avatar = client => {
-    const element = node('span', initials[client] ?? client[0].toUpperCase(), `client-avatar ${client}`);
+  const avatar = (client, standalone = false) => {
+    const element = node('span', names[client] ? undefined : client[0].toUpperCase(), `client-avatar ${client}`);
     element.title = names[client] ?? client;
+    element.setAttribute('role', 'img');
     element.setAttribute('aria-label', names[client] ?? client);
+    if (!standalone) element.setAttribute('aria-hidden', 'true');
     return element;
   };
   const button = (label, onClick, className = 'button') => {
@@ -197,7 +198,7 @@
     const title = node('div');
     title.append(node('h3', finding.message), node('span', `${short(finding.location.path)} · line ${finding.location.line}, column ${finding.location.column}`, 'finding-location'));
     const recipients = node('span', undefined, 'finding-clients');
-    finding.clients.forEach(client => recipients.append(avatar(client)));
+    finding.clients.forEach(client => recipients.append(avatar(client, true)));
     element.append(severity, title, recipients, node('span', '›', 'row-arrow'));
     return element;
   }

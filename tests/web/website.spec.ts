@@ -3,6 +3,68 @@ import { serveStatic } from '../../scripts/static-server.mjs';
 import { VERSION } from '../../packages/core/version.js';
 import { createHash } from 'node:crypto';
 
+test('opening motion follows client selection and supports pause and reduced motion', async ({ page }) => {
+  const server = await serveStatic('website/dist');
+  try {
+    await page.goto(server.url);
+    await expect(page.locator('#demo-sources button').first()).toBeVisible();
+    const supported = await page.evaluate(() => !!document.createElement('canvas').getContext('webgl'));
+    const hero = page.locator('.hero');
+    if (supported) {
+      await expect(hero).toHaveAttribute('data-renderer', 'webgl');
+      await page.getByRole('button', { name: 'Pause animation', exact: true }).click();
+      await expect(hero).toHaveAttribute('data-motion', 'paused');
+      await page.waitForTimeout(850);
+      const first = await page.locator('#context-field').screenshot();
+      await page.waitForTimeout(180);
+      expect(await page.locator('#context-field').screenshot()).toEqual(first);
+      await page.getByRole('button', { name: 'Play animation', exact: true }).click();
+      await expect(hero).toHaveAttribute('data-motion', 'playing');
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(hero).toHaveAttribute('data-motion', 'paused');
+    }
+    await page.getByRole('button', { name: 'Claude Code', exact: true }).click();
+    await expect(hero).toHaveAttribute('data-client', 'claude');
+    await expect(page.locator('#hero-source')).toHaveText('CLAUDE.md');
+    await expect(page.locator('#hero-verdict')).toHaveText('Loaded for Claude Code');
+    await expect(page.getByRole('tab', { name: 'Claude Code', exact: true })).toHaveAttribute('aria-selected', 'true');
+    for (const icon of await page.locator('.client-strip img').all()) {
+      expect(await icon.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+    }
+    await expect(page.locator('.client-strip img')).toHaveCount(6);
+    if (supported) {
+      await page.locator('#context-field').evaluate((canvas: HTMLCanvasElement) => canvas.getContext('webgl')?.getExtension('WEBGL_lose_context')?.loseContext());
+      await expect(hero).toHaveAttribute('data-renderer', 'static');
+      await expect(page.locator('#motion-toggle')).toBeHidden();
+    }
+  } finally { await server.close(); }
+});
+
+test('opening retains its content and client preview when WebGL is unavailable', async ({ page }) => {
+  const server = await serveStatic('website/dist');
+  try {
+    await page.addInitScript(() => {
+      const original = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type: string, ...options: any[]) {
+        if (['webgl', 'webgl2', 'experimental-webgl'].includes(type)) return null;
+        return (original as any).call(this, type, ...options);
+      };
+    });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(server.url);
+    await expect(page.locator('.hero')).toHaveAttribute('data-renderer', 'static');
+    await expect(page.getByRole('heading', { name: /Know what your agent/ })).toBeVisible();
+    await expect(page.locator('#motion-toggle')).toBeHidden();
+    await expect(page.locator('#demo-sources button').first()).toBeAttached();
+    await page.getByRole('button', { name: 'Copilot', exact: true }).click();
+    await expect(page.locator('#hero-verdict')).toHaveText('Loaded for Copilot');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByRole('link', { name: /Explore the demo/ }).click();
+    await expect(page.locator('#mode-label')).toHaveText('Report snapshot');
+  } finally { await server.close(); }
+});
+
 test('website connects the real client demo, workflow walkthrough, guide and downloadable package', async ({ page }) => {
   const server = await serveStatic('website/dist');
   try {

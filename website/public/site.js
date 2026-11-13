@@ -21,6 +21,9 @@
     if (!selected) return;
     selectedPath = selected.path;
     document.querySelectorAll('[data-demo-client]').forEach(button => button.setAttribute('aria-selected', String(button.dataset.demoClient === clientId)));
+    document.querySelectorAll('[data-hero-client]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.heroClient === clientId)));
+    const hero = document.querySelector('.hero');
+    if (hero) hero.dataset.client = clientId;
     $('demo-sources').replaceChildren(...sources.map(source => {
       const button = node('button', undefined, `demo-source${source.path === selected.path ? ' selected' : ''}`);
       button.title = source.path + ' — ' + source.reason;
@@ -40,12 +43,22 @@
     const clientNames = { codex: 'Codex', claude: 'Claude Code', copilot: 'Copilot' };
     $('demo-reason-title').textContent = selected.status === 'truncated' ? `Only ${selected.loadedBytes} of ${selected.bytes} bytes reach ${clientNames[clientId]}.` : selected.status === 'active' ? `This source reaches ${clientNames[clientId]}.` : `This source is ${statusNames[selected.status].toLowerCase()} for ${clientNames[clientId]}.`;
     $('demo-reason').textContent = selected.reason;
+    if ($('hero-source')) {
+      $('hero-source').textContent = basename(selected.path);
+      $('hero-verdict').textContent = selected.status === 'truncated'
+        ? `${selected.loadedBytes} of ${selected.bytes} bytes reach ${clientNames[clientId]}`
+        : `${statusNames[selected.status]} for ${clientNames[clientId]}`;
+    }
+    document.dispatchEvent(new window.CustomEvent('sightline:client-change', { detail: { client: clientId } }));
   }
   if ($('demo-sources')) fetch(basePath + 'demo-report.json').then(response => response.json()).then(data => { report = data; renderDemo(); }).catch(() => {
     $('demo-reason').textContent = 'Open the full bundled demo to inspect source loading and configuration findings.';
   });
   document.querySelectorAll('[data-demo-client]').forEach(button => {
     button.onclick = () => { clientId = button.dataset.demoClient; selectedPath = null; if (report) renderDemo(); };
+  });
+  document.querySelectorAll('[data-hero-client]').forEach(button => {
+    button.onclick = () => { clientId = button.dataset.heroClient; selectedPath = null; if (report) renderDemo(); };
   });
   const workflows = {
     trace: { image: basePath + 'images/instructions.png', alt: 'The instruction explorer shows a source file, its loading order and provenance', caption: 'Inspect a source, read its loaded content, and see why it applies to your target file.', link: basePath + 'demo/#view=effective&client=codex' },

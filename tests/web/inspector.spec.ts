@@ -14,6 +14,33 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('all client marks render locally and survive an offline portable export', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'Shared instructions.', 'GEMINI.md': 'Gemini instructions.' });
+  const server = await serve({ ...w, user: false });
+  try {
+    await page.goto(server.url);
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('client-marks.html');
+    await (await download).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      if (url.startsWith('file:')) await page.context().setOffline(true);
+      await page.goto(url);
+      const marks = page.locator('#clients .client-avatar');
+      await expect(marks).toHaveCount(6);
+      expect(await marks.allTextContents()).toEqual(['', '', '', '', '', '']);
+      const rendered = await marks.evaluateAll(async elements => Promise.all(elements.map(element => new Promise<boolean>(resolve => {
+        const source = getComputedStyle(element).backgroundImage.match(/^url\(["']?(.*?)["']?\)$/)?.[1];
+        const image = new Image();
+        image.onload = () => resolve(image.naturalWidth > 0);
+        image.onerror = () => resolve(false);
+        image.src = source ?? '';
+      }))));
+      expect(rendered).toEqual([true, true, true, true, true, true]);
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('Copilot canonical settings open their original personal aliases in live and portable views', async ({ page }) => {
   const w = await workspace({ '.mcp.json': '{"mcpServers":{"fixture":{"command":"missing-disabled-browser-alias"}}}' }, { '.copilot/settings.json': '{\n"disabledMcpServers":["earlier"],\n"disabled_mcp_servers":["fixture"],\n"disable_all_hooks":true,\n"colorMode":"dim"\n}' });
   const server = await serve({ ...w, clients: ['copilot'], trust: 'trusted' });
