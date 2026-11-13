@@ -45,13 +45,14 @@ export function classify(file: string): { owners: ClientId[]; kind: Kind } | nul
     if (p.includes('/.cursor/skills/')) owners.push('cursor');
     return { owners, kind: 'skill' };
   }
-  if (p.includes('/.claude/rules/') && n.endsWith('.md')) return { owners: ['claude'], kind: 'rules' };
+  if (p.includes('/.claude/rules/') && n.endsWith('.md')) return { owners: ['claude', 'copilot'], kind: 'rules' };
   if (p.includes('/.cursor/rules/') && /\.mdc?$/.test(n)) return { owners: ['cursor'], kind: 'rules' };
   if (n === '.mcp.json') return { owners: ['claude', 'copilot'], kind: 'mcp' };
   if (n === 'mcp.json' && (p.includes('/.cursor/') || p.includes('/.github/') || p.includes('/.vscode/'))) return { owners: p.includes('/.cursor/') ? ['cursor'] : ['copilot'], kind: 'mcp' };
   if (n === 'mcp-config.json') return { owners: ['copilot'], kind: 'mcp' };
   if (/^settings(?:\.local)?\.json$/.test(n)) {
-    const owner = parent === '.claude' ? 'claude' : parent === '.gemini' ? 'gemini' : parent === '.codex' ? 'codex' : null;
+    if (parent === '.claude') return { owners: ['claude', 'copilot'], kind: 'settings' };
+    const owner = parent === '.gemini' ? 'gemini' : parent === '.codex' ? 'codex' : parent === '.copilot' || parent === 'copilot' && p.includes('/.github/copilot/') ? 'copilot' : null;
     return owner ? { owners: [owner], kind: 'settings' } : null;
   }
   if (n === 'config.toml' && parent === '.codex') return { owners: ['codex'], kind: 'settings' };
@@ -129,7 +130,8 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
       if (!info.isFile()) return null;
       if (info.size > 2 * 1024 * 1024) { discovery.complete = false; ctx.findings.push(finding('source.read-limit', 'warn', { path: abs, line: 1, column: 1 }, 'Configuration exceeds the 2 MiB inspection limit.', 'This is a Sightline safety limit, not a client truncation rule.', 'Split the file into smaller instruction sources.', owner)); return null; }
       const text = await readFile(abs, 'utf8');
-      const s: Source = { id: hash(abs), path: abs, relativePath: within(repo, abs) ? slash(path.relative(repo, abs)) : abs, owners: [owner], kind, scope: scope ?? (path.dirname(abs) === repo ? 'repository' : 'directory'), baseDir: path.dirname(abs), bytes: bytes(text), text, body: text, bodyLine: 1, data: {}, lines: {}, invalid: false };
+      const owners = scope === undefined ? classify(abs)?.owners ?? [owner] : [owner];
+      const s: Source = { id: hash(abs), path: abs, relativePath: within(repo, abs) ? slash(path.relative(repo, abs)) : abs, owners, kind, scope: scope ?? (path.dirname(abs) === repo ? 'repository' : 'directory'), baseDir: path.dirname(abs), bytes: bytes(text), text, body: text, bodyLine: 1, data: {}, lines: {}, invalid: false };
       ctx.findings.push(...parseSource(s)); ctx.sources.push(s); return s;
     } catch (error) {
       discovery.complete = false;

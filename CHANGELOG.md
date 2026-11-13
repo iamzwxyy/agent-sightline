@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.12 — 2026-11-13
+
+* Resolve Copilot repository and local JSONC settings with per-key merge policies, precise origins, replaced values and trusted model overrides.
+* Apply disabled MCP/skill/hook settings before executable checks and explicit probes. Read current and legacy persisted folder-trust keys.
+* Read Copilot's shared subset of Claude repository settings and root/current-directory Claude rules. Preserve Claude's strict JSON behavior for those shared files.
+* Show unresolved same-scope setting conflicts and additional customization directories explicitly, including incomplete discovery coverage.
+* Inspect inline Copilot hooks, direct executables, command fallbacks, HTTP hooks and prompt hooks requiring a fresh interactive session. Anchor hook working directories to the inspected repository.
+* Compare settings folds, value validation, workspace MCP admission and shared-rule discovery with the pinned Copilot 1.0.110 CLI. Keep all three native client dependency trees outside production packages.
+* Show the selected hook command in browser summaries and label earlier setting definitions across replacements and collection merges.
+
 ## 0.2.11 — 2026-11-13
 
 * Keep inspector controls disabled while the report initializes, with loading feedback for streamed pages. Enable them after event handlers are installed.

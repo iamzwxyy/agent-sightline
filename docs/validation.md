@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.2.12
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 193-case core suite completed with 192 passes and one Windows-only skip. Production dependency audit reported zero vulnerabilities.
+* The pinned Copilot 1.0.110 configuration API matched thirteen merge scenarios and thirty-four setting-value validation cases. Native CLI inventories covered current and legacy folder-trust keys, disabled workspace MCP servers, and root/current-directory Claude-rule locations and path metadata. Trust fixtures use separate homes and repositories. MCP startup markers remain absent during inventory inspection.
+* Fixtures cover JSONC repository/local settings, trusted and conditional model overrides, restricted repository keys, malformed sibling values, restriction unions, whole marketplace entries, hook appends, effective disable flags and source-specific origins. Additional customization directories retain incomplete coverage, with a local empty list clearing that contribution.
+* The native Claude binary reproduces strict JSON behavior for shared settings. Copilot retains the JSONC contribution while Claude emits its own syntax findings and ignores that layer. Private values remain redacted in the shared preview and both clients' reports.
+* All thirty-two Chromium browser cases passed. Added flows inspect Copilot setting history, apply trust, follow local source lines and retain disabled extensions in portable exports. Shared JSONC findings navigate through the owning client, and the hook dialog passes automated WCAG AA checks. Existing phone, comparison, privacy and delayed-initialization regressions remain included.
+* Installed-package smoke verifies layered Copilot model values and their source history, JSONC local settings, combined disabled servers, conditional trust and absence of false executable errors. Archive inspection excludes all three native client dependency trees.
+
 ## v0.2.11
 
 Verified locally on macOS on 2026-11-13.

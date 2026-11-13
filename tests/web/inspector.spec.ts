@@ -14,6 +14,78 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('Copilot layered settings navigate to their sources and retain disabled extensions in portable reports', async ({ page }) => {
+  const w = await workspace({
+    '.github/copilot/settings.json': '{\n"model":"repository-model",\n"disabledMcpServers":["disabled"],\n"disableAllHooks":true\n}',
+    '.github/copilot/settings.local.json': '{// local override\n"model":"local-model",}',
+    '.mcp.json': '{"mcpServers":{"disabled":{"command":"missing-disabled-browser-fixture"}}}',
+    '.github/hooks/test.json': '{"version":1,"hooks":{"sessionStart":[{"command":"missing-disabled-hook-fixture"}]}}',
+    'src/refund.ts': '',
+  }, { '.copilot/settings.json': '{"model":"personal-model","disabledMcpServers":["personal"]}' });
+  const server = await serve({ ...w, clients: ['copilot'], target: 'src/refund.ts' });
+  try {
+    await page.goto(server.url);
+    await page.locator('#configuration-tab').click();
+    await page.getByLabel('Search settings').fill('model');
+    const rows = page.locator('#setting-list tbody tr');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.filter({ hasText: 'personal-model' })).toContainText('Loaded');
+    await expect(rows.filter({ hasText: 'local-model' })).toContainText('Conditional');
+    await page.locator('#trust').selectOption('trusted');
+    await expect(rows).toHaveCount(1);
+    await expect(rows).toContainText('local-model');
+    await rows.getByRole('button', { name: 'model', exact: true }).click();
+    await expect(page.locator('.setting-origins')).toContainText('Earlier definitions');
+    await expect(page.locator('.setting-origins')).toContainText('.github/copilot/settings.json');
+    await page.screenshot({ path: test.info().outputPath('copilot-settings.png') });
+    await page.getByRole('button', { name: /Inspect source/ }).click();
+    await expect(page.locator('#source-title')).toHaveText('.github/copilot/settings.local.json');
+    await expect(page.locator('.code-line.highlight')).toContainText('local-model');
+    await page.locator('#extensions-tab').click();
+    await expect(page.locator('.extension-row .status.ignored')).toHaveCount(2);
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('copilot-layered-settings.html');
+    await (await download).saveAs(file);
+    const content = await readFile(file, 'utf8');
+    expect(content).not.toContain(w.home);
+    expect(content).not.toContain(await realpath(w.repo));
+    await page.goto(pathToFileURL(file).href);
+    await page.locator('#configuration-tab').click();
+    await page.getByLabel('Search settings').fill('model');
+    await expect(rows).toHaveCount(1);
+    await rows.getByRole('button', { name: /settings.local.json:2$/ }).click();
+    await expect(page.locator('.code-line.highlight')).toContainText('local-model');
+    await page.locator('#extensions-tab').click();
+    await expect(page.locator('.extension-row .status.ignored')).toHaveCount(2);
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('shared JSONC settings keep Claude syntax findings scoped while Copilot hooks stay inspectable', async ({ page }) => {
+  const w = await workspace({ '.claude/settings.json': '{// Copilot accepts JSONC\n"hooks":{"SessionStart":[{"hooks":[{"command":"missing-shared-browser-hook"}]}]},\n}' });
+  const server = await serve({ ...w, user: false, clients: ['claude', 'copilot'] });
+  try {
+    await page.goto(server.url);
+    await page.locator('#findings-tab').click();
+    await page.locator('#finding-client').selectOption('copilot');
+    await expect(page.locator('#findings-list')).toContainText('Hook command was not found');
+    await expect(page.locator('#findings-list')).not.toContainText('Invalid comment');
+    await page.locator('#findings-list .finding').filter({ hasText: 'Hook command was not found' }).click();
+    await page.getByRole('button', { name: /Inspect source/ }).click();
+    await expect(page.locator('#effective-title')).toHaveText('GitHub Copilot’s instructions');
+    await expect(page.locator('.code-line.highlight')).toContainText('missing-shared-browser-hook');
+    await page.locator('#extensions-tab').click();
+    await page.locator('#extension-client').selectOption('copilot');
+    await expect(page.locator('.extension-row')).toContainText('missing-shared-browser-hook');
+    await page.locator('.extension-row').click();
+    await expect(page.locator('#detail-dialog')).toContainText('.claude/settings.json');
+    const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(accessibility.violations).toEqual([]);
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('streamed reports keep controls unavailable until their handlers are ready', async ({ page }) => {
   const report = await scan({ ...sampleOptions, clients: [...sampleOptions.clients], target: 'src/payments/refund.ts' });
   for (const live of [false, true]) {
@@ -744,7 +816,7 @@ test('effective text, resolved settings and browser history preserve their prove
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText('project-model');
     await rows.first().getByRole('button', { name: 'model', exact: true }).click();
-    await expect(page.locator('#detail-dialog')).toContainText('Replaces these definitions');
+    await expect(page.locator('#detail-dialog')).toContainText('Earlier definitions');
     await expect(page.locator('.setting-origins')).toContainText('home');
     await page.getByRole('button', { name: /Inspect source/ }).click();
     await expect(page.locator('#source-title')).toHaveText('.codex/config.toml');
@@ -826,7 +898,7 @@ test('Codex profile selection updates settings and persists through reload and e
     await page.getByLabel('Search settings').fill('model');
     await page.getByRole('button', { name: 'model', exact: true }).click();
     await expect(page.locator('#detail-dialog')).toContainText('review.config.toml · line 1');
-    await expect(page.locator('#detail-dialog')).toContainText('Replaces these definitions');
+    await expect(page.locator('#detail-dialog')).toContainText('Earlier definitions');
     await page.keyboard.press('Escape');
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
     await page.screenshot({ path: test.info().outputPath('profile-desktop.png'), fullPage: true });

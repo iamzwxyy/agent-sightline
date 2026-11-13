@@ -128,8 +128,11 @@ test('hook command field selection preserves client and platform semantics', () 
     assert.equal(hookCommandField('claude', handler, 'settings.json', 'win32'), 'command');
   }
   assert.equal(hookCommandField('codex', { command: 'echo fallback' }, 'config.toml', 'win32'), 'command');
-  assert.equal(hookCommandField('copilot', {}, 'hooks.json', 'win32'), 'powershell');
-  assert.equal(hookCommandField('copilot', {}, 'hooks.json', 'linux'), 'bash');
+  assert.equal(hookCommandField('copilot', { powershell: 'echo windows' }, 'hooks.json', 'win32'), 'powershell');
+  assert.equal(hookCommandField('copilot', { bash: 'echo posix' }, 'hooks.json', 'linux'), 'bash');
+  assert.equal(hookCommandField('copilot', { command: 'echo fallback' }, 'hooks.json', 'win32'), 'command');
+  assert.equal(hookCommandField('copilot', { command: 'echo fallback' }, 'hooks.json', 'linux'), 'command');
+  assert.equal(hookCommandField('copilot', { exec: 'node' }, 'hooks.json', 'linux'), 'exec');
 });
 
 test('Codex command aliases use the host platform and point to the selected TOML handler field', async t => {

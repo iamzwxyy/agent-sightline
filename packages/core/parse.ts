@@ -165,7 +165,7 @@ export function parseSource(s: Source): Finding[] {
     if (/\.jsonc?$/.test(s.path)) {
       syntaxRule = 'parse.json';
       const errors: ParseError[] = [];
-      const jsonc = s.path.endsWith('.jsonc') || s.owners.includes('copilot') && s.kind === 'settings' && s.path.endsWith('settings.json');
+      const jsonc = s.path.endsWith('.jsonc') || s.owners.includes('copilot') && s.kind === 'settings' && /settings(?:\.local)?\.json$/.test(s.path);
       const tree = parseTree(s.text, errors, { allowTrailingComma: jsonc, disallowComments: !jsonc });
       for (const error of errors) {
         const message = jsonErrorMessages[printParseErrorCode(error.error)] ?? 'Invalid JSON syntax.';

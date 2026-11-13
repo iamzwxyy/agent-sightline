@@ -1,13 +1,15 @@
 import path from 'node:path';
+import { realpath } from 'node:fs/promises';
 import type { AdapterMetadata, Context, Source, Status } from '../core/types.js';
 import { readUserTree } from '../core/discovery.js';
 import { cmp, finding, locate, matches, plainObject, slash, within } from '../core/utils.js';
-import { adapter, addInstruction, base, decision, expand, finish, hooks, mcp, pathPatterns, settings, skills } from './common.js';
+import { adapter, addInstruction, base, decision, effectiveValue, expand, finish, hooks, mcp, pathPatterns, skills } from './common.js';
+import { copilotSettings, copilotRepositorySettings } from './copilot-settings.js';
 
 export const copilotMetadata: AdapterMetadata = {
-  id: 'copilot', name: 'GitHub Copilot CLI', maturity: 'verified', ruleVersion: '1.0.109', verifiedOn: '2026-11-12',
-  evidence: ['https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions', 'https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference', 'https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference', 'https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks'],
-  limitations: ['Copilot CLI rules only; VS Code, code review and cloud-agent rules differ.', 'Applicable instruction files have no documented general precedence; shown order is deterministic display order.', 'Session /instructions toggles, enterprise policy, custom extra roots, saved tool permissions and plugins are not inferred.', 'Workspace MCP same-directory tie order is not asserted.'],
+  id: 'copilot', name: 'GitHub Copilot CLI', maturity: 'verified', ruleVersion: '1.0.110', verifiedOn: '2026-11-13',
+  evidence: ['https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions', 'https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference', 'https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference', 'https://docs.github.com/en/copilot/reference/hooks-reference', 'https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/customization-locations'],
+  limitations: ['Copilot CLI rules only; VS Code, code review and cloud-agent rules differ.', 'Applicable instruction files have no documented general precedence; shown order is deterministic display order.', 'Session /instructions toggles, enterprise policy, saved tool permissions, plugin contents and ignoredSkillsLocations are not inferred.', 'Additional customization directories retain unresolved declarations and mark discovery incomplete.', 'Fourteen repository-overridable settings have native merge/type comparisons. Other personal settings retain declared values with partial schema coverage.', 'Conflicting same-scope Copilot/Claude settings and workspace MCP file ties remain conditional.'],
 };
 async function discover(ctx: Context): Promise<Source[]> {
   if (ctx.options.user !== false) {
@@ -23,8 +25,13 @@ export const copilot = adapter(copilotMetadata, discover, async ctx => {
   const e = await base(copilotMetadata, ctx);
   const state = ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'config.json'));
   const userSettings = ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'settings.json'));
-  if (state) decision(e, state, 'ignored', 'config.json contains internal state; user settings belong in settings.json in 1.0.109.');
-  if (userSettings) settings(e, userSettings, 'active');
+  if (state) decision(e, state, 'ignored', 'config.json contains internal state; user settings belong in settings.json in 1.0.110.');
+  const directory = await realpath(ctx.directory);
+  const trustedFolders = state?.data.trustedFolders ?? state?.data.trusted_folders;
+  const trusted = ctx.options.trust === 'trusted' || ctx.options.trust !== 'untrusted' && !state?.invalid && Array.isArray(trustedFolders) && trustedFolders.some((folder: unknown) => typeof folder === 'string' && (within(folder, ctx.directory) || within(folder, directory)));
+  const status: Status = trusted ? 'active' : ctx.options.trust === 'untrusted' ? 'ignored' : 'conditional';
+  if (userSettings) copilotSettings(e, userSettings, status);
+  copilotRepositorySettings(e, ctx, status);
   const seen = new Map<string, Source>();
   const apply = async (s: Source, include: boolean) => {
     const content = s.body.trim();
@@ -47,23 +54,40 @@ export const copilot = adapter(copilotMetadata, discover, async ctx => {
     if (matches(slash(path.relative(ctx.repo, ctx.target)), patterns)) addInstruction(e, s, 'applyTo glob matches the opened target; excludeAgent does not disable CLI instructions.');
     else decision(e, s, 'ignored', 'applyTo does not match the target file.');
   }
+  const sharedRuleRoots = [ctx.repo, ctx.directory].map(directory => path.join(directory, '.claude/rules'));
+  for (const source of ctx.sources.filter(source => source.kind === 'rules' && sharedRuleRoots.some(root => within(root, source.path))).sort((a, b) => cmp(a.path, b.path))) {
+    const patterns = pathPatterns(e, source, 'paths');
+    if (patterns === null || matches(slash(path.relative(ctx.repo, ctx.target)), patterns)) addInstruction(e, source, patterns ? 'Claude paths metadata maps to Copilot applyTo and matches the opened target.' : 'Unconditional Claude rule discovered by Copilot at the repository root or current directory.');
+    else decision(e, source, 'ignored', 'The shared rule paths do not match the target file.');
+  }
   const userMcp = ctx.sources.find(s => s.path === path.join(ctx.copilotHome, 'mcp-config.json'));
   if (userMcp) { decision(e, userMcp, 'active', 'Personal MCP configuration.'); mcp(e, userMcp, userMcp.data.mcpServers, 'mcpServers', 'active'); }
-  const trusted = ctx.options.trust === 'trusted' || ctx.options.trust !== 'untrusted' && Array.isArray(state?.data.trusted_folders) && state.data.trusted_folders.some((d: unknown) => typeof d === 'string' && within(d, ctx.directory));
-  const status: Status = trusted ? 'active' : ctx.options.trust === 'untrusted' ? 'ignored' : 'conditional';
   for (const d of ctx.dirs) {
     const files = ['.mcp.json', '.github/mcp.json'].map(n => ctx.sources.find(s => s.path === path.join(d, n))).filter((s): s is Source => !!s);
     for (const s of files) { decision(e, s, status, 'Workspace MCP loads from cwd to Git root, after workspace trust; closer definitions win.'); mcp(e, s, s.data.mcpServers, 'mcpServers', status); }
     if (files.length === 2 && plainObject(files[0].data.mcpServers) && plainObject(files[1].data.mcpServers)) {
       const names = Object.keys(files[0].data.mcpServers ?? {}).filter(n => n in (files[1].data.mcpServers ?? {}));
       for (const n of names) {
-        e.extensions.filter(x => x.kind === 'mcp' && x.name === n && files.some(s => s.path === x.location.path)).forEach(x => { x.status = 'conditional'; x.reason = 'Same-directory workspace source tie; authoritative ordering is not documented.'; });
+        e.extensions.filter(x => x.kind === 'mcp' && x.name === n && ['active', 'conditional'].includes(x.status) && files.some(s => s.path === x.location.path)).forEach(x => { x.status = 'conditional'; x.reason = 'Same-directory workspace source tie; authoritative ordering is not documented.'; });
         e.findings.push(finding('copilot.mcp-tie', 'warn', locate(files[0], `mcpServers.${n}`), `MCP server "${n}" has two same-directory workspace definitions.`, 'The official contract defines workspace priority, but not the tie between these two files.', 'Keep the server in one workspace file.', 'copilot', [locate(files[1], `mcpServers.${n}`)]));
       }
     }
   }
   for (const s of ctx.sources.filter(s => s.kind === 'hooks' && s.owners.includes('copilot') && (s.scope === 'user' || within(path.join(ctx.repo, '.github/hooks'), s.path)))) { decision(e, s, 'active', 'User or repository hook definitions.'); if (s.data.version !== 1) e.findings.push(finding('hook.version', 'error', locate(s, 'version'), 'Copilot hook configuration requires version: 1.', 'The hook loader expects schema version 1.', 'Set version to the numeric value 1.', 'copilot')); else hooks(e, s, s.data.hooks, 'active'); }
   await skills(e, ctx, [path.join(ctx.directory, '.github/skills'), path.join(ctx.directory, '.agents/skills'), path.join(ctx.directory, '.claude/skills'), ...ctx.dirs.slice(0, -1).reverse().map(d => path.join(d, '.github/skills')), ...(ctx.options.user !== false ? [path.join(ctx.copilotHome, 'skills'), path.join(ctx.home, '.agents/skills')] : [])], 'first');
-  e.notes.push('Instruction order is stable display order, not an asserted model precedence. Copilot combines applicable files.', 'This report targets Copilot CLI 1.0.109; the 4,000-character code-review limit does not apply to CLI.', 'Workspace trust and enterprise allowlists can restrict MCP servers; session state and remote policies are not inspected.');
+  const disabledServers = effectiveValue(e, 'disabledMcpServers', []) as string[];
+  const disabledSkills = new Set((effectiveValue(e, 'disabledSkills', []) as string[]).map(name => name.toLowerCase()));
+  const hookDisableUnknown = e.settings.some(setting => setting.key === 'disableAllHooks' && setting.status === 'conditional');
+  for (const extension of e.extensions) {
+    if (extension.kind === 'hook' && hookDisableUnknown && extension.status === 'active') { extension.status = 'conditional'; extension.reason = 'Conflicting shared settings leave disableAllHooks unresolved.'; continue; }
+    const setting = extension.kind === 'mcp' && disabledServers.includes(extension.name) ? 'disabledMcpServers'
+      : extension.kind === 'skill' && disabledSkills.has(extension.name.toLowerCase()) ? 'disabledSkills'
+      : extension.kind === 'hook' && effectiveValue(e, 'disableAllHooks') === true ? 'disableAllHooks' : null;
+    if (setting && ['active', 'conditional'].includes(extension.status)) {
+      extension.status = 'ignored'; extension.reason = `Disabled by the effective Copilot ${setting} setting.`;
+      if (extension.kind === 'skill') for (const source of e.decisions) if (source.kind === 'skill' && source.path === extension.location.path) { source.status = 'ignored'; source.reason = extension.reason; }
+    }
+  }
+  e.notes.push('Instruction order is stable display order, not an asserted model precedence. Copilot combines applicable files.', 'This report targets Copilot CLI 1.0.110; the 4,000-character code-review limit does not apply to CLI.', 'Workspace trust and enterprise allowlists can restrict MCP servers; session state and remote policies are not inspected.');
   return finish(e, ctx);
 });

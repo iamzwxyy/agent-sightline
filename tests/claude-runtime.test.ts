@@ -38,6 +38,25 @@ test('the MCP conformance checks use the pinned Claude binary', async t => {
   assert.equal(execFileSync(runtime, ['--version'], { env: isolatedEnvironment(w.home), encoding: 'utf8' }).trim(), claudeMetadata.ruleVersion + ' (Claude Code)');
 });
 
+test('Claude native settings keep strict JSON when Copilot accepts a shared JSONC source', async t => {
+  const w = await workspace({ '.mcp.json': '{"mcpServers":{"fixture":{"type":"http","url":"https://example.invalid/mcp"}}}', '.claude/settings.json': '{}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  for (const content of ['{"disabledMcpjsonServers":["fixture"]}', '{// comment\n"disabledMcpjsonServers":["fixture"],}']) {
+    await writeFile(path.join(w.repo, '.claude/settings.json'), content);
+    const native = readServer(w.repo, isolatedEnvironment(w.home));
+    const report = await scan({ ...w, user: false, clients: ['claude'] });
+    assert.equal(native.status, 0);
+    if (content.includes('//')) {
+      assert.match(native.text, /Pending approval/);
+      assert.ok(report.findings.some(finding => finding.ruleId === 'parse.json' && finding.client === 'claude'));
+      assert.equal(report.clients[0].extensions.find(extension => extension.name === 'fixture')?.status, 'conditional');
+    } else {
+      assert.match(native.text, /Rejected/);
+      assert.equal(report.clients[0].extensions.find(extension => extension.name === 'fixture')?.status, 'ignored');
+    }
+  }
+});
+
 test('Claude native MCP transport parsing agrees with Sightline in isolated project configurations', { timeout: 30000 }, async t => {
   const w = await workspace({ '.mcp.json': '{}' });
   t.after(() => rm(w.root, { recursive: true, force: true }));

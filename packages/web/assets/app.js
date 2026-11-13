@@ -460,7 +460,7 @@
     const origins = node('div', undefined, 'setting-origins');
     origins.append(node('h3', 'Selected definition'), button(`${short(setting.location.path)} · line ${setting.location.line}`, () => inspectSourceLocation(setting.location, client), 'source-link'));
     if (setting.overrides.length) {
-      origins.append(node('h3', 'Replaces these definitions'));
+      origins.append(node('h3', 'Earlier definitions'));
       setting.overrides.forEach(location => origins.append(button(`${short(location.path)} · line ${location.line}`, () => inspectSourceLocation(location, client), 'source-link')));
     }
     content.append(origins);
@@ -576,7 +576,13 @@
       if (client === 'claude' && ['http', 'streamable-http', 'sse', 'ws'].includes(extension.config.type)) return extension.config.url || 'No endpoint configured';
       return extension.config.command ?? extension.config.url ?? 'Invalid definition';
     }
-    if (extension.kind === 'hook') return extension.config.command ?? extension.config.bash ?? extension.config.powershell ?? extension.config.type ?? 'Hook';
+    if (extension.kind === 'hook') {
+      if (extension.config.type === 'http') return extension.config.url ?? 'HTTP hook';
+      if (extension.config.type === 'prompt') return extension.config.prompt ?? 'Prompt hook';
+      const selected = extension.location.key?.split('.').at(-1);
+      if (['command', 'commandWindows', 'command_windows', 'bash', 'powershell', 'exec'].includes(selected)) return extension.config[selected];
+      return extension.config.exec ?? extension.config.command ?? extension.config.bash ?? extension.config.powershell ?? extension.config.type ?? 'Hook';
+    }
     if (extension.kind === 'permission') return extension.config.action;
     return extension.config.description ?? 'No description';
   }

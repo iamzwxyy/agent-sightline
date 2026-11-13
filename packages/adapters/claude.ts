@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { AdapterMetadata, Context, Source } from '../core/types.js';
 import { readUserTree } from '../core/discovery.js';
+import { parseSource } from '../core/parse.js';
 import { finding, locate, matches, slash, within } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, effectiveValue, expand, finish, hooks, mcp, pathPatterns, permissions, rootOf, settings, skills } from './common.js';
 
@@ -26,7 +27,12 @@ async function discover(ctx: Context): Promise<Source[]> {
 export const claude = adapter(claudeMetadata, discover, async ctx => {
   const e = await base(claudeMetadata, ctx);
   const user = ctx.sources.find(s => s.path === path.join(ctx.claudeHome, 'settings.json'));
-  const layers = [user, ctx.sources.find(s => s.path === path.join(ctx.repo, '.claude/settings.json')), ctx.sources.find(s => s.path === path.join(ctx.repo, '.claude/settings.local.json')), ...ctx.sources.filter(s => s.scope === 'system' && s.owners.includes('claude') && s.kind === 'settings')].filter((s): s is Source => !!s);
+  const layers = [user, ctx.sources.find(s => s.path === path.join(ctx.repo, '.claude/settings.json')), ctx.sources.find(s => s.path === path.join(ctx.repo, '.claude/settings.local.json')), ...ctx.sources.filter(s => s.scope === 'system' && s.owners.includes('claude') && s.kind === 'settings')].filter((s): s is Source => !!s).map(source => {
+    if (source.invalid || !source.owners.includes('copilot')) return source;
+    const strict: Source = { ...source, owners: ['claude'], lines: {}, valueRanges: [] };
+    e.findings.push(...parseSource(strict).map(finding => ({ ...finding, client: 'claude' as const })));
+    return strict;
+  });
   for (const s of layers) {
     const excluded = ctx.options.trust !== 'trusted' && s.scope !== 'user' && s.scope !== 'system' ? ['enableAllProjectMcpServers', 'enabledMcpjsonServers'] : [];
     const data = Object.fromEntries(Object.entries(s.data).filter(([key]) => !excluded.includes(key)));
