@@ -112,7 +112,7 @@ try {
   execFileSync(process.execPath, [cli, ...comparisonArgs, '--format', 'html', '--output', comparisonFile]);
   const comparisonHtml = readFileSync(comparisonFile, 'utf8');
   const comparisonSnapshot = JSON.parse(comparisonHtml.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)[1]);
-  if (!comparisonSnapshot.instructionDiff.every(block => block.origins.every(origin => origin.location.path.startsWith('<repo>/'))) || comparisonHtml.includes(JSON.stringify(realpathSync(comparisonRepo)).slice(1, -1))) throw new Error('Installed paragraph export lost portable origins.');
+  if (!comparisonSnapshot.instructionDiff.every(block => block.origins.every(origin => origin.location.path.replaceAll('\\', '/').startsWith('<repo>/'))) || comparisonHtml.includes(JSON.stringify(realpathSync(comparisonRepo)).slice(1, -1))) throw new Error('Installed paragraph export lost portable origins.');
   const permissionRepo = path.join(temp, 'permission-repository');
   mkdirSync(path.join(permissionRepo, '.claude'), { recursive: true });
   writeFileSync(path.join(permissionRepo, '.claude/settings.json'), JSON.stringify({ permissions: { allow: ['Bash(fixture)', 'Read'], ask: ['Bash'] } }));

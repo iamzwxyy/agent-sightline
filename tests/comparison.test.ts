@@ -36,7 +36,17 @@ test('instruction comparison finds shared paragraphs inside different files with
   assert.ok(output.includes(path.join(w.repo, 'AGENTS.md') + ':3'));
   assert.deepEqual(JSON.parse(json(report)).instructionDiff, report.instructionDiff);
   const exported = portable(report);
-  assert.ok(exported.instructionDiff?.every(block => block.origins.every(origin => origin.location.path.startsWith('<repo>/'))));
+  assert.ok(exported.instructionDiff?.every(block => block.origins.every(origin => origin.location.path.replaceAll('\\', '/').startsWith('<repo>/'))));
+  const windowsRoot = 'C:\\fixture\\repo';
+  const windows = portable({
+    schemaVersion: '1.0', tool: report.tool, repository: windowsRoot, target: windowsRoot, sessionDirectory: windowsRoot,
+    assumptions: [], sources: [], clients: [], findings: [], diff: [],
+    instructionDiff: [{ content: shared.content, clients: shared.clients, origins: [{
+      ...shared.origins[0], location: { path: windowsRoot + '\\AGENTS.md', line: 3, column: 1 },
+    }] }],
+  });
+  assert.equal(windows.instructionDiff?.[0].origins[0].location.path, '<repo>\\AGENTS.md');
+  assert.equal(windows.instructionDiff?.[0].origins[0].endLine, 4);
   assert.ok(!html(report).includes(JSON.stringify(w.repo).slice(1, -1)));
   assert.deepEqual(report, await scan({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' }));
 });

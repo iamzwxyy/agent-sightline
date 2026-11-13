@@ -26,7 +26,7 @@ test('CLI diff groups shared paragraphs across different files and exports origi
   assert.equal(exported.status, 0, exported.stderr);
   const content = await readFile(file, 'utf8');
   const snapshot = JSON.parse(content.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
-  assert.ok(snapshot.instructionDiff.every((block: any) => block.origins.every((origin: any) => origin.location.path.startsWith('<repo>/'))));
+  assert.ok(snapshot.instructionDiff.every((block: any) => block.origins.every((origin: any) => origin.location.path.replaceAll('\\', '/').startsWith('<repo>/'))));
 });
 test('CLI explains ask precedence, trust conditions and the original rule sources through correction', async t => {
   const content = JSON.stringify({ permissions: { allow: ['Bash(npm test)', 'Read'], ask: ['Bash'] } }, null, 2);
