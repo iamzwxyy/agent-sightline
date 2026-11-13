@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.8 — 2026-11-13
+
+* Redact parsed JSON/JSONC, TOML and YAML/frontmatter values before building source previews, including escaped quotes, Unicode escapes, folded blocks and aliases.
+* Preserve source line endings and line counts when masking multiline values, labelled credentials and private-key blocks. Redacted values use quoted placeholders with line padding.
+* Mask non-string environment/header values and flattened private mapping settings using their parsed source key paths. Literal dotted keys and hook-state identifiers retain their public values.
+* Capture private values from earlier duplicate definitions and credential-key aliases, including passwd and private_key. Redact literal defaults inside private environment references.
+* Reuse a literal matcher per scan and match longer captured values first. Parser value ranges remain internal to the scanner.
+* Verify encoded previews, source navigation and portable exports through CLI, browser and installed-package workflows.
+
 ## 0.2.7 — 2026-11-13
 
 * Resolve Codex Windows commandWindows and TOML command_windows overrides through the same field selection used by executable checks and source navigation. Validate override types and duplicate aliases.

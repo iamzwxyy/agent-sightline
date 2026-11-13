@@ -12,6 +12,7 @@ export function failed(report: Report, failOn: Severity | 'none'): boolean {
   return failOn !== 'none' && filter(report, failOn).findings.length > 0;
 }
 export function terminal(report: Report, mode = 'scan'): string {
+  report = redact(report);
   const grouped = new Map<string, { item: Finding; clients: string[] }>();
   for (const finding of report.findings) {
     const key = JSON.stringify([finding.ruleId, finding.severity, finding.message, finding.location, finding.why, finding.suggestion, finding.related]);

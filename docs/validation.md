@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.2.8
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 140-case core suite completed with 139 passes and one Windows-only skip. The pinned Codex version check and twenty native configuration comparisons remain included.
+* Synthetic fixtures reproduced escaped environment values in JSON/TOML previews, folded YAML values and reduced source line counts after multiline redaction. Parser value ranges now drive preview redaction, followed by captured-value and credential-text redaction. These ranges and their decoded values are excluded from public reports.
+* Cases cover JSON/JSONC comments and Unicode escapes, escaped quotes, TOML multiline values and continuations, YAML folded blocks and aliases, private reference defaults, LF/CRLF, numeric/boolean/null mapping values, copied credential-key aliases and earlier duplicate definitions. Parsed key-path checks preserve literal dotted keys and hook-state identifiers containing env segments.
+* All twenty-four Chromium browser cases passed. The new case verifies redacted JSON previews, original TOML line counts, finding-to-command navigation and absence of private sentinels and internal ranges in both live and portable reports. The source view was visually inspected.
+* Installed-package smoke and normal CLI exports verify encoded-value privacy and the exact hook line following a multiline value. Terminal rendering applies object redaction before formatting. Production dependency audit reported zero vulnerabilities. Thirteen previously published archives retained their recorded SHA-256 values.
+
 ## v0.2.7
 
 Verified locally on macOS on 2026-11-13.

@@ -2,7 +2,7 @@ import { adapters } from '../adapters/index.js';
 import { finish } from '../adapters/common.js';
 import { discoverRepository, makeContext, selectedClients } from './discovery.js';
 import { diagnose } from './diagnostics.js';
-import { redact, redactScanReport } from './redact.js';
+import { createRedactor, isSensitiveKey, privateMappings, redactScanReport, redactSourcePreview } from './redact.js';
 import { collectPathMappings } from './paths.js';
 import { cmp } from './utils.js';
 import { VERSION } from './version.js';
@@ -10,15 +10,23 @@ import type { Context, Effective, Report, ScanOptions } from './types.js';
 export type * from './types.js';
 export { adapters } from '../adapters/index.js';
 
-function envValues(ctx: Context): string[] {
+function privateData(ctx: Context): { values: string[]; settings: Set<string> } {
   const values = new Set<string>();
-  const walk = (v: unknown, sensitive = false) => {
-    if (typeof v === 'string') { if (sensitive) values.add(v); return; }
-    if (!v || typeof v !== 'object') return;
-    for (const [key, value] of Object.entries(v)) walk(value, sensitive || ['env', 'headers', 'http_headers'].includes(key) || /secret|token|password|api[_-]?key|cookie|authorization|credential/i.test(key));
-  };
-  for (const s of ctx.sources) walk(s.data);
-  return [...values].filter(v => v && !v.startsWith('${'));
+  const settings = new Set<string>();
+  for (const source of ctx.sources) {
+    const walk = (value: unknown, sensitive = false, mapping = false, keys?: string[]): void => {
+      if (mapping && keys) settings.add(source.path + '\0' + keys.join('.'));
+      if (typeof value === 'string') { if (sensitive) values.add(value); return; }
+      if (!value || typeof value !== 'object') return;
+      for (const [key, child] of Object.entries(value)) {
+        const privateMapping = mapping || privateMappings.has(key);
+        walk(child, sensitive || privateMapping || isSensitiveKey(key), privateMapping, keys ? [...keys, key] : undefined);
+      }
+    };
+    walk(source.data, false, false, []);
+    for (const range of source.valueRanges ?? []) if (range.private) walk(range.value, true);
+  }
+  return { values: [...values].filter(value => value && !/^\$\{(?:env:)?[A-Za-z_][\w]*\}$/.test(value)), settings };
 }
 export async function scan(options: ScanOptions & { probe?: boolean } = {}): Promise<Report> {
   options.signal?.throwIfAborted();
@@ -52,6 +60,8 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
     if (!entry.sources.some(x => x.path === d.path && x.line === d.line)) entry.sources.push({ path: d.path, line: d.line, column: 1 });
     diff.set(key, entry);
   }
+  const privateValues = privateData(ctx);
+  const scrub = createRedactor(privateValues.values);
   const report: Report = {
     schemaVersion: '1.0', tool: { name: 'Agent Sightline', version: VERSION }, repository: ctx.repo, target: ctx.target, sessionDirectory: ctx.directory,
     ...(options.codexProfile ? { inputs: { codexProfile: options.codexProfile } } : {}),
@@ -62,15 +72,14 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
       // Syntax errors can discard private values during parsing, including overwritten duplicate keys.
       // Account/session state files only expose the parsed fields used by adapters.
       const privateState = /[/\\]\.claude\.json$/.test(path) || source.scope === 'user' && source.owners.includes('copilot') && /[/\\]config\.json$/.test(path);
-      return { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid, ...(privateState || invalid ? {} : { preview: source.text }) };
+      return { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid, ...(privateState || invalid ? {} : { preview: redactSourcePreview(source, scrub) }) };
     }),
     clients, findings: unique, diff: [...diff.values()],
   };
-  const privateValues = envValues(ctx);
-  const result = redactScanReport(report, privateValues);
+  const result = redactScanReport(report, scrub, privateValues.settings);
   const configuration = [result.clients, result.findings];
   result.pathMappings = (await collectPathMappings(ctx, configuration)).map(mapping => ({
-    path: redact(mapping.path, privateValues), replacement: redact(mapping.replacement, privateValues),
+    path: scrub(mapping.path), replacement: scrub(mapping.replacement),
   }));
   return result;
 }

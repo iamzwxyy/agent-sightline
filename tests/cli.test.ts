@@ -7,6 +7,28 @@ import { mkdir, readFile, readdir, realpath, rm, watch, writeFile } from 'node:f
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
+test('CLI exports redact encoded source values and keep downstream hook diagnostics on the original line', async t => {
+  const toml = '[mcp_servers.fixture]\ncommand="node"\n[mcp_servers.fixture.env]\nNORMAL="""\ncli-multiline-confidential-first\ncli-multiline-confidential-last"""\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="missing-preview-hook-fixture"\n';
+  const w = await workspace({ '.codex/config.toml': toml, '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { NORMAL: 'cli-escaped-confidential-"value' } } } }) });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const flags = ['--no-user', '--trust', 'trusted', '--clients', 'codex,claude'];
+  const result = run(['ci', ...flags], w.repo);
+  assert.equal(result.status, 1, result.stderr);
+  const report = JSON.parse(result.stdout);
+  const finding = report.findings.find((finding: any) => finding.ruleId === 'hook.command-missing');
+  assert.equal(finding.location.line, 10);
+  const source = report.sources.find((source: any) => source.relativePath === '.codex/config.toml');
+  assert.equal(source.preview.split('\n').length, toml.split('\n').length);
+  assert.ok(source.preview.split('\n')[finding.location.line - 1].includes('missing-preview-hook-fixture'));
+  const output = path.join(w.root, 'encoded-preview.html');
+  const exported = run(['report', ...flags, '--format', 'html', '--output', output], w.repo);
+  assert.equal(exported.status, 0, exported.stderr);
+  for (const text of [result.stdout, await readFile(output, 'utf8')]) {
+    assert.ok(!text.includes('cli-multiline-confidential-'));
+    assert.ok(!text.includes('cli-escaped-confidential-'));
+    assert.ok(!text.includes('valueRanges'));
+  }
+});
 test('CLI explains platform-specific Codex hook commands with exact source lines and supported MCP handlers', async t => {
   const w = await workspace({ '.codex/config.toml': '[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="missing-posix-hook-fixture"\ncommand_windows="missing-windows-hook-fixture"\n[[hooks.PreModelRequest]]\n[[hooks.PreModelRequest.hooks]]\ntype="mcp_tool"\nserver="fixture"\ntool="inspect"\n' });
   t.after(() => rm(w.root, { recursive: true, force: true }));

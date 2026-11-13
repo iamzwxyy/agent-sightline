@@ -43,6 +43,16 @@ try {
   const missingHook = hookReport.findings.filter(finding => finding.ruleId === 'hook.command-missing');
   if (missingHook.length !== 1 || missingHook[0].location.line !== (process.platform === 'win32' ? 5 : 4) || hookReport.findings.some(finding => finding.ruleId === 'hook.unknown-event' || finding.ruleId === 'hook.unsupported-type')) throw new Error('Installed Codex hook command or source-line resolution failed.');
   if (hookReport.clients[0].extensions.find(hook => hook.config.type === 'mcp_tool')?.status !== 'conditional' || hookReport.clients[0].extensions.find(hook => hook.config.type === 'prompt')?.status !== 'ignored') throw new Error('Installed Codex hook handler states failed.');
+  const previewRepo = path.join(temp, 'preview-repository'); mkdirSync(path.join(previewRepo, '.codex'), { recursive: true });
+  const previewToml = '[mcp_servers.fixture]\ncommand="node"\n[mcp_servers.fixture.env]\nNORMAL="""\ninstalled-multiline-confidential-first\ninstalled-multiline-confidential-last"""\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="missing-preview-hook-fixture"\n';
+  writeFileSync(path.join(previewRepo, '.codex/config.toml'), previewToml);
+  writeFileSync(path.join(previewRepo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, env: { NORMAL: 'installed-escaped-confidential-"value' } } } }));
+  const previewOutput = execFileSync(process.execPath, [cli, '--repo', previewRepo, '--no-user', '--trust', 'trusted', '--clients', 'codex,claude', '--json'], { encoding: 'utf8' });
+  const previewReport = JSON.parse(previewOutput);
+  const tomlPreview = previewReport.sources.find(source => source.relativePath === '.codex/config.toml').preview;
+  const previewFinding = previewReport.findings.find(finding => finding.ruleId === 'hook.command-missing');
+  if (previewOutput.includes('installed-multiline-confidential-') || previewOutput.includes('installed-escaped-confidential-') || previewOutput.includes('valueRanges')) throw new Error('Installed encoded-source privacy failed.');
+  if (previewFinding?.location.line !== 10 || tomlPreview.split('\n').length !== previewToml.split('\n').length || !tomlPreview.split('\n')[9].includes('missing-preview-hook-fixture')) throw new Error('Installed preview source lines changed during redaction.');
   const alias = path.join(temp, 'repository-alias');
   symlinkSync(repo, alias, process.platform === 'win32' ? 'junction' : 'dir');
   writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, cwd: alias, args: ['--root=' + alias] } } }));

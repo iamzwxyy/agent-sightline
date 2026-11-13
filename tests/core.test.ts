@@ -4,7 +4,7 @@ import path from 'node:path';
 import { chmod, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { parseSource } from '../packages/core/parse.js';
-import { redact, redactText } from '../packages/core/redact.js';
+import { createRedactor, redact, redactText } from '../packages/core/redact.js';
 import { bytes, matches, prefix, slash, splitGlobs } from '../packages/core/utils.js';
 import type { Source } from '../packages/core/types.js';
 import { workspace } from './helpers.js';
@@ -111,6 +111,25 @@ test('redaction removes arbitrary env/header values and secrets from every publi
   const r = await scan({ ...w, clients: ['claude'], trust: 'trusted' }); const text = JSON.stringify(r); assert.ok(!text.includes(secret)); assert.ok(!text.includes('private-header')); assert.ok(text.includes('REDACTED'));
   assert.ok(!redactText('token=abc123\nAuthorization: Bearer xyz\nsk-proj-abcdefghijklmnop').includes('abc123'));
   assert.equal(redact({ config: { env: { FOO: 'bar' } } }).config.env.FOO, '[REDACTED]');
+});
+test('text redaction preserves line endings and matches overlapping private values literally', () => {
+  for (const newline of ['\n', '\r\n']) {
+    const privateValue = 'literal.*[private]' + newline + 'second-private-line';
+    const scrub = createRedactor(['literal.*[private]', privateValue]);
+    const text = 'Before' + newline + privateValue + newline + 'After';
+    const output = scrub(text);
+    assert.equal(output, 'Before' + newline + '[REDACTED]' + newline + newline + 'After');
+    assert.equal(scrub(text), output);
+    const key = 'Before' + newline + '-----BEGIN PRIVATE KEY-----' + newline + 'private-key-material' + newline + '-----END PRIVATE KEY-----' + newline + 'After';
+    const redacted = redactText(key);
+    assert.equal(redacted.split('\n').length, key.split('\n').length);
+    assert.ok(!redacted.includes('private-key-material'));
+    for (const label of ['password', 'private_key']) {
+      const assignment = label + '="first-private' + newline + 'last-private"' + newline + 'next=value';
+      assert.equal(redactText(assignment).split('\n').length, assignment.split('\n').length);
+      assert.ok(!redactText(assignment).includes('last-private'));
+    }
+  }
 });
 test('Claude default AGENTS fallback and explicit instruction mode', async t => {
   const w = await workspace({ 'AGENTS.md': 'shared', '.claude/rules/a.md': 'rule' }); t.after(() => rm(w.root, { recursive: true, force: true }));

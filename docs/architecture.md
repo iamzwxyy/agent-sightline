@@ -17,6 +17,8 @@ flowchart TD
 
 `core/discovery.ts` reads known filenames and documented user paths. It caches each logical source path, catches access failures and compares canonical paths for symlink bounds. `parse.ts` retains line maps and refuses duplicate/invalid structured data. Instructions are raw Markdown except rule/skill frontmatter.
 
+Structured parsers retain internal value ranges and decoded literals. JSON/JSONC and YAML traverse their syntax trees, while TOML reuses its statement scanner for literal ranges and private assignments. Source previews replace private values at those ranges before applying shared captured-value and credential-text redaction. Quoted placeholders and line padding preserve source line counts. Public reports exclude the ranges and their decoded values. Private flattened settings are identified from actual parsed key paths and owning files, preserving literal dotted keys and hook-state identifiers.
+
 An implicit scan finds the nearest ancestor `.git` file or directory, retaining the startup working directory as the target base. Explicit repository selections provide the boundary and target base. The browser resolves and pins its filesystem paths before scanning, so redacted report paths remain presentation data and target navigation stays repository-relative.
 
 Repository enumeration records its actual entry count and budget. Each user rule or skill root counts its own matching files independently of repository sources. Traversal handles deep directories with canonical-path cycle detection and configurable discovery budgets. The additive `discovery` report metadata records whether locations or source contents were skipped by limits or access restrictions. Severity filtering retains that operational status.

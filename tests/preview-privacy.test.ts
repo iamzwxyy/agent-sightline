@@ -8,6 +8,107 @@ import { html, json, portable, terminal } from '../packages/reporter/index.js';
 import { adapters } from '../packages/adapters/index.js';
 import { VERSION } from '../packages/core/version.js';
 
+test('parsed source values redact escaped and multiline secrets while preserving source lines', async t => {
+  const cases = [
+    { file: '.mcp.json', text: String.raw`{
+  "mcpServers": {"fixture": {
+    "env": {"NORMAL": "json-quote-private-\"value"},
+    "args": ["json-quote-private-\"value"],
+    "command": "missing-preview-fixture"
+  }}
+}`, fragments: ['json-quote-private-'], command: '"command"' },
+    { file: '.mcp.json', text: String.raw`{
+  "mcpServers": {"fixture": {
+    "\u0065nv": {"NORMAL": "json-unicode-private-\u0076alue"},
+    "args": ["json-unicode-private-value"],
+    "command": "missing-preview-fixture"
+  }}
+}`, fragments: ['json-unicode-private-'], command: '"command"' },
+    { file: '.mcp.json', text: JSON.stringify({ mcpServers: { fixture: {
+      env: { NORMAL: '${SIGHTLINE_SOURCE_SECRET:-fallback-confidential-value}' },
+      args: ['${SIGHTLINE_SOURCE_SECRET:-fallback-confidential-value}'], command: 'missing-preview-fixture',
+    } } }, null, 2), fragments: ['fallback-confidential-value'], command: '"command"' },
+    { file: 'opencode.jsonc', text: String.raw`{
+  // Source comments remain readable.
+  "env": {"NORMAL": "jsonc-escaped-private-\u0076alue",},
+  "headers": {"Custom": "header-escaped-private-\"value"},
+}`, fragments: ['jsonc-escaped-private-', 'header-escaped-private-'] },
+    { file: '.codex/config.toml', text: '[mcp_servers.fixture]\ncommand="missing-preview-fixture"\nargs=["toml-unicode-private-value"]\n[mcp_servers.fixture.env]\nNORMAL="toml-unicode-private-\\u0076alue"\n', fragments: ['toml-unicode-private-'], command: 'command=' },
+    { file: '.codex/config.toml', text: '[mcp_servers.fixture.env]\nNORMAL="""\ntoml-multiline-private-first\ntoml-multiline-private-last"""\n[mcp_servers.fixture]\ncommand="missing-preview-fixture"\n', fragments: ['toml-multiline-private-first', 'toml-multiline-private-last'], command: 'command=' },
+    { file: '.codex/config.toml', text: '[mcp_servers.fixture.env]\nNORMAL="""toml-continued-private-\\\n  value"""\n[mcp_servers.fixture]\ncommand="missing-preview-fixture"\n', fragments: ['toml-continued-private-'], command: 'command=' },
+    { file: '.claude/skills/check/SKILL.md', text: '---\nname: check\ndescription: Safe skill.\nenv:\n  NORMAL: >-\n    yaml-folded-private-first\n    yaml-folded-private-last\n---\nSafe skill body.', fragments: ['yaml-folded-private-first', 'yaml-folded-private-last'] },
+    { file: '.claude/skills/check/SKILL.md', text: '---\nname: check\ndescription: Safe skill.\nordinary: &value "yaml-alias-private-\\u0076alue"\nenv:\n  NORMAL: *value\n---\nSafe skill body.', fragments: ['yaml-alias-private-'] },
+  ];
+  for (const fixture of cases) for (const newline of ['\n', '\r\n']) {
+    const text = fixture.text.replaceAll('\n', newline);
+    const w = await workspace({ [fixture.file]: text });
+    t.after(() => rm(w.root, { recursive: true, force: true }));
+    const report = await scan({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+    const source = report.sources.find(source => source.relativePath === fixture.file)!;
+    assert.equal(source.invalid, false, fixture.file);
+    assert.ok(source.preview?.includes('[REDACTED]'), fixture.file);
+    assert.equal(source.preview?.split('\n').length, text.split('\n').length, fixture.file);
+    if (fixture.file.endsWith('.toml')) assert.ok(source.preview?.includes('NORMAL="[REDACTED]"'));
+    assert.ok(!('valueRanges' in source));
+    for (const output of [JSON.stringify(report), json(report), html(report), terminal(report, 'explain')]) {
+      for (const fragment of fixture.fragments) assert.ok(!output.includes(fragment), fixture.file + ' ' + fragment);
+    }
+    if (fixture.command) {
+      assert.ok(report.findings.some(finding => finding.ruleId === 'mcp.command-missing'));
+      const commandLine = text.split('\n').findIndex(line => line.includes(fixture.command));
+      assert.ok(source.preview?.split('\n')[commandLine].includes(fixture.command));
+    }
+  }
+});
+
+test('earlier duplicate private values remain redacted when copied into other instruction sources', async t => {
+  const secret = 'discarded-value-copied-private-sentinel';
+  const w = await workspace({
+    '.mcp.json': '{"mcpServers":{"fixture":{"env":{"NORMAL":"' + secret + '","NORMAL":"later-value"}}}}',
+    'CLAUDE.md': 'Copied value ' + secret,
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['claude'] });
+  assert.ok(report.sources.find(source => source.relativePath === '.mcp.json')?.invalid);
+  for (const text of [JSON.stringify(report), json(report), html(report), terminal(report, 'explain')]) assert.ok(!text.includes(secret));
+});
+
+test('private settings follow parsed key paths while quoted keys retain their public values', async t => {
+  const w = await workspace({
+    '.claude/settings.json': '{"env":{"NORMAL":987654321},"literal.env.field":"public-literal-value","child.env.OTHER":"public-opaque-value","private_key":{"child":{"env":{"OTHER":"range-object-private"}}}}',
+    '.codex/config.toml': '[hooks.state."fixture.env.value"]\nenabled=false\n',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  assert.equal(report.clients[0].settings.find(setting => setting.key === 'hooks.state.fixture.env.value.enabled')?.value, false);
+  assert.equal(report.clients[1].settings.find(setting => setting.key === 'literal.env.field')?.value, 'public-literal-value');
+  assert.equal(report.clients[1].settings.find(setting => setting.key === 'child.env.OTHER')?.value, 'public-opaque-value');
+  assert.equal(report.clients[1].settings.find(setting => setting.key === 'env.NORMAL')?.value, '[REDACTED]');
+  for (const output of [json(report), html(report), terminal(report, 'explain')]) assert.ok(!output.includes('987654321'));
+});
+
+test('private scalar types and sensitive-key aliases stay hidden in source previews and copied values', async t => {
+  const w = await workspace({ '.claude/settings.json': '{"env":{"NUMERIC":987654321,"FLAG":true}}', '.mcp.json': JSON.stringify({ mcpServers: { fixture: {
+    command: 'node', env: { PIN: 123456789, FLAG: true, EMPTY: null },
+    passwd: 'passwd-copied-private-sentinel', private_key: 'key-copied-private-sentinel',
+    args: ['passwd-copied-private-sentinel', 'key-copied-private-sentinel'],
+  } } }, null, 2) });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  const preview = report.sources.find(source => source.relativePath === '.mcp.json')!.preview!;
+  assert.ok(preview.includes('"PIN"'));
+  assert.ok(preview.includes('"FLAG"'));
+  assert.ok(preview.includes('"EMPTY"'));
+  assert.ok(!preview.includes('123456789'));
+  assert.ok(!preview.includes('true'));
+  assert.ok(report.clients[0].settings.filter(setting => setting.key.startsWith('env.')).every(setting => setting.value === '[REDACTED]'));
+  for (const output of [JSON.stringify(report), json(report), html(report)]) {
+    assert.ok(!output.includes('987654321'));
+    assert.ok(!output.includes('passwd-copied-private-sentinel'));
+    assert.ok(!output.includes('key-copied-private-sentinel'));
+  }
+});
+
 test('private values matching report identifiers preserve scan structure and redact configuration payloads', async t => {
   const values = ['codex', 'active', '1', 'parse.json', 'client', 'kind', 'schemaVersion', 'instructions', 'path', 'env', 'error', 'severity', 'ruleId', 'findings'];
   const env = Object.fromEntries(values.map((value, index) => [`VALUE_${index}`, value]));

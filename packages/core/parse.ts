@@ -1,7 +1,8 @@
 import { parseTree, getNodeValue, type Node, type ParseError, printParseErrorCode } from 'jsonc-parser';
 import { parse as toml } from 'smol-toml';
-import { parseDocument, LineCounter } from 'yaml';
+import { parseDocument, LineCounter, isMap, isNode, isScalar, isSeq } from 'yaml';
 import { finding, lineAt, plainObject } from './utils.js';
+import { isSensitiveKey, privateMappings } from './redact.js';
 import type { Finding, Source } from './types.js';
 
 const jsonErrorMessages: Record<string, string> = {
@@ -26,6 +27,42 @@ const jsonErrorMessages: Record<string, string> = {
 const tomlKeyPart = String.raw`[^\s."'\[\]#=]+|"(?:\\.|[^"\\])*"|'[^']*'`;
 const tomlAssignment = new RegExp(String.raw`^\s*((?:${tomlKeyPart})(?:\s*\.\s*(?:${tomlKeyPart}))*)\s*=`);
 
+type PrivacyMode = 'public' | 'mapping' | 'private';
+function propertyPrivacy(key: string): PrivacyMode {
+  if (privateMappings.has(key)) return 'mapping';
+  return isSensitiveKey(key) ? 'private' : 'public';
+}
+
+function jsonValues(node: Node, source: Source, privacy: PrivacyMode = 'public'): void {
+  if (privacy === 'private' || privacy === 'mapping' && node.type !== 'object') {
+    source.valueRanges!.push({ offset: node.offset, length: node.length, value: getNodeValue(node), private: true });
+  } else if (node.type === 'object') {
+    for (const property of node.children ?? []) {
+      const [key, value] = property.children ?? [];
+      if (key) jsonValues(key, source);
+      if (value) jsonValues(value, source, privacy === 'mapping' ? 'private' : propertyPrivacy(String(key?.value)));
+    }
+  } else if (node.type === 'array') {
+    for (const value of node.children ?? []) jsonValues(value, source);
+  } else if (node.type === 'string') source.valueRanges!.push({ offset: node.offset, length: node.length, value: node.value });
+}
+
+function yamlValues(node: unknown, source: Source, offset = 0, privacy: PrivacyMode = 'public'): void {
+  if (!isNode(node) || !node.range) return;
+  const range = { offset: offset + node.range[0], length: node.range[1] - node.range[0] };
+  if (privacy === 'private' || privacy === 'mapping' && !isMap(node)) {
+    source.valueRanges!.push({ ...range, value: isScalar(node) ? node.value : undefined, private: true });
+  } else if (isMap(node)) {
+    for (const pair of node.items) {
+      yamlValues(pair.key, source, offset);
+      const key = isScalar(pair.key) ? String(pair.key.value) : '';
+      yamlValues(pair.value, source, offset, privacy === 'mapping' ? 'private' : propertyPrivacy(key));
+    }
+  } else if (isSeq(node)) {
+    for (const value of node.items) yamlValues(value, source, offset);
+  } else if (isScalar(node) && typeof node.value === 'string') source.valueRanges!.push({ ...range, value: node.value });
+}
+
 function tomlKeyParts(text: string): string[] {
   const parts = text.match(new RegExp(tomlKeyPart, 'g')) ?? [];
   return parts.map(part => {
@@ -34,8 +71,9 @@ function tomlKeyParts(text: string): string[] {
   });
 }
 
-function* tomlStatements(text: string): Generator<{ text: string; line: number }> {
+function* tomlStatements(text: string, values: NonNullable<Source['valueRanges']>): Generator<{ text: string; line: number; offset: number }> {
   let start = 0, line = 1, firstLine = 1, depth = 0;
+  let literalStart = 0;
   let quote = '', comment = false;
   for (let index = 0; index < text.length; index++) {
     const char = text[index];
@@ -43,7 +81,8 @@ function* tomlStatements(text: string): Generator<{ text: string; line: number }
       line++;
       comment = false;
       if (!quote && depth === 0) {
-        yield { text: text.slice(start, index).trim(), line: firstLine };
+        const original = text.slice(start, index);
+        yield { text: original.trim(), line: firstLine, offset: start + original.length - original.trimStart().length };
         start = index + 1; firstLine = line;
       }
       continue;
@@ -57,24 +96,30 @@ function* tomlStatements(text: string): Generator<{ text: string; line: number }
         index += quote.length - 1;
         // TOML multiline strings can end with four or five quote characters.
         if (quote.length === 3) while (text[index + 1] === quote[0]) index++;
+        const original = text.slice(literalStart, index + 1);
+        values.push({ offset: literalStart, length: original.length, value: toml('value = ' + original).value });
         quote = '';
       }
       continue;
     }
     if (char === '#') comment = true;
     else if (char === '"' || char === "'") {
+      literalStart = index;
       quote = text.startsWith(char.repeat(3), index) ? char.repeat(3) : char;
       index += quote.length - 1;
     } else if (char === '[' || char === '{') depth++;
     else if (char === ']' || char === '}') depth--;
   }
-  if (start < text.length) yield { text: text.slice(start).trim(), line: firstLine };
+  if (start < text.length) {
+    const original = text.slice(start);
+    yield { text: original.trim(), line: firstLine, offset: start + original.length - original.trimStart().length };
+  }
 }
 
 function tomlLines(source: Source): void {
   const indices = new Map<string, number>();
   let section: string[] = [];
-  for (const statement of tomlStatements(source.text)) {
+  for (const statement of tomlStatements(source.text, source.valueRanges!)) {
     const header = statement.text.match(/^\[\[?(.+?)\]\]?\s*(?:#.*)?$/);
     if (header) {
       const parts = tomlKeyParts(header[1]);
@@ -93,7 +138,15 @@ function tomlLines(source: Source): void {
       source.lines[section.join('.')] = statement.line;
     } else {
       const assignment = statement.text.match(tomlAssignment);
-      if (assignment) source.lines[[...section, ...tomlKeyParts(assignment[1])].join('.')] = statement.line;
+      if (assignment) {
+        const keys = [...section, ...tomlKeyParts(assignment[1])];
+        source.lines[keys.join('.')] = statement.line;
+        const privateValue = keys.some((key, index) => isSensitiveKey(key) || index < keys.length - 1 && privateMappings.has(key));
+        if (privateValue) source.valueRanges!.push({
+          offset: statement.offset + assignment[0].length, length: statement.text.length - assignment[0].length,
+          value: keys.reduce<any>((value, key) => value?.[key], source.data), private: true,
+        });
+      }
     }
   }
 }
@@ -106,6 +159,7 @@ export function parseSource(s: Source): Finding[] {
   };
   if (!s.text.trim()) findings.push(finding('source.empty', 'info', { path: s.path, line: 1, column: 1 }, 'Empty configuration source.', 'It contributes no settings or instructions.', 'Add content or remove the unused file.'));
   if (s.kind === 'instructions') return findings;
+  s.valueRanges = [];
   let syntaxRule = 'parse.frontmatter';
   try {
     if (/\.jsonc?$/.test(s.path)) {
@@ -134,7 +188,7 @@ export function parseSource(s: Source): Finding[] {
           visit(x, elementKeys);
         });
       };
-      if (tree) { visit(tree, []); const v = getNodeValue(tree); if (!plainObject(v)) issue('parse.structure', 'Expected an object at the top level.'); else s.data = v; }
+      if (tree) { visit(tree, []); jsonValues(tree, s); const v = getNodeValue(tree); if (!plainObject(v)) issue('parse.structure', 'Expected an object at the top level.'); else s.data = v; }
     } else if (s.path.endsWith('.toml')) {
       syntaxRule = 'parse.toml';
       s.data = toml(s.text);
@@ -143,6 +197,7 @@ export function parseSource(s: Source): Finding[] {
       syntaxRule = 'parse.yaml';
       const lc = new LineCounter(); const doc = parseDocument(s.text, { uniqueKeys: true, lineCounter: lc });
       for (const e of doc.errors) issue(e.code === 'DUPLICATE_KEY' ? 'parse.duplicate-key' : 'parse.yaml', e.code, e.linePos?.[0].line ?? 1);
+      yamlValues(doc.contents, s);
       const v = doc.toJS(); if (!plainObject(v)) issue('parse.structure', 'Expected a YAML mapping.'); else s.data = v;
     } else {
       if (s.kind !== 'rules' && s.kind !== 'skill') return findings;
@@ -150,6 +205,7 @@ export function parseSource(s: Source): Finding[] {
       if (fm) {
         const doc = parseDocument(fm[1], { uniqueKeys: true });
         for (const e of doc.errors) issue(e.code === 'DUPLICATE_KEY' ? 'parse.duplicate-key' : 'parse.frontmatter', e.code, (e.linePos?.[0].line ?? 1) + 1);
+        yamlValues(doc.contents, s, fm[0].indexOf('\n') + 1);
         const v = doc.toJS(); if (v != null && !plainObject(v)) issue('parse.frontmatter', 'Frontmatter must be a mapping.', 2); else s.data = v ?? {};
         s.body = s.text.slice(fm[0].length); s.bodyLine = lineAt(s.text, fm[0].length);
         fm[1].split('\n').forEach((l, i) => { const m = l.match(/^([\w-]+):/); if (m) s.lines[m[1]] = i + 2; });

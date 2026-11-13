@@ -10,6 +10,43 @@ import AxeBuilder from '@axe-core/playwright';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('encoded private values stay hidden while live and portable previews retain source-line navigation', async ({ page }) => {
+  const toml = '[mcp_servers.fixture]\ncommand="node"\n[mcp_servers.fixture.env]\nNORMAL="""\nbrowser-multiline-confidential-first\nbrowser-multiline-confidential-last"""\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="missing-preview-hook-fixture"\n';
+  const json = JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { NORMAL: 'browser-escaped-confidential-"value' } } } }, null, 2);
+  const w = await workspace({ '.codex/config.toml': toml, '.mcp.json': json, 'CLAUDE.md': 'Visible project instructions.' });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    for (const offline of [false, true]) {
+      if (offline) {
+        const pending = page.waitForEvent('download');
+        await page.getByRole('button', { name: /Export report/ }).click();
+        const file = test.info().outputPath('encoded-private-preview.html');
+        await (await pending).saveAs(file);
+        const exported = await readFile(file, 'utf8');
+        expect(exported).not.toContain('browser-multiline-confidential-');
+        expect(exported).not.toContain('browser-escaped-confidential-');
+        await page.goto(pathToFileURL(file).href);
+      }
+      const serialized = await page.locator('#report-data').textContent() ?? '';
+      expect(serialized).not.toContain('browser-multiline-confidential-');
+      expect(serialized).not.toContain('browser-escaped-confidential-');
+      expect(serialized).not.toContain('valueRanges');
+      const report = JSON.parse(serialized);
+      const preview = report.sources.find((source: any) => source.relativePath === '.codex/config.toml').preview;
+      expect(preview.split('\n')).toHaveLength(toml.split('\n').length);
+      expect(JSON.parse(report.sources.find((source: any) => source.relativePath === '.mcp.json').preview).mcpServers.fixture.env.NORMAL).toBe('[REDACTED]');
+      await page.locator('#findings-tab').click();
+      await page.locator('#findings-list .finding').filter({ hasText: 'Hook command was not found or is not executable.' }).click();
+      await page.getByRole('button', { name: /Inspect source/ }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('missing-preview-hook-fixture');
+      await expect(page.locator('.code-line.highlight .line-number')).toHaveText('10');
+      await expect(page.locator('#instructions')).toContainText('[REDACTED]');
+      if (!offline) await page.screenshot({ path: test.info().outputPath('encoded-private-source.png') });
+    }
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('Codex TOML hook findings navigate to the platform command line online and offline', async ({ page }) => {
   const w = await workspace({ '.codex/config.toml': [
     '[[hooks.Stop]]', '[[hooks.Stop.hooks]]', 'type="command"', 'command="missing-posix-hook-fixture"', 'command_windows="missing-windows-hook-fixture"',

@@ -14,6 +14,8 @@ export interface Source {
   scope: 'user' | 'repository' | 'directory' | 'system' | 'import'; baseDir: string;
   bytes: number; text: string; body: string; bodyLine: number;
   data: Record<string, any>; lines: Record<string, number>; invalid: boolean;
+  /** Internal parser offsets and decoded values, omitted from public reports. */
+  valueRanges?: { offset: number; length: number; value?: unknown; private?: boolean }[];
 }
 export interface Decision {
   sourceId: string; path: string; line: number; kind: Kind; scope: Source['scope'];
@@ -49,7 +51,7 @@ export interface Report {
   discovery?: Discovery;
   pathMappings?: { path: string; replacement: string }[];
   repository: string; target: string; sessionDirectory: string;
-  assumptions: string[]; sources: (Omit<Source, 'text' | 'body' | 'data' | 'lines' | 'baseDir'> & { preview?: string })[];
+  assumptions: string[]; sources: (Omit<Source, 'text' | 'body' | 'data' | 'lines' | 'baseDir' | 'valueRanges'> & { preview?: string })[];
   clients: Effective[]; findings: Finding[];
   diff: { content: string; clients: ClientId[]; sources: Location[] }[];
 }

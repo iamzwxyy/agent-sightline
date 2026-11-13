@@ -1,37 +1,58 @@
-import type { Finding, Location, Report } from './types.js';
+import type { Finding, Location, Report, Source } from './types.js';
 
 const sensitiveKey = /(?:secret|token|password|passwd|api[_-]?key|cookie|authorization|credential|private[_-]?key|client[_-]?secret)/i;
+export const privateMappings: ReadonlySet<string> = new Set(['env', 'headers', 'http_headers']);
+export const isSensitiveKey = (key: string): boolean => key !== 'estimatedTokens' && sensitiveKey.test(key);
+const lineBreaks = (text: string): string => text.match(/\r\n|\r|\n/g)?.join('') ?? '';
+const mask = (text: string, label = '[REDACTED]'): string => label + lineBreaks(text);
 
 export function redactText(text: string): string {
   return text
-    .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, '[REDACTED PRIVATE KEY]')
+    .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, value => mask(value, '[REDACTED PRIVATE KEY]'))
     .replace(/\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,}|AKIA[A-Z0-9]{16})\b/g, '[REDACTED]')
     .replace(/((?:Authorization|Cookie|Set-Cookie)\s*:\s*)[^\r\n]+/gi, '$1[REDACTED]')
     .replace(/(\b(?:Bearer|Basic)\s+)[A-Za-z0-9+/_=.-]+/gi, '$1[REDACTED]')
-    .replace(/((?:[A-Za-z0-9_.-]*(?:secret|token|password|passwd|api[_-]?key|cookie|authorization|credential)[A-Za-z0-9_.-]*)["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'[^']*'|[^\s,;}]+)/gi, '$1[REDACTED]')
+    .replace(/((?:[A-Za-z0-9_.-]*(?:secret|token|password|passwd|api[_-]?key|cookie|authorization|credential|private[_-]?key)[A-Za-z0-9_.-]*)["']?\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\s,;}]+)/gi, (_match, prefix: string, value: string) => prefix + mask(value))
     .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[REDACTED]@')
     .replace(/([?&](?:token|key|api_key|secret|password|access_token)=)[^&\s"'<>]+/gi, '$1[REDACTED]')
-    .replace(/(--(?:token|password|api-key|secret)(?:=|\s+))(?:"[^"]*"|'[^']*'|[^\s]+)/gi, '$1[REDACTED]');
+    .replace(/(--(?:token|password|api-key|secret)(?:=|\s+))("[^"]*"|'[^']*'|[^\s]+)/gi, (_match, prefix: string, value: string) => prefix + mask(value));
 }
-export function redact<T>(value: T, envValues: string[] = []): T {
-  const scrub = (s: string): string => {
-    for (const v of envValues) if (v.length) s = s.split(v).join('[REDACTED]');
-    return redactText(s);
-  };
+export function createRedactor(envValues: string[] = []): <T>(value: T) => T {
+  const values = [...new Set(envValues.filter(Boolean))].sort((a, b) => b.length - a.length);
+  const pattern = values.length ? new RegExp(values.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g') : undefined;
+  const scrub = (text: string): string => redactText(pattern ? text.replace(pattern, value => mask(value)) : text);
   const walk = (v: any, key = '', parent = ''): any => {
-    if (['env', 'headers', 'http_headers'].includes(parent)) return '[REDACTED]';
-    if (sensitiveKey.test(key) && key !== 'estimatedTokens') return '[REDACTED]';
+    if (privateMappings.has(parent)) return '[REDACTED]';
+    if (isSensitiveKey(key)) return '[REDACTED]';
     if (typeof v === 'string') return scrub(v);
     if (Array.isArray(v)) return v.map(x => walk(x, '', key));
     if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [scrub(k), walk(x, k, key)]));
     return v;
   };
-  return walk(value);
+  return value => walk(value);
+}
+export function redact<T>(value: T, envValues: string[] = []): T {
+  return createRedactor(envValues)(value);
+}
+
+export function redactSourcePreview(source: Source, scrub: ReturnType<typeof createRedactor>): string {
+  const parts: string[] = [];
+  let cursor = 0;
+  const ranges = [...source.valueRanges ?? []].sort((a, b) => a.offset - b.offset || b.length - a.length || Number(!!b.private) - Number(!!a.private));
+  for (const range of ranges) {
+    if (range.offset < cursor) continue;
+    const value = range.private ? '[REDACTED]' : typeof range.value === 'string' ? scrub(range.value) : range.value;
+    if (!range.private && value === range.value) continue;
+    const original = source.text.slice(range.offset, range.offset + range.length);
+    parts.push(source.text.slice(cursor, range.offset), JSON.stringify(value) + lineBreaks(original));
+    cursor = range.offset + range.length;
+  }
+  parts.push(source.text.slice(cursor));
+  return scrub(parts.join(''));
 }
 
 /** Apply captured private values to scan payloads while retaining engine-generated report structure. */
-export function redactScanReport(report: Report, privateValues: string[]): Report {
-  const scrub = <T>(value: T): T => redact(value, privateValues);
+export function redactScanReport(report: Report, scrub: ReturnType<typeof createRedactor>, privateSettings: ReadonlySet<string>): Report {
   const location = (value: Location): Location => ({
     ...value, path: scrub(value.path), ...(value.key === undefined ? {} : { key: scrub(value.key) }),
   });
@@ -57,7 +78,7 @@ export function redactScanReport(report: Report, privateValues: string[]): Repor
         ...(decision.importedFrom ? { importedFrom: location(decision.importedFrom) } : {}),
       })),
       settings: client.settings.map(setting => ({
-        ...setting, key: scrub(setting.key), value: scrub(setting.value), reason: scrub(setting.reason),
+        ...setting, key: scrub(setting.key), value: privateSettings.has(setting.location.path + '\0' + setting.key) ? '[REDACTED]' : scrub(setting.value), reason: scrub(setting.reason),
         location: location(setting.location), overrides: setting.overrides.map(location),
       })),
       extensions: client.extensions.map(extension => ({
