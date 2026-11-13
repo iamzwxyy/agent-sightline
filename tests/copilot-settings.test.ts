@@ -106,12 +106,12 @@ test('Copilot loads the shared Claude subset while each client keeps its JSON sy
   const copilot = await scan({ ...w, clients: ['copilot'] });
   assert.ok(!copilot.findings.some(finding => finding.ruleId === 'parse.json'));
   assert.equal(copilot.clients[0].settings.find(setting => setting.key === 'model' && setting.status === 'active')?.value, 'personal-copilot-model');
-  assert.ok(copilot.clients[0].settings.some(setting => setting.key === 'model' && setting.status === 'ignored' && setting.location.path.endsWith('.claude/settings.json')));
+  assert.ok(copilot.clients[0].settings.some(setting => setting.key === 'model' && setting.status === 'ignored' && setting.location.path === path.join(w.repo, '.claude/settings.json')));
   assert.equal(copilot.clients[0].extensions.find(extension => extension.kind === 'hook')?.status, 'ignored');
   assert.ok(!JSON.stringify(copilot).includes('shared-jsonc-private-sentinel'));
   const both = await scan({ ...w, clients: ['claude', 'copilot'] });
   assert.ok(both.findings.filter(finding => finding.ruleId === 'parse.json').every(finding => finding.client === 'claude'));
-  assert.ok(both.clients[0].decisions.some(decision => decision.status === 'invalid' && decision.path.endsWith('.claude/settings.json')));
+  assert.ok(both.clients[0].decisions.some(decision => decision.status === 'invalid' && decision.path === path.join(w.repo, '.claude/settings.json')));
   assert.equal(both.clients[1].extensions.find(extension => extension.kind === 'hook')?.status, 'ignored');
   assert.ok(!JSON.stringify(both).includes('shared-jsonc-private-sentinel'));
 });

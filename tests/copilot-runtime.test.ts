@@ -101,11 +101,11 @@ const cases: { name: string; user: Record<string, unknown>; repo: Record<string,
 
 test('Copilot repository folds match the native configuration API', async t => {
   const runtimeWorkspace = await workspace();
-  t.after(() => rm(runtimeWorkspace.root, { recursive: true, force: true }));
+  t.after(() => rm(runtimeWorkspace.root, { recursive: true, force: true, maxRetries: 5 }));
   await withRuntime(runtimeWorkspace.home, runtimeWorkspace.repo, async request => {
     for (const scenario of cases) await t.test(scenario.name, async scenarioTest => {
       const w = await workspace({ '.github/copilot/settings.json': JSON.stringify(scenario.repo), ...(scenario.local ? { '.github/copilot/settings.local.json': JSON.stringify(scenario.local) } : {}) }, { '.copilot/settings.json': JSON.stringify(scenario.user) });
-      scenarioTest.after(() => rm(w.root, { recursive: true, force: true }));
+      scenarioTest.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
       const repository = await request('user.settings.mergeRepoValue', { userSettings: scenario.user, repoSettings: scenario.repo });
       const native = scenario.local ? await request('user.settings.mergeRepoValue', { userSettings: repository.settingsJson, repoSettings: scenario.local }) : repository;
       const report = await scan({ ...w, clients: ['copilot'], trust: 'trusted' });
@@ -117,7 +117,7 @@ test('Copilot repository folds match the native configuration API', async t => {
 
 test('Copilot native validation agrees on supported setting value types', async t => {
   const w = await workspace({}, { '.copilot/settings.json': '{}' });
-  t.after(() => rm(w.root, { recursive: true, force: true }));
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
   await withRuntime(w.home, w.repo, async request => {
     for (const [topKey, value, expected] of [
       ['disabledSkills', ['valid'], true], ['disabledSkills', [42], false],
@@ -155,7 +155,7 @@ test('Copilot native validation agrees on supported setting value types', async 
 test('Copilot native workspace MCP inventory follows trustedFolders and disabled settings', async t => {
   const fixtureConfig = JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: ['-e', 'require("node:fs").writeFileSync("native-mcp-started","started")'] } } });
   const w = await workspace({ '.mcp.json': fixtureConfig }, { '.copilot/settings.json': '{}' });
-  t.after(() => rm(w.root, { recursive: true, force: true }));
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
   const env = isolatedEnvironment(w.home);
   execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
   for (const key of [null, 'trustedFolders', 'trusted_folders']) {
@@ -172,7 +172,7 @@ test('Copilot native workspace MCP inventory follows trustedFolders and disabled
       if (key === 'trustedFolders') assert.equal(trusted, true);
       assert.equal(report.clients[0].extensions.find(extension => extension.name === 'fixture')?.status, trusted ? 'active' : 'conditional', key ?? 'no trust state');
       await assert.rejects(readFile(path.join(isolated.repo, 'native-mcp-started')), { code: 'ENOENT' });
-    } finally { await rm(isolated.root, { recursive: true, force: true }); }
+    } finally { await rm(isolated.root, { recursive: true, force: true, maxRetries: 5 }); }
   }
   await writeFile(path.join(w.home, '.copilot/config.json'), JSON.stringify({ trustedFolders: [w.repo] }));
   await writeFile(path.join(w.home, '.copilot/settings.json'), '{"disabledMcpServers":["fixture"]}');
@@ -191,7 +191,7 @@ test('Copilot native shared-rule inventory keeps root and cwd sources with their
     'src/deep/.claude/rules/local.md': 'Current-directory rule.',
     'src/deep/refund.ts': '',
   });
-  t.after(() => rm(w.root, { recursive: true, force: true }));
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
   const env = isolatedEnvironment(w.home);
   execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
   const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'instruction', 'list', '--json'], { cwd: path.join(w.repo, 'src/deep'), env, encoding: 'utf8', timeout: 15000 }));

@@ -214,7 +214,7 @@ test('selected clients scope syntax, glob and configuration diagnostics to their
   const copilot = await scan({ ...w, user: false, clients: ['copilot'] });
   assert.ok(copilot.findings.some(finding => finding.ruleId === 'mcp.root-key'));
   assert.equal(copilot.findings.filter(finding => finding.ruleId === 'mcp.root-key').length, 1);
-  assert.ok(copilot.findings.some(finding => finding.ruleId === 'parse.json' && finding.location.path.endsWith('.claude/settings.local.json')));
+  assert.ok(copilot.findings.some(finding => finding.ruleId === 'parse.json' && finding.location.path === path.join(w.repo, '.claude/settings.local.json')));
   assert.ok(!copilot.findings.some(finding => finding.ruleId === 'config.field-case' || finding.ruleId === 'config.unknown-field'));
 });
 
