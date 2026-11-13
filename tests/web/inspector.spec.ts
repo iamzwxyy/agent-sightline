@@ -474,6 +474,7 @@ test('Claude ignored MCP fields remain marked and inspectable in live and portab
   const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: {
     remote: { type: 'http', url: 'https://example.test/mcp', command: 'ignored-browser-command', env: { UNUSED: 'browser-ignored-private-sentinel' } },
     local: { command: process.execPath, cwd: 'missing-browser-directory', url: 'https://example.test/ignored' },
+    pending: { type: 'http', url: '' },
   } }, null, 2) });
   const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
   try {
@@ -501,6 +502,10 @@ test('Claude ignored MCP fields remain marked and inspectable in live and portab
       await page.locator('#findings-list .finding').filter({ hasText: '"local" ignores the field "cwd"' }).click();
       await page.getByRole('button', { name: /Inspect source/ }).click();
       await expect(page.locator('.code-line.highlight')).toContainText('missing-browser-directory');
+      await page.locator('#extensions-tab').click();
+      await page.locator('.extension-row').filter({ hasText: 'pending' }).click();
+      await expect(page.getByRole('heading', { name: 'Field definitions', exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
     }
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole('button', { name: 'Toggle navigation' }).click();
