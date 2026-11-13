@@ -14,6 +14,43 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('Copilot personal JSONC retains workspace trust and private source navigation live and offline', async ({ page }) => {
+  const personal = '// Personal MCP configuration\n{\n"mcpServers": {\n"personal": {\n"command": "missing-browser-jsonc-command",\n"env": {"NORMAL":"browser-jsonc-private-\\u0076alue"},\n},\n},\n}';
+  const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: { project: { command: process.execPath } } }) }, { '.copilot/config.json': '{}', '.copilot/mcp-config.json': personal });
+  await writeFile(path.join(w.home, '.copilot/config.json'), '// Persisted workspace trust\n' + JSON.stringify({ trustedFolders: [w.repo], internalValue: 'browser-jsonc-internal-private' }, null, 2).replace(/\n}$/, ',\n}'));
+  const server = await serve({ ...w, clients: ['copilot'] });
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('copilot-personal-jsonc.html');
+    await (await pending).saveAs(file);
+    const exported = await readFile(file, 'utf8');
+    for (const value of [w.home, await realpath(w.home), w.repo, await realpath(w.repo), 'browser-jsonc-private-', 'browser-jsonc-internal-private']) expect(exported).not.toContain(JSON.stringify(value).slice(1, -1));
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.goto(url);
+      await page.locator('#extensions-tab').click();
+      await expect(page.locator('.extension-row .status.active')).toHaveCount(2);
+      await page.locator('.extension-row').filter({ hasText: 'personal' }).click();
+      await page.setViewportSize({ width: 390, height: 844 });
+      expect(await page.locator('#detail-dialog').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await page.locator('.extension-origins').getByRole('button', { name: /^command ·/ }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('missing-browser-jsonc-command');
+      await expect(page.locator('.code-line.highlight .line-number')).toHaveText('5');
+      await expect(page.locator('.code-view')).toContainText('// Personal MCP configuration');
+      await expect(page.locator('.code-view')).toContainText('[REDACTED]');
+    }
+    await page.context().setOffline(false);
+    await writeFile(path.join(w.home, '.copilot/config.json'), '{}');
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(server.url);
+    await page.locator('#extensions-tab').click();
+    await expect(page.locator('.extension-row').filter({ hasText: 'project' }).locator('.status.conditional')).toHaveCount(1);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('blocked Claude MCP retains field definitions and original policy lines live and offline', async ({ page }) => {
   const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'missing-policy-blocked-browser-command' } } }) }, { '.claude/settings.json': '{\n"deniedMcpServers": [\n42,\n{"serverName": "fixture"}\n]\n}' });
   const server = await serve({ ...w, clients: ['claude'], trust: 'trusted' });

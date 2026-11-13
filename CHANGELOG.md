@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.9 — 2026-11-14
+
+* Parse Copilot personal config.json and mcp-config.json as JSONC, including comments and trailing commas. Restore persisted workspace trust and personal MCP definitions from those files.
+* Resolve JSON format rules by Copilot file scope and retain original field locations in personal MCP source previews.
+* Cover native file-loading differences, CI admission, escaped-value redaction, portable reports and installed-package behavior.
+
 ## 0.3.8 — 2026-11-14
 
 * Discover Claude's exclusive managed-mcp.json and servers provided through managedMcpServers. Preserve whole-entry replacement and managed-file priority.

@@ -7,6 +7,24 @@ import { mkdir, readFile, readdir, realpath, rm, watch, writeFile } from 'node:f
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
+
+test('Copilot CI accepts personal JSONC state and MCP files with original source lines', async t => {
+  const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: { project: { command: process.execPath } } }) }, { '.copilot/config.json': '{}', '.copilot/mcp-config.json': '// Personal MCP\n{\n"mcpServers": {\n"personal": {\n"command": ' + JSON.stringify(process.execPath) + ',\n},\n},\n}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  await writeFile(path.join(w.home, '.copilot/config.json'), '// Trust state\n' + JSON.stringify({ trustedFolders: [w.repo], internalValue: 'cli-jsonc-internal-private' }, null, 2).replace(/\n}$/, ',\n}'));
+  const flags = ['--repo', w.repo, '--home', w.home, '--client', 'copilot'];
+  const checked = run(['ci', ...flags], w.repo);
+  assert.equal(checked.status, 0, checked.stderr);
+  const report = JSON.parse(checked.stdout);
+  assert.ok(report.clients[0].extensions.every((extension: any) => extension.status === 'active'));
+  const personal = report.clients[0].extensions.find((extension: any) => extension.name === 'personal');
+  assert.equal(personal.origins.find((origin: any) => origin.key === 'command').location.line, 5);
+  assert.ok(!checked.stdout.includes('cli-jsonc-internal-private'));
+  assert.ok(!report.findings.some((finding: any) => finding.ruleId === 'parse.json'));
+  const excluded = JSON.parse(run(['ci', ...flags, '--no-user'], w.repo).stdout);
+  assert.equal(excluded.clients[0].extensions.length, 1);
+  assert.equal(excluded.clients[0].extensions[0].status, 'conditional');
+});
 test('CLI diff groups shared paragraphs across different files and exports original source lines', async t => {
   const w = await workspace({ 'AGENTS.md': 'Codex introduction.\n\nRun the checks.', 'CLAUDE.md': 'Run the checks.\n\nClaude ending.' });
   t.after(() => rm(w.root, { recursive: true, force: true }));

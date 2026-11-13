@@ -113,6 +113,13 @@ try {
   if (typeof exportedSkillDirectory !== 'string' || exportedSkillDirectory.replaceAll('\\', '/') !== '<repo>/.github/skills') throw new Error('Installed skill exclusion root replacement failed.');
   const privateSkillPaths = [copilotRepo, realpathSync(copilotRepo), copilotHome, realpathSync(copilotHome)];
   if (privateSkillPaths.some(root => skillHtml.includes(JSON.stringify(root).slice(1, -1)))) throw new Error('Installed skill exclusion paths leaked into portable HTML.');
+  writeFileSync(path.join(copilotRepo, '.mcp.json'), JSON.stringify({ mcpServers: { 'jsonc-project': { command: process.execPath } } }));
+  writeFileSync(path.join(copilotHome, '.copilot/config.json'), '// Persisted trust\n' + JSON.stringify({ trustedFolders: [copilotRepo] }, null, 2).replace(/\n}$/, ',\n}'));
+  writeFileSync(path.join(copilotHome, '.copilot/mcp-config.json'), '// Personal server\n{\n"mcpServers": {\n"jsonc": {\n"command": ' + JSON.stringify(process.execPath) + ',\n"env": {"NORMAL":"installed-jsonc-private-\\u0076alue"},\n},\n},\n}');
+  const copilotJsonc = JSON.parse(execFileSync(process.execPath, [cli, ...copilotArgs, '--json'], { encoding: 'utf8' }));
+  const personalJsoncServer = copilotJsonc.clients[0].extensions.find(extension => extension.name === 'jsonc');
+  if (personalJsoncServer?.status !== 'active' || personalJsoncServer.origins.find(origin => origin.key === 'command')?.location.line !== 5) throw new Error('Installed Copilot personal MCP JSONC source tracking failed.');
+  if (copilotJsonc.clients[0].extensions.find(extension => extension.name === 'jsonc-project')?.status !== 'active' || copilotJsonc.findings.some(finding => finding.ruleId === 'parse.json') || JSON.stringify(copilotJsonc).includes('installed-jsonc-private-')) throw new Error('Installed Copilot JSONC trust or redaction failed.');
   const comparisonRepo = path.join(temp, 'paragraph-comparison');
   mkdirSync(comparisonRepo);
   writeFileSync(path.join(comparisonRepo, 'AGENTS.md'), 'Codex introduction.\n\nRun the checks.');

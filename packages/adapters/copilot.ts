@@ -7,7 +7,7 @@ import { adapter, addInstruction, base, decision, effectiveValue, expand, finish
 import { copilotSettings, copilotRepositorySettings } from './copilot-settings.js';
 
 export const copilotMetadata: AdapterMetadata = {
-  id: 'copilot', name: 'GitHub Copilot CLI', maturity: 'verified', ruleVersion: '1.0.110', verifiedOn: '2026-11-13',
+  id: 'copilot', name: 'GitHub Copilot CLI', maturity: 'verified', ruleVersion: '1.0.110', verifiedOn: '2026-11-14',
   evidence: ['https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions', 'https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference', 'https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference', 'https://docs.github.com/en/copilot/reference/hooks-reference', 'https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/customization-locations'],
   limitations: ['Copilot CLI rules only; VS Code, code review and cloud-agent rules differ.', 'Applicable instruction files have no documented general precedence; shown order is deterministic display order.', 'Session /instructions toggles, enterprise policy, saved tool permissions and plugin contents are not inferred.', 'Additional customization directories retain unresolved declarations and mark discovery incomplete.', 'Fourteen repository-overridable settings have native merge/type comparisons. Registered personal aliases and file loading have native comparisons. Other personal settings retain partial value-schema coverage.', 'Conflicting same-scope Copilot/Claude settings and workspace MCP file ties remain conditional.'],
 };

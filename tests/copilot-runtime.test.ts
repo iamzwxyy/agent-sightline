@@ -310,6 +310,53 @@ test('Copilot native workspace MCP inventory follows trustedFolders and disabled
   }
 });
 
+test('Copilot native inventories distinguish personal JSONC and strict workspace MCP files', async t => {
+  const comments = (text: string) => '// Native JSONC fixture\n/* Personal configuration */\n' + text;
+  const trailingComma = (text: string) => text.replace(/\n}$/, ',\n}');
+  const cases = [
+    { name: 'plain baseline' },
+    { name: 'commented internal state', file: 'state', transform: comments },
+    { name: 'trailing comma in internal state', file: 'state', transform: trailingComma },
+    { name: 'commented personal settings', file: 'settings', transform: comments, disabled: true },
+    { name: 'trailing comma in personal settings', file: 'settings', transform: trailingComma, disabled: true },
+    { name: 'commented personal MCP', file: 'personal', transform: comments },
+    { name: 'trailing comma in personal MCP', file: 'personal', transform: trailingComma },
+    { name: 'commented workspace MCP', file: 'project', transform: comments, omitted: true },
+    { name: 'trailing comma in workspace MCP', file: 'project', transform: trailingComma, omitted: true },
+  ];
+  for (const scenario of cases) await t.test(scenario.name, async scenarioTest => {
+    const w = await workspace({}, { '.copilot/settings.json': '{}' });
+    scenarioTest.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+    const env = isolatedEnvironment(w.home);
+    execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
+    const empty = JSON.stringify({ mcpServers: {} }, null, 2);
+    const mcp = JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: ['-e', 'require("node:fs").writeFileSync("native-jsonc-mcp-started","started")'] } } }, null, 2);
+    const inputs = {
+      state: JSON.stringify({ trustedFolders: [await realpath(w.repo)] }, null, 2),
+      settings: JSON.stringify(scenario.disabled ? { disabledMcpServers: ['fixture'] } : {}, null, 2),
+      personal: scenario.file === 'personal' ? mcp : empty,
+      project: scenario.file === 'personal' ? empty : mcp,
+    };
+    if (scenario.file && scenario.transform) inputs[scenario.file as keyof typeof inputs] = scenario.transform(inputs[scenario.file as keyof typeof inputs]);
+    const files = new Map([
+      [path.join(w.home, '.copilot/config.json'), inputs.state],
+      [path.join(w.home, '.copilot/settings.json'), inputs.settings],
+      [path.join(w.home, '.copilot/mcp-config.json'), inputs.personal],
+      [path.join(w.repo, '.mcp.json'), inputs.project],
+    ]);
+    for (const [file, text] of files) await writeFile(file, text);
+    const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd: w.repo, env, encoding: 'utf8', timeout: 30000 }));
+    assert.equal(!!native.mcpServers.fixture, !scenario.omitted);
+    if (!scenario.omitted) assert.equal(native.mcpServers.fixture.enabled, !scenario.disabled);
+    for (const [file, text] of files) await writeFile(file, text);
+    const report = await scan({ ...w, clients: ['copilot'] });
+    const selected = report.clients[0].extensions.find(extension => extension.name === 'fixture');
+    assert.equal(selected?.status, scenario.omitted ? undefined : scenario.disabled ? 'ignored' : 'active');
+    assert.equal(report.findings.some(finding => finding.ruleId === 'parse.json'), !!scenario.omitted);
+    await assert.rejects(readFile(path.join(w.repo, 'native-jsonc-mcp-started')), { code: 'ENOENT' });
+  });
+});
+
 test('Copilot native shared-rule inventory keeps root and cwd sources with their path metadata', async t => {
   const w = await workspace({
     '.claude/rules/all.md': 'Unconditional root rule.',

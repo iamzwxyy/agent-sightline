@@ -5,12 +5,12 @@
 One file. Several agents. Different instructions. Sightline shows every discovered source, why it applies, what is shadowed or truncated, and the effective configuration—with source lines you can inspect.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.8/agent-sightline-0.3.8.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.9/agent-sightline-0.3.9.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.8.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.9.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -71,7 +71,7 @@ Codex base/project scalar and MCP values and their winning files are compared wi
 
 Claude MCP transport parsing, approval boundaries, directory behavior and fallback from invalid higher-priority definitions are compared with the pinned 2.1.322 CLI. The checks use temporary homes and synthetic local MCP servers. Nineteen isolated native permission runs use a loopback scripted Messages API to check actual tool execution and rule precedence with synthetic credentials. Permission entries link to their overriding rule sources. Shared project grants require workspace trust, and local grants retain conditional Git/session checks until trust is explicitly modeled. Other Claude capabilities retain official-document fixtures. Run `npm run test:claude` to reproduce these comparisons.
 
-Copilot settings folds, registered personal aliases, file loading and value types are compared with the native 1.0.110 configuration API. Alias collisions retain the winning original key and earlier source lines. Unknown personal keys produce diagnostics. Its workspace MCP inventory verifies persisted folder trust and disabled servers, and its instruction inventory verifies shared Claude-rule discovery and path metadata. Run `npm run test:copilot` to reproduce these comparisons. Copilot/Claude same-scope settings conflicts retain conditional candidates. Twenty-four native skill-inventory comparisons verify ignored directory roots and eligible same-name fallback. Excluded skills link to their original personal setting in live and portable reports. Additional customization directories mark discovery incomplete, and personal fields outside the fourteen repository-overridable keys retain partial schema coverage.
+Copilot settings folds, registered personal aliases, file loading and value types are compared with the native 1.0.110 configuration API. Alias collisions retain the winning original key and earlier source lines. Unknown personal keys produce diagnostics. Its workspace MCP inventory verifies persisted folder trust and disabled servers, including JSONC personal state and MCP files, and its instruction inventory verifies shared Claude-rule discovery and path metadata. Run `npm run test:copilot` to reproduce these comparisons. Copilot/Claude same-scope settings conflicts retain conditional candidates. Twenty-four native skill-inventory comparisons verify ignored directory roots and eligible same-name fallback. Excluded skills link to their original personal setting in live and portable reports. Additional customization directories mark discovery incomplete, and personal fields outside the fourteen repository-overridable keys retain partial schema coverage.
 
 Rules and known limits are visible through `agent-sightline adapters` and the [evidence ledgers](docs/research/). “Fixture-verified” means the recorded official contracts have executable fixtures; it is not an authenticated live-client conformance claim. Copilot CLI rules differ from VS Code/code review/cloud agent rules.
 
@@ -95,7 +95,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.3.8.tgz
+npm install -g ./agent-sightline-0.3.9.tgz
 agent-sightline demo
 ```
 

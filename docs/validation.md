@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.9
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* The 359-case core suite completed with 357 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* Two targeted regression cases failed against v0.3.8 before the implementation. Current-workspace validation removed two false parse findings from a valid commented Copilot state file.
+* Nine native Copilot inventory scenarios cover plain configuration, comments and trailing commas in personal state, personal settings, personal MCP and workspace MCP files. The complete Copilot native suite passed 54 cases. The inventory checks verify persisted trust and disabled-server values while checking the synthetic server marker.
+* Fixtures cover LF/CRLF, original command field lines, explicit trust assumptions, repository-only scans, malformed JSONC and preserved valid sibling definitions. Privacy checks cover internal state, escaped environment values, copied values and portable paths.
+* All 55 Chromium browser cases passed. The added live/offline flow checks persisted workspace trust, source navigation at the original line, redacted personal MCP previews, phone layout and state changes after trust removal.
+
 ## v0.3.8
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
