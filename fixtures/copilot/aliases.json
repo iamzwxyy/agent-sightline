@@ -1,0 +1,497 @@
+{
+  "version": "1.0.110",
+  "input": {
+    "ahp_environment": true,
+    "ai_secret_detection": true,
+    "allowed_urls": true,
+    "ask_user": true,
+    "assisted_approval_instructions": true,
+    "auto_tier": true,
+    "auto_update": true,
+    "auto_updates_channel": true,
+    "banner": true,
+    "banner_style": true,
+    "bash_env": true,
+    "beep": true,
+    "beep_on_schedule": true,
+    "built_in_agents": true,
+    "command_history_max_size": true,
+    "compact_paste": true,
+    "company_announcements": true,
+    "connectors": true,
+    "context_management_tools": true,
+    "context_tier": true,
+    "continue_on_auto_mode": true,
+    "copilot_url": true,
+    "copy_on_code_block_click": true,
+    "copy_on_select": true,
+    "custom_agents": {
+      "default_local_only": true
+    },
+    "default_mode": true,
+    "default_permission_mode": true,
+    "denied_urls": true,
+    "disable_all_hooks": true,
+    "disabled_hooks": true,
+    "disabled_mcp_servers": true,
+    "disabled_skills": true,
+    "dynamic_retrieval": {
+      "skills": true
+    },
+    "editor_mode": true,
+    "effort_level": true,
+    "enable_all_github_mcp_tools": true,
+    "enabled_feature_flags": true,
+    "enabled_mcp_servers": true,
+    "enabled_plugins": true,
+    "experimental": true,
+    "extensions": {
+      "disabled_extensions": true,
+      "mode": true
+    },
+    "extra_known_marketplaces": true,
+    "feature_flags": true,
+    "footer": {
+      "show_agent": true,
+      "show_ai_used": true,
+      "show_branch": true,
+      "show_ci_status": true,
+      "show_code_changes": true,
+      "show_context_window": true,
+      "show_custom": true,
+      "show_directory": true,
+      "show_model_effort": true,
+      "show_pull_request": true,
+      "show_quota": true,
+      "show_sandbox": true,
+      "show_schedules": true,
+      "show_username": true,
+      "show_yolo": true
+    },
+    "fusion_tier": true,
+    "github_mcp_insiders": true,
+    "github_mcp_tools": true,
+    "github_mcp_toolsets": true,
+    "hooks": true,
+    "ide": {
+      "auto_connect": true,
+      "code_product": true,
+      "open_diff_on_edit": true
+    },
+    "ignored_skills_locations": true,
+    "image_generation": true,
+    "image_generation_watermark": true,
+    "include_co_authored_by": true,
+    "inline_image_live_window": true,
+    "inline_images": true,
+    "keep_alive": true,
+    "log_level": true,
+    "memory": true,
+    "merge_strategy": true,
+    "model": true,
+    "model_provider_id": true,
+    "mouse": true,
+    "notifications": true,
+    "permissions": {
+      "allow": true,
+      "ask": true,
+      "default_mode": true,
+      "deny": true,
+      "disable_assisted_permissions_mode": true,
+      "disable_bypass_permissions_mode": true,
+      "limit_to": true,
+      "model": true
+    },
+    "pinned_prompts": true,
+    "plan_context_tier": true,
+    "plan_effort_level": true,
+    "plan_model": true,
+    "plan_model_provider_id": true,
+    "powershell_flags": true,
+    "proxy_kerberos_service_principal": true,
+    "proxy_url": true,
+    "remote_export": true,
+    "remote_sessions": true,
+    "render_hex_colors": true,
+    "render_markdown": true,
+    "respect_gitignore": true,
+    "sandbox": {
+      "add_current_working_directory": true,
+      "allow_bypass": true,
+      "allow_dev_tool_access": true,
+      "auth": {
+        "gh": true,
+        "git": true
+      },
+      "enabled": true,
+      "fail_if_unavailable": true,
+      "learning_mode": true,
+      "sandbox_extensions": true,
+      "sandbox_lsp_servers": true,
+      "sandbox_mcp_servers": true,
+      "user_policy": {
+        "filesystem": {
+          "denied_paths": true,
+          "enumerate_paths": true,
+          "readonly_paths": true,
+          "readwrite_paths": true
+        },
+        "network": {
+          "allow_local_network": true,
+          "allow_outbound": true,
+          "allowed_hosts": true,
+          "blocked_hosts": true,
+          "proxy": {
+            "password": true,
+            "url": true,
+            "username": true
+          }
+        },
+        "seatbelt": {
+          "keychain_access": true
+        }
+      },
+      "credentials": {
+        "env_vars": true
+      }
+    },
+    "screen_reader": true,
+    "scrollbar": true,
+    "session_management_tools": {
+      "close": true,
+      "create": true,
+      "enabled": true,
+      "list": true,
+      "message": true,
+      "scope": true
+    },
+    "shell_shortcut": true,
+    "show_reasoning": true,
+    "show_timestamps": true,
+    "show_tips_on_startup": true,
+    "show_tool_durations": true,
+    "sidebar": {
+      "accent_active_session": true,
+      "colored_hints": true,
+      "ctrl_c_closes_session": true,
+      "enabled": true,
+      "exit_closes_session": true,
+      "hover_focus": true,
+      "show_close_button": true,
+      "show_header_buttons": true,
+      "show_resumable_sessions": true
+    },
+    "skill_directories": true,
+    "status_line": {
+      "command": true,
+      "padding": true,
+      "refresh_interval": true,
+      "type": true
+    },
+    "stay_in_autopilot": true,
+    "store_token_plaintext": true,
+    "stream": true,
+    "streamer_mode": true,
+    "strict_known_marketplaces": true,
+    "subagents": {
+      "context_management_tools": true,
+      "disabled_subagents": true,
+      "max_concurrency": true,
+      "max_depth": true
+    },
+    "tabs": true,
+    "taskbar_presence": true,
+    "telemetry": {
+      "capture": {
+        "identity": true,
+        "policy_detail": true,
+        "prompts": true,
+        "responses": true,
+        "tool_arguments": true,
+        "tool_output": true
+      },
+      "capture_content": true,
+      "enabled": true,
+      "endpoint": true,
+      "file_path": true,
+      "headers": true,
+      "headers_provider": true,
+      "lock_capture_content": true,
+      "protocol": true,
+      "resource_attributes": true,
+      "service_name": true
+    },
+    "terminal_notifications": true,
+    "terminal_progress": true,
+    "theme": true,
+    "tool_search": true,
+    "update_terminal_title": true,
+    "voice": {
+      "enabled": true,
+      "selected_model": true,
+      "selected_device": {
+        "name": true,
+        "occurrence": true
+      }
+    },
+    "workflows": {
+      "default_limits": {
+        "max_ai_credits": true,
+        "max_concurrent_subagents": true,
+        "max_total_subagents": true,
+        "timeout_seconds": true
+      },
+      "log_phase_names": true,
+      "max_concurrent_runs": true
+    },
+    "worktree_base_ref": true,
+    "worktree_path_template": true
+  },
+  "expected": {
+    "ahpEnvironment": true,
+    "aiSecretDetection": true,
+    "allowedUrls": true,
+    "askUser": true,
+    "assistedApprovalInstructions": true,
+    "autoTier": true,
+    "autoUpdate": true,
+    "autoUpdatesChannel": true,
+    "banner": true,
+    "bannerStyle": true,
+    "bashEnv": true,
+    "beep": true,
+    "beepOnSchedule": true,
+    "builtInAgents": true,
+    "commandHistoryMaxSize": true,
+    "compactPaste": true,
+    "companyAnnouncements": true,
+    "connectors": true,
+    "contextManagementTools": true,
+    "contextTier": true,
+    "continueOnAutoMode": true,
+    "copilotUrl": true,
+    "copyOnCodeBlockClick": true,
+    "copyOnSelect": true,
+    "customAgents": {
+      "defaultLocalOnly": true
+    },
+    "defaultMode": true,
+    "defaultPermissionMode": true,
+    "deniedUrls": true,
+    "disableAllHooks": true,
+    "disabledHooks": true,
+    "disabledMcpServers": true,
+    "disabledSkills": true,
+    "dynamicRetrieval": {
+      "skills": true
+    },
+    "editorMode": true,
+    "effortLevel": true,
+    "enableAllGithubMcpTools": true,
+    "enabledFeatureFlags": true,
+    "enabledMcpServers": true,
+    "enabledPlugins": true,
+    "experimental": true,
+    "extensions": {
+      "disabledExtensions": true,
+      "mode": true
+    },
+    "extraKnownMarketplaces": true,
+    "feature_flags": true,
+    "footer": {
+      "showAgent": true,
+      "showAiUsed": true,
+      "showBranch": true,
+      "showCiStatus": true,
+      "showCodeChanges": true,
+      "showContextWindow": true,
+      "showCustom": true,
+      "showDirectory": true,
+      "showModelEffort": true,
+      "showPullRequest": true,
+      "showQuota": true,
+      "showSandbox": true,
+      "showSchedules": true,
+      "showUsername": true,
+      "showYolo": true
+    },
+    "fusionTier": true,
+    "githubMcpInsiders": true,
+    "githubMcpTools": true,
+    "githubMcpToolsets": true,
+    "hooks": true,
+    "ide": {
+      "autoConnect": true,
+      "codeProduct": true,
+      "openDiffOnEdit": true
+    },
+    "ignoredSkillsLocations": true,
+    "imageGeneration": true,
+    "imageGenerationWatermark": true,
+    "includeCoAuthoredBy": true,
+    "inlineImageLiveWindow": true,
+    "inlineImages": true,
+    "keepAlive": true,
+    "logLevel": true,
+    "memory": true,
+    "mergeStrategy": true,
+    "model": true,
+    "modelProviderId": true,
+    "mouse": true,
+    "notifications": true,
+    "permissions": {
+      "allow": true,
+      "ask": true,
+      "default_mode": true,
+      "deny": true,
+      "disable_assisted_permissions_mode": true,
+      "disableBypassPermissionsMode": true,
+      "limit_to": true,
+      "model": true
+    },
+    "pinnedPrompts": true,
+    "planContextTier": true,
+    "planEffortLevel": true,
+    "planModel": true,
+    "planModelProviderId": true,
+    "powershellFlags": true,
+    "proxyKerberosServicePrincipal": true,
+    "proxyUrl": true,
+    "remoteExport": true,
+    "remoteSessions": true,
+    "renderHexColors": true,
+    "renderMarkdown": true,
+    "respectGitignore": true,
+    "sandbox": {
+      "addCurrentWorkingDirectory": true,
+      "allowBypass": true,
+      "allowDevToolAccess": true,
+      "auth": {
+        "gh": true,
+        "git": true
+      },
+      "enabled": true,
+      "fail_if_unavailable": true,
+      "learning_mode": true,
+      "sandboxExtensions": true,
+      "sandboxLspServers": true,
+      "sandboxMcpServers": true,
+      "userPolicy": {
+        "filesystem": {
+          "deniedPaths": true,
+          "enumeratePaths": true,
+          "readonlyPaths": true,
+          "readwritePaths": true
+        },
+        "network": {
+          "allowLocalNetwork": true,
+          "allowOutbound": true,
+          "allowedHosts": true,
+          "blockedHosts": true,
+          "proxy": {
+            "password": true,
+            "url": true,
+            "username": true
+          }
+        },
+        "seatbelt": {
+          "keychainAccess": true
+        }
+      },
+      "credentials": {
+        "envVars": true
+      }
+    },
+    "screenReader": true,
+    "scrollbar": true,
+    "sessionManagementTools": {
+      "close": true,
+      "create": true,
+      "enabled": true,
+      "list": true,
+      "message": true,
+      "scope": true
+    },
+    "shellShortcut": true,
+    "showReasoning": true,
+    "showTimestamps": true,
+    "showTipsOnStartup": true,
+    "showToolDurations": true,
+    "sidebar": {
+      "accentActiveSession": true,
+      "coloredHints": true,
+      "ctrl_c_closes_session": true,
+      "enabled": true,
+      "exitClosesSession": true,
+      "hoverFocus": true,
+      "showCloseButton": true,
+      "showHeaderButtons": true,
+      "showResumableSessions": true
+    },
+    "skillDirectories": true,
+    "statusLine": {
+      "command": true,
+      "padding": true,
+      "refreshInterval": true,
+      "type": true
+    },
+    "stayInAutopilot": true,
+    "storeTokenPlaintext": true,
+    "stream": true,
+    "streamerMode": true,
+    "strictKnownMarketplaces": true,
+    "subagents": {
+      "contextManagementTools": true,
+      "disabledSubagents": true,
+      "maxConcurrency": true,
+      "maxDepth": true
+    },
+    "tabs": true,
+    "taskbarPresence": true,
+    "telemetry": {
+      "capture": {
+        "identity": true,
+        "policyDetail": true,
+        "prompts": true,
+        "responses": true,
+        "toolArguments": true,
+        "toolOutput": true
+      },
+      "captureContent": true,
+      "enabled": true,
+      "endpoint": true,
+      "file_path": true,
+      "headers": true,
+      "headersProvider": true,
+      "lock_capture_content": true,
+      "protocol": true,
+      "resource_attributes": true,
+      "service_name": true
+    },
+    "terminalNotifications": true,
+    "terminalProgress": true,
+    "theme": true,
+    "toolSearch": true,
+    "updateTerminalTitle": true,
+    "voice": {
+      "enabled": true,
+      "selectedModel": true,
+      "selectedDevice": {
+        "name": true,
+        "occurrence": true
+      }
+    },
+    "workflows": {
+      "defaultLimits": {
+        "maxAiCredits": true,
+        "maxConcurrentSubagents": true,
+        "maxTotalSubagents": true,
+        "timeoutSeconds": true
+      },
+      "logPhaseNames": true,
+      "maxConcurrentRuns": true
+    },
+    "worktreeBaseRef": true,
+    "worktreePathTemplate": true
+  }
+}

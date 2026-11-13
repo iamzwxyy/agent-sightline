@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.13 — 2026-11-13
+
+* Resolve registered Copilot personal-setting aliases, including nested schema fields and legacy theme names. Preserve dynamic mapping names and repository key semantics.
+* Retain canonical effective keys together with the actual declared key, source line and replaced alias history. Search settings by current or earlier spellings. Diagnose unknown personal keys and repeated spellings.
+* Reproduce native personal-document rejection, optional-value omission and alias-normalization fallback for validated fields. Keep repository layers independently applicable.
+* Use declared source keys when redacting flattened private mapping values, including numeric values below aliased settings.
+* Verify registered aliases, personal file loading and both disabled-server spellings with pinned Copilot 1.0.110. Cover CLI correction, browser source navigation and portable exports.
+* Update the public website's Copilot support version and native-verification scope.
+
 ## 0.2.12 — 2026-11-13
 
 * Resolve Copilot repository and local JSONC settings with per-key merge policies, precise origins, replaced values and trusted model overrides.

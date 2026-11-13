@@ -7,7 +7,8 @@ import { readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { copilotMetadata } from '../packages/adapters/copilot.js';
 import { flatten } from '../packages/adapters/common.js';
-import { workspace } from './helpers.js';
+import { copilotPersonalKeys, normalizeCopilotSettings } from '../packages/adapters/copilot-aliases.js';
+import { fixture, workspace } from './helpers.js';
 
 const require = createRequire(import.meta.url);
 const runtimePackage = require('@github/copilot/package.json');
@@ -81,6 +82,64 @@ async function withRuntime(home: string, cwd: string, run: (request: (method: st
 test('Copilot conformance uses the pinned native CLI', () => {
   assert.equal(runtimePackage.version, copilotMetadata.ruleVersion);
   assert.match(execFileSync(process.execPath, [runtime, '--version'], { encoding: 'utf8', timeout: 15000 }), /CLI 1\.0\.110\./);
+});
+
+test('Copilot aliases match the native registered catalog, normalization and personal file loading', async t => {
+  const w = await workspace({}, { '.copilot/settings.json': '{}' });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  await withRuntime(w.home, w.repo, async request => {
+    const catalog = (await request('user.settings.get')).settings;
+    assert.deepEqual([...copilotPersonalKeys].sort(), Object.keys(catalog).sort());
+    const registered = await fixture('copilot/aliases.json');
+    assert.equal(registered.version, copilotMetadata.ruleVersion);
+    assert.deepEqual(normalizeCopilotSettings(registered.input).data, registered.expected);
+    assert.deepEqual((await request('user.settings.normalize', { settings: registered.input })).settings, registered.expected);
+    const repositoryAliases = await request('user.settings.mergeRepoValue', {
+      userSettings: { disableAllHooks: false },
+      repoSettings: { disable_all_hooks: true, disabled_mcp_servers: ['fixture'], skill_directories: ['fixture'] },
+    });
+    assert.deepEqual(repositoryAliases.settingsJson, { disableAllHooks: false });
+    const snake = (key: string) => key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+    const inputs = [
+      Object.fromEntries(Object.keys(catalog).map(key => [snake(key), `alias:${key}`])),
+      { theme: 'github', colorMode: 'default', color_mode: 'dim' },
+      { color_mode: 'dim', colorMode: 'default', theme: 'github' },
+      { disableAllHooks: false, disable_all_hooks: true },
+      { disable_all_hooks: true, disableAllHooks: false },
+      { disable_all_hooks: true, disableAllHooks: null },
+      { disableAllHooks: 42, disable_all_hooks: true },
+      { sidebar: { show_header_buttons: false, showHeaderButtons: true, ctrl_ccloses_session: true, unknown_key: true }, custom_agents: { default_local_only: true }, footer: { show_ai_used: false } },
+      { sandbox: { user_policy: { filesystem: { readwrite_paths: ['fixture'] }, network: { allow_outbound: false } }, credentials: { env_vars: { KEEP_THIS_ENV: { inject_hosts: ['example.test'] } } } }, subagents: { agents: { keep_this_name: { effort_level: 'high' } }, max_depth: 2 }, workflows: { default_limits: { max_ai_credits: 40, max_turns: 2 } } },
+      { enabled_plugins: { keep_this_plugin: true }, extra_known_marketplaces: { keep_this_market: { auto_update: true, source: { source: 'github', repo: 'example/fixture' } } }, hooks: { session_start: [{ timeout_sec: 1, env: { KEEP_THIS_ENV: 'fixture' } }] }, unknown_key: { disable_all_hooks: true }, featureFlags: ['fixture'] },
+    ];
+    for (const input of inputs) assert.deepEqual(normalizeCopilotSettings(input).data, (await request('user.settings.normalize', { settings: input })).settings);
+    for (const input of [
+      { disable_all_hooks: true, disabled_mcp_servers: ['fixture'], show_reasoning: true, color_mode: 'dim' },
+      { disableAllHooks: false, disable_all_hooks: true },
+      { disable_all_hooks: true, disableAllHooks: false },
+      { colorMode: 'dim', theme: 'github' },
+      { theme: 'github', colorMode: 'dim' },
+      { disabled_skills: ['fixture'], context_tier: 'long_context', effort_level: 'high', enabled_plugins: { keep_this_name: true } },
+      { disable_all_hooks: true, disableAllHooks: 42, showReasoning: true },
+      { disableAllHooks: null, disable_all_hooks: true, showReasoning: true },
+      { disableAllHooks: true, disable_all_hooks: 42, disabled_mcp_servers: ['fixture'], show_reasoning: true },
+      { disabled_mcp_servers: ['fixture'], disabledMcpServers: [42], showReasoning: true },
+      { disabledMcpServers: ['fixture'], disabled_mcp_servers: [42], showReasoning: true },
+      { effortLevel: null, effort_level: 'high', contextTier: null, context_tier: 'long_context', theme: null, color_mode: 'dim' },
+      { effort_level: null, context_tier: null, color_mode: null, showReasoning: true },
+      { colorMode: 42, showReasoning: true },
+      { theme: 42, showReasoning: true },
+      { color_mode: 42, showReasoning: true },
+    ]) {
+      await writeFile(path.join(w.home, '.copilot/settings.json'), JSON.stringify(input));
+      const native = (await request('user.settings.get')).settings;
+      const report = await scan({ ...w, clients: ['copilot'] });
+      assert.deepEqual(
+        Object.fromEntries(report.clients[0].settings.filter(setting => setting.status === 'active').map(setting => [setting.key, setting.value])),
+        Object.fromEntries(Object.entries(native).filter(([, setting]: [string, any]) => !setting.isDefault).flatMap(([key, setting]: [string, any]) => flatten({ [key]: setting.value }))), JSON.stringify(input),
+      );
+    }
+  });
 });
 
 const cases: { name: string; user: Record<string, unknown>; repo: Record<string, unknown>; local?: Record<string, unknown> }[] = [
@@ -175,12 +234,14 @@ test('Copilot native workspace MCP inventory follows trustedFolders and disabled
     } finally { await rm(isolated.root, { recursive: true, force: true, maxRetries: 5 }); }
   }
   await writeFile(path.join(w.home, '.copilot/config.json'), JSON.stringify({ trustedFolders: [w.repo] }));
-  await writeFile(path.join(w.home, '.copilot/settings.json'), '{"disabledMcpServers":["fixture"]}');
-  const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd: w.repo, env, encoding: 'utf8', timeout: 15000 }));
-  const report = await scan({ ...w, clients: ['copilot'] });
-  assert.equal(native.mcpServers.fixture?.enabled, false);
-  assert.equal(report.clients[0].extensions.find(extension => extension.name === 'fixture')?.status, 'ignored');
-  await assert.rejects(readFile(path.join(w.repo, 'native-mcp-started')), { code: 'ENOENT' });
+  for (const key of ['disabledMcpServers', 'disabled_mcp_servers']) {
+    await writeFile(path.join(w.home, '.copilot/settings.json'), JSON.stringify({ [key]: ['fixture'] }));
+    const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd: w.repo, env, encoding: 'utf8', timeout: 15000 }));
+    const report = await scan({ ...w, clients: ['copilot'] });
+    assert.equal(native.mcpServers.fixture?.enabled, false);
+    assert.equal(report.clients[0].extensions.find(extension => extension.name === 'fixture')?.status, 'ignored');
+    await assert.rejects(readFile(path.join(w.repo, 'native-mcp-started')), { code: 'ENOENT' });
+  }
 });
 
 test('Copilot native shared-rule inventory keeps root and cwd sources with their path metadata', async t => {

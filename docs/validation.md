@@ -1,5 +1,17 @@
 # Release validation
 
+## v0.2.13
+
+Verified locally on macOS on 2026-11-13.
+
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 199-case core suite completed with 198 passes and one Windows-only skip. Production dependency audit reported zero vulnerabilities.
+* The pinned Copilot 1.0.110 personal catalog and registered alias fixture match the native configuration API. Sixteen isolated personal-file rewrites compare explicitly configured values, including file-order collisions, optional selectors, malformed canonical values and alias-normalization fallback. Existing native merge/type comparisons remain included.
+* Native MCP inventory checks both disabledMcpServers and disabled_mcp_servers while verifying that the declared server remains unstarted. Repository spelling restrictions, dynamic mapping keys, original alias lines, replacement history and numeric private mapping values have dedicated regressions.
+* All thirty-three Chromium browser cases passed. The added live/portable flow opens the canonical setting's original snake_case source line and retains the earlier definition. Existing accessibility, phone, delayed initialization, privacy and comparison flows remain included.
+* Local Firefox launch failed before test execution because the browser could not find its temporary profile, including a retry using /private/tmp. The hosted workflow runs the Firefox suite on Linux.
+* Installed-package validation covers rejected personal settings, canonical-value fallback, JSONC correction, disabled probes, legacy theme names, source history and portable source navigation. Original paths and private values remain absent from the exported report.
+* Personal value schemas outside the validated subset remain partial. Malformed legacy theme values follow the native user.settings.get metadata reader, which differs from config --list for some invalid inputs.
+
 ## v0.2.12
 
 Verified locally on macOS on 2026-11-13.

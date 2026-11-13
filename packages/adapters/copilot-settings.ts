@@ -4,6 +4,10 @@ import { isDeepStrictEqual } from 'node:util';
 import type { Context, Effective, Source, Status } from '../core/types.js';
 import { finding, locate, plainObject } from '../core/utils.js';
 import { decision, flatten, hooks } from './common.js';
+import { copilotPersonalKeys, copilotSettingLocation, normalizeCopilotSettings } from './copilot-aliases.js';
+
+interface SettingsSource extends Source { declaredKeys?: Map<string, string> }
+const settingLocation = (source: SettingsSource, key: string) => copilotSettingLocation(source, source.declaredKeys, key);
 
 // Copilot's repository fold is compared with 1.0.110's user.settings.mergeRepoValue.
 // https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference
@@ -62,14 +66,80 @@ const trustedFields = new Set(['model', 'effortLevel', 'contextTier']);
 const copilotSharedSettings = new Set(['companyAnnouncements', 'disableAllHooks', 'enabledPlugins', 'extraKnownMarketplaces', 'hooks']);
 const customizationLocations = new Set(['skillDirectories', 'agentDirectories', 'instructionDirectories', 'hookDirectories']);
 
-export function copilotSettings(e: Effective, source: Source, trust: Status, shared = false, ambiguous = new Set<string>()): void {
+function omitPersonalValues(e: Effective, source: SettingsSource, data: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(data).filter(([key, value]) => {
+    const omitted = ['effortLevel', 'contextTier'].includes(key) && value === null ||
+      key === 'theme' && typeof value !== 'string' ||
+      key === 'colorMode' && value === null;
+    if (omitted) e.settings.push({ key, value, status: 'ignored', location: settingLocation(source, key), reason: 'The native personal settings reader omits this optional value.', overrides: [] });
+    return !omitted;
+  }));
+}
+
+function personalSettings(e: Effective, source: Source): SettingsSource | null {
+  // Optional personal selectors are omitted before the native alias pass.
+  const data = omitPersonalValues(e, source, source.data);
+  const personalValidator = (key: string) => key === 'skillDirectories' ? validateLocations : validators.get(key);
+  const invalid = Object.entries(data).filter(([key, value]) => {
+    const validate = personalValidator(key);
+    return validate && !validate(value);
+  });
+  if (invalid.length) {
+    const loaded = e.decisions.findLast(decision => decision.path === source.path)!;
+    loaded.status = 'invalid'; loaded.reason = 'Copilot rejects this personal settings file because a declared canonical value fails validation.';
+    for (const [key] of invalid) e.findings.push(finding('copilot.personal-settings-invalid', 'error', locate(source, key), `Copilot cannot load this personal settings file because "${key}" is invalid.`, 'The native personal-file loader rejects the document before applying its aliases. Sibling personal settings also lose their contribution.', 'Correct this value, then rescan the complete personal settings file.', 'copilot'));
+    for (const [key, value] of Object.entries(source.data)) if (key !== '$schema') e.settings.push({ key, value, status: 'invalid', location: locate(source, key), reason: 'The personal settings document failed native loading validation.', overrides: [] });
+    return null;
+  }
+  const normalized = normalizeCopilotSettings(data);
+  normalized.data = omitPersonalValues(e, { ...source, declaredKeys: normalized.origins }, normalized.data);
+  const invalidAliases = Object.entries(normalized.data).filter(([key, value]) => {
+    const validate = personalValidator(key);
+    return validate && !validate(value);
+  });
+  if (invalidAliases.length) {
+    for (const [key, value] of invalidAliases) {
+      const location = copilotSettingLocation(source, normalized.origins, key);
+      e.settings.push({ key, value, status: 'invalid', location, reason: 'This alias makes the normalized personal document fail validation.', overrides: [] });
+      e.findings.push(finding('copilot.setting-alias-type', 'error', location, `Copilot cannot normalize personal setting "${key}".`, 'The native loader retains its original unnormalized document when an aliased value fails validation. Other aliased settings also lose their contribution.', 'Correct the aliased value or replace it with a valid canonical setting.', 'copilot'));
+    }
+    for (const [key, value] of Object.entries(data)) {
+      const canonical = Object.keys(normalizeCopilotSettings({ [key]: value }).data)[0];
+      if (canonical === key) continue;
+      e.settings.push({ key: canonical, value, status: 'ignored', location: locate(source, key), reason: 'Alias normalization failed for this personal file. Copilot retains the original canonical keys.', overrides: [] });
+      delete data[key];
+    }
+    return { ...source, data };
+  }
+  const result = { ...source, data: normalized.data, declaredKeys: normalized.origins };
+  for (const replaced of normalized.replaced) {
+    for (const [key, value] of flatten({ [replaced.key]: replaced.value })) e.settings.push({
+      key, value, status: 'shadowed', location: copilotSettingLocation(source, replaced.origins, key),
+      reason: 'A later spelling of the same Copilot setting replaces this definition in this file.', overrides: [],
+    });
+    e.findings.push(finding('copilot.setting-alias-collision', 'warn', settingLocation(result, replaced.key), `Multiple spellings define Copilot setting "${replaced.key}".`, 'Copilot normalizes registered aliases in file order. The last spelling supplies this setting subtree.', 'Keep one spelling of this setting using its canonical name.', 'copilot', [copilotSettingLocation(source, replaced.origins, replaced.key)]));
+  }
+  return result;
+}
+
+export function copilotSettings(e: Effective, source: SettingsSource, trust: Status, shared = false, ambiguous = new Set<string>()): void {
   const repository = source.scope !== 'user';
   decision(e, source, 'active', repository ? 'Repository settings override user defaults, followed by settings.local.json. Each key retains its Copilot merge policy.' : 'Personal Copilot settings.');
   if (source.invalid) return;
+  if (!repository) {
+    const personal = personalSettings(e, source);
+    if (!personal) return;
+    source = personal;
+  }
   for (const [key, declared] of Object.entries(source.data)) {
     if (key === '$schema') continue;
+    if (!repository && !copilotPersonalKeys.has(key)) {
+      e.settings.push({ key, value: declared, status: 'ignored', location: settingLocation(source, key), reason: 'This key is outside the pinned Copilot personal settings catalog.', overrides: [] });
+      e.findings.push(finding('copilot.setting-unknown', 'warn', settingLocation(source, key), `Copilot does not recognize personal setting "${key}".`, 'The pinned native settings catalog does not include this key.', 'Check the setting name in the Copilot configuration reference.', 'copilot'));
+      continue;
+    }
     if (shared && !copilotSharedSettings.has(key)) {
-      e.settings.push({ key, value: declared, status: 'ignored', location: locate(source, key), reason: 'Copilot reads the shared cross-tool subset from Claude repository settings. This key is outside that subset.', overrides: [] });
+      e.settings.push({ key, value: declared, status: 'ignored', location: settingLocation(source, key), reason: 'Copilot reads the shared cross-tool subset from Claude repository settings. This key is outside that subset.', overrides: [] });
       continue;
     }
     const locationSetting = repository ? customizationLocations.has(key) : key === 'skillDirectories';
@@ -84,9 +154,9 @@ export function copilotSettings(e: Effective, source: Source, trust: Status, sha
         if (['if', 'anyOf', 'oneOf'].includes(error.keyword)) continue;
         const parts = error.instancePath.split('/').slice(1).map(part => part.replace(/~1/g, '/').replace(/~0/g, '~'));
         if (error.keyword === 'required') parts.push(String(error.params.missingProperty));
-        e.findings.push(finding('copilot.setting-type', 'error', locate(source, [key, ...parts].join('.')), `Copilot setting "${key}" has an invalid value (${error.keyword}).`, 'Copilot rejects this setting subtree while retaining valid sibling settings.', 'Correct this value using the Copilot configuration reference, then rescan.', 'copilot'));
+        e.findings.push(finding('copilot.setting-type', 'error', settingLocation(source, [key, ...parts].join('.')), `Copilot setting "${key}" has an invalid value (${error.keyword}).`, 'This setting value fails Copilot structural validation.', 'Correct this value using the Copilot configuration reference, then rescan.', 'copilot'));
       }
-      e.settings.push({ key, value: declared, status: 'invalid', location: locate(source, key), reason: 'This setting subtree fails structural validation.', overrides: [] });
+      e.settings.push({ key, value: declared, status: 'invalid', location: settingLocation(source, key), reason: 'This setting subtree fails structural validation.', overrides: [] });
       continue;
     }
     if (locationSetting && Array.isArray(declared)) {
@@ -113,7 +183,7 @@ export function copilotSettings(e: Effective, source: Source, trust: Status, sha
   }
 }
 
-function applySetting(e: Effective, source: Source, key: string, value: unknown, status: Status, policy: 'replace' | 'union' | 'append' | 'tighten', ambiguous = false): void {
+function applySetting(e: Effective, source: SettingsSource, key: string, value: unknown, status: Status, policy: 'replace' | 'union' | 'append' | 'tighten', ambiguous = false): void {
   const earlier = e.settings.filter(setting => setting.key === key || setting.key.startsWith(key + '.'));
   const previous = earlier.filter(setting => setting.status === 'active');
   const conditional = earlier.filter(setting => setting.status === 'conditional');
@@ -142,9 +212,11 @@ function applySetting(e: Effective, source: Source, key: string, value: unknown,
   const overrides = ambiguous
     ? [...previous.flatMap(setting => [...setting.overrides, setting.location]), ...conditional.flatMap(setting => setting.overrides)]
     : [...previous, ...conditional].flatMap(setting => [...setting.overrides, setting.location]);
+  const aliases = earlier.filter(setting => setting.status === 'shadowed' && setting.location.path === source.path);
+  overrides.push(...aliases.map(setting => setting.location));
   const uniqueOrigins = [...new Map(overrides.map(location => [JSON.stringify(location), location])).values()];
-  for (const [name, child] of flatten({ [key]: value })) e.settings.push({ key: name, value: child, status, location: locate(source, name), reason, overrides: uniqueOrigins });
-  if (status === 'active' && policy === 'replace' && previous.length) e.findings.push(finding('config.overridden', 'info', previous[0].location, `Setting "${key}" is overridden.`, 'A higher-priority Copilot setting replaces this value or map entry.', 'Inspect the selected definition and remove redundant values if appropriate.', 'copilot', [locate(source, key)]));
+  for (const [name, child] of flatten({ [key]: value })) e.settings.push({ key: name, value: child, status, location: settingLocation(source, name), reason, overrides: uniqueOrigins });
+  if (status === 'active' && policy === 'replace' && previous.length) e.findings.push(finding('config.overridden', 'info', previous[0].location, `Setting "${key}" is overridden.`, 'A higher-priority Copilot setting replaces this value or map entry.', 'Inspect the selected definition and remove redundant values if appropriate.', 'copilot', [settingLocation(source, key)]));
 }
 
 export function copilotRepositorySettings(e: Effective, ctx: Context, trust: Status): void {

@@ -5,6 +5,68 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { workspace } from './helpers.js';
 
+test('Copilot personal aliases preserve declared locations, replacement history and private map values', async t => {
+  const w = await workspace({
+    '.mcp.json': '{"mcpServers":{"fixture":{"command":"missing-disabled-personal-alias-server"}}}',
+    '.github/hooks/test.json': '{"version":1,"hooks":{"sessionStart":[{"command":"missing-disabled-personal-alias-hook"}]}}',
+  }, { '.copilot/settings.json': '{\n"disabledMcpServers":["replaced"],\n"disabled_mcp_servers":["fixture"],\n"disable_all_hooks":true,\n"colorMode":"github",\n"color_mode":"dim",\n"sidebar":{"show_header_buttons":false,"showHeaderButtons":true},\n"extra_known_marketplaces":{"keep_this_name":{"source":{"source":"directory","path":"fixture","env":{"NORMAL":42,"PRIVATE":"alias-private-sentinel"}}}},\n"unknown_setting":true\n}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['copilot'], trust: 'trusted', probe: true });
+  const settings = report.clients[0].settings;
+  const active = (key: string) => settings.find(setting => setting.key === key && setting.status === 'active');
+  assert.deepEqual(active('disabledMcpServers')?.value, ['fixture']);
+  assert.equal(active('disabledMcpServers')?.location.key, 'disabled_mcp_servers');
+  assert.equal(active('disabledMcpServers')?.location.line, 3);
+  assert.equal(active('disabledMcpServers')?.overrides[0].line, 2);
+  assert.equal(active('theme')?.value, 'dim');
+  assert.equal(active('theme')?.location.key, 'color_mode');
+  assert.equal(active('theme')?.overrides[0].key, 'colorMode');
+  assert.equal(active('sidebar.showHeaderButtons')?.value, true);
+  assert.equal(active('sidebar.showHeaderButtons')?.location.key, 'sidebar.showHeaderButtons');
+  assert.ok(settings.some(setting => setting.key === 'sidebar.showHeaderButtons' && setting.status === 'shadowed' && setting.location.key === 'sidebar.show_header_buttons'));
+  assert.equal(active('extraKnownMarketplaces.keep_this_name.source.env.NORMAL')?.value, '[REDACTED]');
+  assert.equal(active('extraKnownMarketplaces.keep_this_name.source.env.NORMAL')?.location.key, 'extra_known_marketplaces.keep_this_name.source.env.NORMAL');
+  assert.ok(!JSON.stringify(report).includes('alias-private-sentinel'));
+  assert.ok(!report.sources.find(source => source.relativePath.endsWith('settings.json'))?.preview?.includes('42'));
+  assert.equal(settings.find(setting => setting.key === 'unknown_setting')?.status, 'ignored');
+  assert.equal(report.findings.filter(finding => finding.ruleId === 'copilot.setting-alias-collision').length, 3);
+  assert.equal(report.findings.find(finding => finding.ruleId === 'copilot.setting-unknown')?.location.line, 9);
+  assert.ok(report.clients[0].extensions.every(extension => extension.status === 'ignored'));
+  assert.ok(!report.findings.some(finding => finding.ruleId === 'mcp.command-missing' || finding.ruleId === 'hook.command-missing' || finding.ruleId === 'mcp.probe-failed'));
+});
+
+test('Copilot repository keys retain their distinct spelling contract', async t => {
+  const w = await workspace({ '.github/copilot/settings.json': '{\n"disable_all_hooks":true,\n"disabled_mcp_servers":["fixture"],\n"skill_directories":["fixture"]\n}' }, { '.copilot/settings.json': '{"disable_all_hooks":false}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['copilot'] });
+  assert.equal(report.clients[0].settings.find(setting => setting.key === 'disableAllHooks' && setting.status === 'active')?.value, false);
+  assert.equal(report.findings.filter(finding => finding.ruleId === 'copilot.setting-scope').length, 3);
+  assert.ok(!report.findings.some(finding => finding.ruleId === 'copilot.customization-locations'));
+});
+
+test('Copilot rejects a malformed canonical personal document and preserves repository settings', async t => {
+  const w = await workspace({ '.github/copilot/settings.json': '{"includeCoAuthoredBy":false}' }, { '.copilot/settings.json': '{\n"disableAllHooks":42,\n"disable_all_hooks":true,\n"model":"discarded-personal-model"\n}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['copilot'] });
+  const settings = report.clients[0].settings;
+  assert.ok(!settings.some(setting => setting.status === 'active' && setting.location.path.startsWith(w.home)));
+  assert.equal(settings.find(setting => setting.key === 'includeCoAuthoredBy' && setting.status === 'active')?.value, false);
+  assert.equal(report.findings.find(finding => finding.ruleId === 'copilot.personal-settings-invalid')?.location.line, 2);
+  assert.equal(report.clients[0].decisions.find(decision => decision.path === path.join(w.home, '.copilot/settings.json'))?.status, 'invalid');
+});
+
+test('Copilot retains canonical personal values when a malformed alias prevents normalization', async t => {
+  const w = await workspace({}, { '.copilot/settings.json': '{\n"disableAllHooks":true,\n"disable_all_hooks":42,\n"disabled_mcp_servers":["fixture"],\n"show_reasoning":true\n}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['copilot'] });
+  const settings = report.clients[0].settings;
+  assert.deepEqual(settings.filter(setting => setting.status === 'active').map(setting => [setting.key, setting.value]), [['disableAllHooks', true]]);
+  assert.equal(settings.find(setting => setting.key === 'disabledMcpServers')?.status, 'ignored');
+  assert.equal(settings.find(setting => setting.key === 'showReasoning')?.status, 'ignored');
+  assert.equal(report.findings.find(finding => finding.ruleId === 'copilot.setting-alias-type')?.location.line, 3);
+  assert.equal(report.findings.find(finding => finding.ruleId === 'copilot.setting-alias-type')?.location.key, 'disable_all_hooks');
+});
+
 test('Copilot repository and local JSONC settings preserve directional merges and origins', async t => {
   const w = await workspace({
     '.github/copilot/settings.json': JSON.stringify({ model: 'repository-model', disabledSkills: ['repository', 'same'], deniedUrls: ['repo.example'], respectGitignore: false, enabledPlugins: { shared: false, repo: true }, extraKnownMarketplaces: { shared: { source: { source: 'directory', path: 'repository' } }, repository: { source: { source: 'directory', path: 'repository-only' }, autoUpdate: true } } }, null, 2),

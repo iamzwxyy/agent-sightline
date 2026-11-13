@@ -7,6 +7,29 @@ import { mkdir, readFile, readdir, realpath, rm, watch, writeFile } from 'node:f
 import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
+test('CLI follows Copilot personal alias failures through correction and portable export', async t => {
+  const w = await workspace({ '.mcp.json': '{"mcpServers":{"fixture":{"command":"missing-personal-alias-cli-command"}}}' }, { '.copilot/settings.json': '{\n"disabled_mcp_servers":[42],\n"disable_all_hooks":true\n}' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const flags = ['--client', 'copilot', '--home', w.home, '--trust', 'trusted'];
+  const failed = run(['ci', ...flags], w.repo);
+  assert.equal(failed.status, 1, failed.stderr);
+  const invalid = JSON.parse(failed.stdout);
+  assert.equal(invalid.findings.find((finding: any) => finding.ruleId === 'copilot.setting-alias-type').location.key, 'disabled_mcp_servers');
+  await writeFile(path.join(w.home, '.copilot/settings.json'), '{// personal legacy settings\n"disabled_mcp_servers":["fixture"],\n"disable_all_hooks":true,\n"colorMode":"dim",\n}');
+  const checked = run(['ci', ...flags], w.repo);
+  assert.equal(checked.status, 0, checked.stderr);
+  const report = JSON.parse(checked.stdout);
+  assert.equal(report.clients[0].extensions.find((extension: any) => extension.name === 'fixture').status, 'ignored');
+  assert.equal(report.clients[0].settings.find((setting: any) => setting.key === 'disabledMcpServers').location.line, 2);
+  assert.equal(report.clients[0].settings.find((setting: any) => setting.key === 'theme').value, 'dim');
+  const file = path.join(w.root, 'copilot-aliases.html');
+  const exported = run(['report', ...flags, '--format', 'html', '--output', file], w.repo);
+  assert.equal(exported.status, 0, exported.stderr);
+  const content = await readFile(file, 'utf8');
+  assert.ok(content.includes('disabled_mcp_servers'));
+  assert.ok(!content.includes(w.home));
+  assert.ok(!content.includes(await realpath(w.repo)));
+});
 test('CLI follows a Claude transport error through correction and explicit trust', async t => {
   const servers = { remote: { url: 'https://example.test/mcp' }, local: { command: process.execPath } };
   const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: servers }, null, 2), '.claude/settings.json': '{"enableAllProjectMcpServers":true}' });

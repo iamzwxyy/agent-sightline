@@ -485,7 +485,13 @@
     const selected = $('setting-client').value;
     const query = $('setting-search').value.trim().toLowerCase();
     const settings = report.clients.filter(client => selected === 'all' || selected === client.client).flatMap(client => client.settings.map(setting => ({ setting, client: client.client })));
-    const visible = settings.filter(({ setting }) => ($('include-shadowed').checked || setting.status !== 'shadowed') && (!query || [setting.key, JSON.stringify(setting.value), short(setting.location.path)].join(' ').toLowerCase().includes(query)));
+    const visible = settings.filter(({ setting }) =>
+      ($('include-shadowed').checked || setting.status !== 'shadowed') &&
+      (!query || [
+        setting.key, setting.location.key, ...setting.overrides.map(location => location.key),
+        JSON.stringify(setting.value), short(setting.location.path),
+      ].join(' ').toLowerCase().includes(query)),
+    );
     const table = node('table', undefined, 'coverage-table settings-table');
     const head = node('thead'); const header = node('tr');
     ['Setting', 'Resolved value', 'Client', 'Source'].forEach(label => header.append(node('th', label))); head.append(header); table.append(head);

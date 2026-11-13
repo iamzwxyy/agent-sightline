@@ -14,6 +14,39 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('Copilot canonical settings open their original personal aliases in live and portable views', async ({ page }) => {
+  const w = await workspace({ '.mcp.json': '{"mcpServers":{"fixture":{"command":"missing-disabled-browser-alias"}}}' }, { '.copilot/settings.json': '{\n"disabledMcpServers":["earlier"],\n"disabled_mcp_servers":["fixture"],\n"disable_all_hooks":true,\n"colorMode":"dim"\n}' });
+  const server = await serve({ ...w, clients: ['copilot'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('copilot-personal-aliases.html');
+    await (await download).saveAs(file);
+    const content = await readFile(file, 'utf8');
+    expect(content).not.toContain(w.home);
+    expect(content).not.toContain(await realpath(w.repo));
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.goto(url);
+      await page.locator('#configuration-tab').click();
+      await page.getByLabel('Search settings').fill('disabledMcpServers');
+      const rows = page.locator('#setting-list tbody tr');
+      await expect(rows).toHaveCount(1);
+      await expect(rows).toContainText('fixture');
+      await page.getByLabel('Search settings').fill('disabled_mcp_servers');
+      await expect(rows).toHaveCount(1);
+      await rows.getByRole('button', { name: 'disabledMcpServers', exact: true }).click();
+      await expect(page.locator('.setting-origins')).toContainText('Earlier definitions');
+      await expect(page.locator('.setting-origins')).toContainText('settings.json · line 2');
+      await page.getByRole('button', { name: /Inspect source/ }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('"disabled_mcp_servers"');
+      await page.locator('#extensions-tab').click();
+      await expect(page.locator('.extension-row .status.ignored')).toHaveCount(1);
+    }
+    await page.screenshot({ path: test.info().outputPath('copilot-personal-aliases.png') });
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('Copilot layered settings navigate to their sources and retain disabled extensions in portable reports', async ({ page }) => {
   const w = await workspace({
     '.github/copilot/settings.json': '{\n"model":"repository-model",\n"disabledMcpServers":["disabled"],\n"disableAllHooks":true\n}',

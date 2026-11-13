@@ -7,6 +7,7 @@ Sources: [custom instructions](https://docs.github.com/en/copilot/how-tos/copilo
 | Concern | Implemented contract |
 | --- | --- |
 | User | COPILOT_HOME or ~/.copilot: copilot-instructions.md, instructions/**/*.instructions.md, settings.json (JSONC), mcp-config.json, hooks, skills |
+| Personal aliases | Registered snake_case fields, legacy colorMode/color_mode and featureFlags normalize within known setting shapes. Dynamic mapping names retain their spelling. Last definition wins within a file, with original source keys retained |
 | State | config.json contains internal/trust state; user settings there are ignored in this version |
 | Settings | Personal settings followed by .github/copilot/settings.json and settings.local.json, with field-specific replacement, union, map-entry replacement and hook append policies |
 | Shared settings | The repository's .claude/settings.json and settings.local.json contribute companyAnnouncements, disableAllHooks, enabledPlugins, extraKnownMarketplaces and hooks. Conflicting same-scope values remain conditional |
@@ -20,7 +21,7 @@ Sources: [custom instructions](https://docs.github.com/en/copilot/how-tos/copilo
 | MCP | Personal then trusted workspace .mcp.json/.github/mcp.json cwd-to-Git-root, closer wins; same-directory ties remain conditional |
 | Skills | Project .github → .agents → .claude → inherited .github → personal .copilot → personal .agents; first name wins |
 | Hooks | Repository/personal hook files use version 1. Inline hooks contribute from personal, repository, local and shared Claude settings. Commands support platform fields, command fallback and direct exec. cwd is repository-root-relative |
-| Invalid files | Parse/shape errors reported; invalid MCP entry does not discard valid sibling definitions |
+| Invalid files | Parse/shape errors reported. Invalid supported canonical personal fields reject the personal document. Invalid snake_case values can prevent normalization while retaining original canonical values. Invalid MCP entries preserve valid sibling definitions |
 
 Fixture: `fixtures/copilot/chain.json`. Tests distinguish JSONC personal settings, imports, applyTo and CLI-specific limits from other products.
 
@@ -33,3 +34,7 @@ Separate native CLI inventories cover current and legacy folder-trust keys, disa
 Copilot accepts JSONC in shared settings. The native Claude 2.1.322 check reproduces the same file being ignored by Claude when comments/trailing commas are present. Discovery retains the JSONC tree for Copilot while Claude reparses its settings layer using strict JSON. Syntax findings remain client-scoped, with parsed-value redaction applied to source previews.
 
 Known coverage gaps include enterprise allowlists, runtime instruction toggles, plugin contents, saved permission rules and ignoredSkillsLocations. Additional discovery directories retain conditional declarations and mark coverage incomplete. Personal fields outside the fourteen repository-overridable keys have partial schema coverage. Same-scope Copilot/Claude file ordering and workspace MCP file ties retain conditional candidates. [Settings contract](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference) · [Hook formats](https://docs.github.com/en/copilot/reference/hooks-reference) · [Additional discovery locations](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/customization-locations)
+
+`fixtures/copilot/aliases.json` pins the registered field-normalization shapes against `user.settings.normalize`. The test also compares the complete personal-key catalog with `user.settings.get`, then rewrites an isolated settings file through valid collisions, null selectors, invalid canonical fields and normalization fallback. File-loading assertions compare explicitly configured effective values with `user.settings.get`. A separate real MCP inventory checks both spellings of disabledMcpServers without starting the synthetic server. Unknown personal keys are diagnosed from the catalog. Catalog membership comes from user.settings.get. The native single-key validator accepts unknown names.
+
+Personal settings outside the validated subset retain partial value-schema coverage. Native `config --list` and the RPC metadata reader differ on malformed legacy theme values. Theme interpretation follows `user.settings.get`; malformed theme normalization is omitted from effective values.

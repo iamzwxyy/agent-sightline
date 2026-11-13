@@ -78,7 +78,7 @@ export function redactScanReport(report: Report, scrub: ReturnType<typeof create
         ...(decision.importedFrom ? { importedFrom: location(decision.importedFrom) } : {}),
       })),
       settings: client.settings.map(setting => ({
-        ...setting, key: scrub(setting.key), value: privateSettings.has(setting.location.path + '\0' + setting.key) ? '[REDACTED]' : scrub(setting.value), reason: scrub(setting.reason),
+        ...setting, key: scrub(setting.key), value: privateSettings.has(setting.location.path + '\0' + (setting.location.key ?? setting.key)) ? '[REDACTED]' : scrub(setting.value), reason: scrub(setting.reason),
         location: location(setting.location), overrides: setting.overrides.map(location),
       })),
       extensions: client.extensions.map(extension => ({
