@@ -14,6 +14,96 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('malformed sibling TOML masks copied private text in live and offline reports', async ({ page }) => {
+  const secret = 'browser-malformed-toml-private-value';
+  const w = await workspace({
+    'AGENTS.md': 'Safe introduction.\n\n' + secret + '\n\nSafe ending.',
+    'CLAUDE.md': 'Safe introduction.\n\n' + secret + '\n\nSafe ending.',
+    'sibling/.codex/config.toml': '[mcp_servers.fixture.env]\nNORMAL="browser-malformed-toml-private-\\u0076alue"\nBROKEN=[\n',
+  });
+  const server = await serve({ ...w, user: false, trust: 'trusted', clients: ['codex', 'claude'] });
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('malformed-toml-privacy.html');
+    await (await pending).saveAs(file);
+    const exported = await readFile(file, 'utf8');
+    for (const value of [secret, w.repo, await realpath(w.repo), w.home, await realpath(w.home)]) expect(exported).not.toContain(JSON.stringify(value).slice(1, -1));
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.goto(url);
+      const data = await page.locator('#report-data').textContent();
+      expect(data).not.toContain('browser-malformed-toml-private-');
+      const report = JSON.parse(data!);
+      expect(report.sources.some((source: any) => source.relativePath === 'sibling/.codex/config.toml' && source.invalid && source.preview === undefined)).toBe(true);
+      expect(report.findings.some((finding: any) => finding.ruleId === 'parse.toml')).toBe(false);
+      await page.getByRole('button', { name: 'Inspect Codex instructions', exact: true }).click();
+      await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+      await expect(page.locator('#effective-document')).toContainText('Safe introduction.');
+      await expect(page.locator('#effective-document')).toContainText('[REDACTED]');
+      await page.locator('#compare-tab').click();
+      await expect(page.locator('#comparison-blocks')).toContainText('Safe ending.');
+      await expect(page.locator('#comparison-blocks')).toContainText('[REDACTED]');
+      await page.setViewportSize({ width: 390, height: 844 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('target changes recompute syntax findings and preserve outside-scope sources in portable reports', async ({ page }) => {
+  const w = await workspace({ '.codex/config.toml': 'model="root-model"\n', 'app/index.ts': '', 'sibling/index.ts': '', 'sibling/.codex/config.toml': 'model=[\n' });
+  const server = await serve({ ...w, clients: ['codex'], user: false, trust: 'trusted', target: 'app/index.ts' });
+  try {
+    await page.goto(server.url);
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const rootFile = test.info().outputPath('scoped-clean-target.html');
+    await (await download).saveAs(rootFile);
+    const rootHtml = await readFile(rootFile, 'utf8');
+    const snapshot = JSON.parse(rootHtml.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
+    expect(snapshot.sources.some((source: any) => source.relativePath === 'sibling/.codex/config.toml' && source.invalid)).toBe(true);
+    expect(snapshot.findings.some((finding: any) => finding.ruleId.startsWith('parse.'))).toBe(false);
+    for (const value of [w.repo, await realpath(w.repo), w.home, await realpath(w.home)]) expect(rootHtml).not.toContain(JSON.stringify(value).slice(1, -1));
+    for (const url of [server.url, pathToFileURL(rootFile).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.goto(url);
+      await page.locator('#findings-tab').click();
+      await page.locator('#severity').selectOption('error');
+      await expect(page.locator('#findings-list .finding')).toHaveCount(0);
+    }
+    await page.context().setOffline(false);
+    await page.goto(server.url);
+    await page.locator('#target').fill('sibling/index.ts');
+    await page.locator('#inspect').click();
+    await expect(page.locator('#footer-target')).toHaveText('sibling/index.ts');
+    await page.locator('#findings-tab').click();
+    await page.locator('#severity').selectOption('error');
+    await expect(page.locator('#findings-list .finding')).toHaveCount(1);
+    const brokenDownload = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const brokenFile = test.info().outputPath('scoped-broken-target.html');
+    await (await brokenDownload).saveAs(brokenFile);
+    await page.context().setOffline(true);
+    await page.goto(pathToFileURL(brokenFile).href);
+    await page.locator('#findings-tab').click();
+    await page.locator('#severity').selectOption('error');
+    await expect(page.locator('#findings-list .finding')).toHaveCount(1);
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.context().setOffline(false);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(server.url);
+    await page.locator('#target').fill('app/index.ts');
+    await page.locator('#inspect').click();
+    await expect(page.locator('#footer-target')).toHaveText('app/index.ts');
+    await page.locator('#findings-tab').click();
+    await page.locator('#severity').selectOption('error');
+    await expect(page.locator('#findings-list .finding')).toHaveCount(0);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('Copilot personal JSONC retains workspace trust and private source navigation live and offline', async ({ page }) => {
   const personal = '// Personal MCP configuration\n{\n"mcpServers": {\n"personal": {\n"command": "missing-browser-jsonc-command",\n"env": {"NORMAL":"browser-jsonc-private-\\u0076alue"},\n},\n},\n}';
   const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: { project: { command: process.execPath } } }) }, { '.copilot/config.json': '{}', '.copilot/mcp-config.json': personal });

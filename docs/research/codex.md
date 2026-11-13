@@ -1,6 +1,6 @@
 # Codex evidence ledger
 
-Verified 2026-11-13. Rule target: npm `@openai/codex` 0.167.2. Configuration comparisons run against the exact 0.167.2 npm binary. The host also has 0.167.0-alpha.4.1 installed.
+Verified 2026-11-14. Rule target: npm `@openai/codex` 0.167.2. Configuration comparisons run against the exact 0.167.2 npm binary. The host also has 0.167.0-alpha.4.1 installed.
 
 Primary source: [agents_md.rs at rust-v0.167.2](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/core/src/agents_md.rs), its adjacent tests, [global instruction provider](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/codex-home/src/instructions/mod.rs), [official config docs](https://developers.openai.com/codex/config-basic), [skills](https://developers.openai.com/codex/skills), [hooks](https://learn.chatgpt.com/docs/hooks).
 
@@ -50,3 +50,7 @@ Sightline's same-layer dual-source diagnostic identifies coexisting handler defi
 The documented command_windows TOML alias is accepted by the pinned client and canonicalized to commandWindows in its configuration API. The generated JSON schema lists the canonical name, so Sightline supplements its in-memory validation schema with the documented alias. Windows executable checks and source locations share the same command-field selection. POSIX uses command. Nested TOML array tables retain per-handler lines, with multiline values excluded from table-header tracking. [Hook command fields](https://learn.chatgpt.com/docs/hooks)
 
 Codex 0.167.2's schema includes PreModelRequest and PostModelRequest events, plus command, mcp_tool, prompt and agent handlers. The documented runtime supports command/MCP handlers and skips prompt/agent handlers. Codex commands use the session working directory. Sightline explains ignored cwd, env and args fields and retains Copilot's client-specific directory/environment handling. Hook matching, MCP readiness and exact-definition trust remain runtime conditions. [Hook behavior](https://learn.chatgpt.com/docs/hooks)
+
+A native configuration comparison places malformed TOML in a sibling project outside the session directory chain. Codex reads the applicable root configuration successfully. Sightline retains the sibling source and its invalid flag while selecting diagnostics from the current target scope. Selecting a target under that sibling makes its syntax findings applicable. [Configuration loading](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/core/src/config_loader/mod.rs)
+
+Malformed-TOML privacy fixtures place synthetic environment values in readable assignments and copy them into loaded instructions. Recovery retains values for redaction across project, user and sibling discovery scopes, with LF/CRLF, escapes, multiline strings, duplicate definitions and unfinished private arrays or inline tables. Settings remain invalid and the original parser error location is retained. Installed-package and live/offline browser checks exercise the public output boundary.

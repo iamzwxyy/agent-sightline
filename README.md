@@ -5,12 +5,12 @@
 One file. Several agents. Different instructions. Sightline shows every discovered source, why it applies, what is shadowed or truncated, and the effective configuration—with source lines you can inspect.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.9/agent-sightline-0.3.9.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.10/agent-sightline-0.3.10.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.9.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.10.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -25,6 +25,8 @@ agent-sightline diff src/payments/refund.ts --clients codex,claude,copilot --tru
 Targets can be source files that do not yet exist if their parent directory exists. The explanation models a fresh session launched in the target’s directory and opening that file; it does not claim to observe an already-running agent.
 
 Run these commands from any repository subdirectory. Sightline finds the nearest Git root and includes applicable ancestor instructions and project configuration. Relative targets resolve from your current directory. An explicit `--repo` selects the inspection boundary and resolves targets relative to that directory.
+
+Syntax and configuration findings follow each client's target discovery scope. Files from other projects appear in discovered sources with their validity flags and an outside-target explanation. Select a target in their loading chain or inspect their project with `--repo` to diagnose them.
 
 ## What it shows
 
@@ -67,7 +69,7 @@ The companion website includes an interactive example, a complete installation g
 | Cursor | Docs snapshot 2026-11-12 | Experimental | AGENTS.md and .mdc always/glob/manual/intelligent states, local MCP |
 | OpenCode V2 | Docs snapshot 2026-11-12 | Experimental | V2 local configuration and nearest-first AGENTS.md; no V1 fallback assertion |
 
-Codex base/project scalar and MCP values and their winning files are compared with the real 0.167.2 configuration API in twenty-one isolated scenarios. Instruction bodies, profiles and source line numbers retain source/schema fixture coverage. Run `npm run test:codex` to reproduce the configuration comparisons.
+Codex base/project scalar and MCP values and their winning files are compared with the real 0.167.2 configuration API in twenty-two isolated scenarios. Instruction bodies, profiles and source line numbers retain source/schema fixture coverage. Run `npm run test:codex` to reproduce the configuration comparisons.
 
 Claude MCP transport parsing, approval boundaries, directory behavior and fallback from invalid higher-priority definitions are compared with the pinned 2.1.322 CLI. The checks use temporary homes and synthetic local MCP servers. Nineteen isolated native permission runs use a loopback scripted Messages API to check actual tool execution and rule precedence with synthetic credentials. Permission entries link to their overriding rule sources. Shared project grants require workspace trust, and local grants retain conditional Git/session checks until trust is explicitly modeled. Other Claude capabilities retain official-document fixtures. Run `npm run test:claude` to reproduce these comparisons.
 
@@ -79,7 +81,7 @@ Client marks are shared across the website, inspector and offline reports. Their
 
 ## Privacy and trust
 
-v0.3.5 corrects paragraph redaction for multi-line private values. Review v0.3.4 reports containing multi-line private instruction text before sharing them.
+v0.3.10 corrects copied-value redaction after malformed TOML. v0.3.9 could expose an environment value from that file when repeated in loaded instruction text. Review affected reports before sharing them. v0.3.5 also corrects multi-line paragraph redaction in v0.3.4.
 
 Default operation is local, read-only, account-free, API-key-free and model-free. No telemetry or uploads. It reads the repository and explicit documented user config locations, marked `user`; use `--no-user` for repository-only CI. It skips external private trees and safely reports damaged config, broken symlinks and access errors.
 
@@ -95,7 +97,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.3.9.tgz
+npm install -g ./agent-sightline-0.3.10.tgz
 agent-sightline demo
 ```
 

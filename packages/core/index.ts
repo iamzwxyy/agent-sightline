@@ -1,5 +1,5 @@
 import { adapters } from '../adapters/index.js';
-import { finish } from '../adapters/common.js';
+import { finish, sourceInScope } from '../adapters/common.js';
 import { discoverRepository, makeContext, selectedClients } from './discovery.js';
 import { diagnose } from './diagnostics.js';
 import { createRedactor, isSensitiveKey, privateMappings, redactScanReport, redactSourcePreview } from './redact.js';
@@ -25,7 +25,8 @@ function privateData(ctx: Context): { values: string[]; settings: Set<string> } 
       }
     };
     walk(source.data, false, false, []);
-    for (const range of source.valueRanges ?? []) if (range.private) walk(range.value, true);
+    // Recovered statement trees retain private keys after whole-file parse failure.
+    for (const range of source.valueRanges ?? []) walk(range.value, range.private === true);
   }
   return { values: [...values].filter(value => value && !/^\$\{(?:env:)?[A-Za-z_][\w]*\}$/.test(value)), settings };
 }
@@ -50,7 +51,7 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
   const discoveryFindings = ctx.findings.filter(finding => {
     if (!finding.ruleId.startsWith('parse.') && finding.ruleId !== 'source.empty') return true;
     const source = ctx.sources.find(source => source.path === finding.location.path);
-    return !source || source.owners.some(owner => chosen.some(adapter => adapter.metadata.id === owner));
+    return !source || clients.some(client => sourceInScope(client, source));
   });
   const findings = [...discoveryFindings, ...clients.flatMap(e => e.findings), ...diagnose(ctx, clients)];
   const unique = [...new Map(findings.map(f => [f.id, f])).values()].sort((a, b) => ({ error: 0, warn: 1, info: 2 }[a.severity] - { error: 0, warn: 1, info: 2 }[b.severity] || cmp(a.location.path, b.location.path) || a.location.line - b.location.line || a.location.column - b.location.column || cmp(a.ruleId, b.ruleId) || cmp(a.client ?? '', b.client ?? '')));

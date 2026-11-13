@@ -112,6 +112,12 @@ function assertConfiguredValue(configured: any, actual: any, key: string): void 
 
 const cases: RuntimeCase[] = [
   {
+    name: 'malformed sibling project outside the session directory chain',
+    user: 'model="user-model"\n',
+    files: { '.codex/config.toml': 'model="repository-model"\n', 'sibling/.codex/config.toml': 'model=[\n' },
+    keys: ['model'],
+  },
+  {
     name: 'trusted user, repository and nested layers',
     user: 'model="user-model"\nmodel_reasoning_effort="low"\n',
     files: { '.codex/config.toml': 'model="repository-model"\nmodel_reasoning_effort="medium"\n', 'src/.codex/config.toml': 'model_reasoning_effort="high"\n' },

@@ -8,6 +8,26 @@ import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
 
+test('CI findings follow the selected target while sibling project sources remain discoverable', async t => {
+  const w = await workspace({
+    '.codex/config.toml': 'model="root-model"\n',
+    'app/index.ts': '', 'sibling/index.ts': '',
+    'sibling/.codex/config.toml': 'model=[\n',
+    'sibling/.claude/settings.local.json': '{ broken JSON',
+    'sibling/.claude/settings.json': '{"Permissions":{}}',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const flags = ['--repo', w.repo, '--no-user', '--clients', 'codex,claude,copilot', '--trust', 'trusted'];
+  const root = run(['ci', ...flags, '--fail-on', 'warn'], w.repo);
+  assert.equal(root.status, 0, root.stderr);
+  const report = JSON.parse(root.stdout);
+  assert.ok(report.sources.some((source: any) => source.relativePath === 'sibling/.codex/config.toml' && source.invalid));
+  assert.ok(!report.findings.some((finding: any) => finding.severity !== 'info'));
+  const sibling = run(['explain', 'sibling/index.ts', '--repo', w.repo, '--no-user', '--client', 'codex', '--trust', 'trusted', '--fail-on', 'error', '--json'], w.repo);
+  assert.equal(sibling.status, 1, sibling.stderr);
+  assert.ok(JSON.parse(sibling.stdout).findings.some((finding: any) => finding.ruleId === 'parse.toml'));
+});
+
 test('Copilot CI accepts personal JSONC state and MCP files with original source lines', async t => {
   const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: { project: { command: process.execPath } } }) }, { '.copilot/config.json': '{}', '.copilot/mcp-config.json': '// Personal MCP\n{\n"mcpServers": {\n"personal": {\n"command": ' + JSON.stringify(process.execPath) + ',\n},\n},\n}' });
   t.after(() => rm(w.root, { recursive: true, force: true }));

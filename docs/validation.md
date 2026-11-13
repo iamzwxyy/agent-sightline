@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.10
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* The 367-case core suite completed with 365 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* Three targeted regression checks failed before the implementation. A native Codex configuration read succeeded while the old report treated a malformed sibling project's TOML as a current-target error. Native Claude and Copilot MCP inventories also preserve root-project discovery beside malformed sibling files.
+* Fixtures cover syntax, field-case/capability warnings, impossible globs, filename placement, client selection, trust decisions and private values captured from outside-scope sources. Invalid source metadata and discovery explanations accompany the target-scoped findings.
+* CLI and installed-package checks verify successful root CI scans and syntax findings after selecting the malformed project's target. The current repository's repository-only CI scan passed while retaining the intentionally invalid example source in discovery metadata.
+* Synthetic fixtures reproduced copied environment-value disclosure after whole-file TOML parse failure in source and an offline installation of the published v0.3.9 archive. Sixty-six combinations cover eleven TOML forms across project/user/sibling scopes and LF/CRLF. The original syntax location, invalid source metadata, withheld settings and ordinary public labels remain correct. JSON, terminal, HTML and installed-package checks mask the copied private strings.
+* All 57 Chromium browser cases passed. The added live/offline journey verifies clean-target exports, error findings after target changes, original source metadata, phone layout and a return to the clean target. A second journey verifies malformed-TOML privacy in live JSON, instruction text, paragraph comparison and offline phone layouts.
+
 ## v0.3.9
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.

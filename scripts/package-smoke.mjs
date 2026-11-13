@@ -30,6 +30,25 @@ try {
   const repo = path.join(temp, 'repository'); mkdirSync(path.join(repo, '.git'), { recursive: true }); writeFileSync(path.join(repo, 'AGENTS.md'), 'Installed package works.');
   const output = execFileSync(process.execPath, [cli, '--repo', repo, '--no-user', '--trust', 'trusted', '--client', 'codex', '--json'], { encoding: 'utf8' });
   const report = JSON.parse(output); if (report.clients[0].instructions !== 'Installed package works.') throw new Error('Installed resolver failed.');
+  mkdirSync(path.join(repo, 'sibling/.codex'), { recursive: true });
+  mkdirSync(path.join(repo, 'sibling/.claude'), { recursive: true });
+  writeFileSync(path.join(repo, 'sibling/index.ts'), '');
+  const malformedTomlPrivate = 'installed-malformed-toml-private-value';
+  writeFileSync(path.join(repo, 'AGENTS.md'), 'Installed package works.\n\n' + malformedTomlPrivate);
+  writeFileSync(path.join(repo, 'sibling/.codex/config.toml'), '[mcp_servers.fixture.env]\nNORMAL="' + malformedTomlPrivate + '"\nBROKEN=[\n');
+  writeFileSync(path.join(repo, 'sibling/.claude/settings.local.json'), '{ broken JSON');
+  const scopedRoot = JSON.parse(execFileSync(process.execPath, [cli, 'ci', '--repo', repo, '--no-user', '--clients', 'codex,claude,copilot', '--trust', 'trusted'], { encoding: 'utf8' }));
+  if (scopedRoot.findings.some(finding => finding.ruleId.startsWith('parse.')) || !scopedRoot.sources.some(source => source.relativePath === 'sibling/.codex/config.toml' && source.invalid)) throw new Error('Installed target-scoped discovery failed.');
+  const scopedSibling = JSON.parse(execFileSync(process.execPath, [cli, 'explain', 'sibling/index.ts', '--repo', repo, '--no-user', '--client', 'codex', '--trust', 'trusted', '--json'], { encoding: 'utf8' }));
+  if (!scopedSibling.findings.some(finding => finding.ruleId === 'parse.toml')) throw new Error('Installed target change did not restore relevant syntax findings.');
+  const malformedArgs = ['--repo', repo, '--no-user', '--client', 'codex', '--trust', 'trusted'];
+  const malformedHtmlFile = path.join(temp, 'malformed-toml.html');
+  execFileSync(process.execPath, [cli, 'report', ...malformedArgs, '--format', 'html', '--output', malformedHtmlFile]);
+  for (const text of [JSON.stringify(scopedRoot), JSON.stringify(scopedSibling), execFileSync(process.execPath, [cli, ...malformedArgs], { encoding: 'utf8' }), readFileSync(malformedHtmlFile, 'utf8')]) {
+    if (text.includes(malformedTomlPrivate)) throw new Error('Installed malformed TOML exposed a copied private value.');
+  }
+  if (!scopedRoot.clients.find(client => client.client === 'codex').instructions.includes('[REDACTED]')) throw new Error('Installed malformed TOML lost its copied-value mask.');
+  writeFileSync(path.join(repo, 'AGENTS.md'), 'Installed package works.');
   const nested = path.join(repo, 'src'); mkdirSync(nested);
   const inferred = JSON.parse(execFileSync(process.execPath, [cli, 'explain', 'new.ts', '--no-user', '--trust', 'trusted', '--client', 'codex', '--json'], { cwd: nested, encoding: 'utf8' }));
   if (inferred.clients[0].instructions !== 'Installed package works.' || path.dirname(path.dirname(inferred.target)) !== inferred.repository) throw new Error('Installed nested-directory discovery failed.');

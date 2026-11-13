@@ -1,12 +1,14 @@
 # Security policy
 
-The supported release series are 0.1.x and 0.2.x. Report a reproducible security issue through [GitHub private vulnerability reporting](https://github.com/iamzwxyy/agent-sightline/security/advisories/new). Use synthetic sentinel values and describe the affected function.
+The current supported release series is 0.3.x. Report a reproducible security issue through [GitHub private vulnerability reporting](https://github.com/iamzwxyy/agent-sightline/security/advisories/new). Use synthetic sentinel values and describe the affected function.
 
 The CLI reads documented local config paths. It does not collect telemetry, call models, sign in, upload files, fetch instruction URLs, or start configured processes during default scans. The local UI binds to 127.0.0.1 and rejects external Host/Origin values. Config content is inert text; scripts are protected by a hash-based CSP.
 
 Environment and header mappings, sensitive structured keys, common credential formats, labelled Markdown credentials, auth headers and URL credentials are redacted. Syntax-invalid sources omit raw previews because parser recovery can discard private values. Their diagnostics retain source paths, lines and columns. Portable HTML replaces captured repository/home paths and filesystem-verified aliases found in absolute structured configuration values and --option=path arguments. Custom agent configuration roots use named placeholders. Exported HTML discards the captured path mappings. Unrecognized paths in prose or shell snippets can remain. Review personal prose and unfamiliar path spellings before sharing.
 
 Structured previews redact decoded values using internal parser ranges, including escaped JSON/TOML values and YAML folded blocks and aliases. The ranges and their decoded values are excluded from reports. Redaction retains source line counts, and source coordinates and byte counts describe the original files. Private environment/header entries also mask invalid non-string values. Captured credential values include earlier duplicate definitions and literal defaults inside private environment references.
+
+v0.3.9 can expose an environment value from malformed TOML if that value also appears in loaded instructions. v0.3.10 captures readable private assignments after strict TOML parsing fails and uses them to mask copied values across reports. Recovery supplies redaction values only. The invalid file contributes no effective settings and has no raw preview. The regression matrix covers project, user and discovered sibling files, LF/CRLF, escaped and multiline strings, duplicate keys and unfinished private arrays or inline tables. Review affected older reports before sharing them.
 
 `doctor --probe` is an explicit execution boundary: it launches a configured local MCP process, sends initialize and tools/list, and kills the process after completion or timeout. Server code can have startup side effects. It does not invoke tools or probe remote endpoints. Hook commands and dynamic skill shell snippets are never executed by Sightline.
 

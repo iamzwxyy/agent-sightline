@@ -71,8 +71,9 @@ function tomlKeyParts(text: string): string[] {
   });
 }
 
-function* tomlStatements(text: string, values: NonNullable<Source['valueRanges']>): Generator<{ text: string; line: number; offset: number }> {
+function* tomlStatements(text: string, values: NonNullable<Source['valueRanges']>): Generator<{ text: string; line: number; offset: number; literals: NonNullable<Source['valueRanges']> }> {
   let start = 0, line = 1, firstLine = 1, depth = 0;
+  let firstLiteral = values.length;
   let literalStart = 0;
   let quote = '', comment = false;
   for (let index = 0; index < text.length; index++) {
@@ -82,7 +83,8 @@ function* tomlStatements(text: string, values: NonNullable<Source['valueRanges']
       comment = false;
       if (!quote && depth === 0) {
         const original = text.slice(start, index);
-        yield { text: original.trim(), line: firstLine, offset: start + original.length - original.trimStart().length };
+        yield { text: original.trim(), line: firstLine, offset: start + original.length - original.trimStart().length, literals: values.slice(firstLiteral) };
+        firstLiteral = values.length;
         start = index + 1; firstLine = line;
       }
       continue;
@@ -97,7 +99,8 @@ function* tomlStatements(text: string, values: NonNullable<Source['valueRanges']
         // TOML multiline strings can end with four or five quote characters.
         if (quote.length === 3) while (text[index + 1] === quote[0]) index++;
         const original = text.slice(literalStart, index + 1);
-        values.push({ offset: literalStart, length: original.length, value: toml('value = ' + original).value });
+        try { values.push({ offset: literalStart, length: original.length, value: toml('value = ' + original).value }); }
+        catch { /* The complete parser reports malformed literals. Other statements can still supply private values. */ }
         quote = '';
       }
       continue;
@@ -112,7 +115,7 @@ function* tomlStatements(text: string, values: NonNullable<Source['valueRanges']
   }
   if (start < text.length) {
     const original = text.slice(start);
-    yield { text: original.trim(), line: firstLine, offset: start + original.length - original.trimStart().length };
+    yield { text: original.trim(), line: firstLine, offset: start + original.length - original.trimStart().length, literals: values.slice(firstLiteral) };
   }
 }
 
@@ -146,6 +149,37 @@ function tomlLines(source: Source): void {
           offset: statement.offset + assignment[0].length, length: statement.text.length - assignment[0].length,
           value: keys.reduce<any>((value, key) => value?.[key], source.data), private: true,
         });
+      }
+    }
+  }
+}
+
+function recoverTomlValues(source: Source): void {
+  let privateSection = false;
+  for (const statement of tomlStatements(source.text, source.valueRanges!)) {
+    const header = statement.text.match(/^\[\[?(.+?)\]\]?\s*(?:#.*)?$/);
+    if (header) {
+      try { privateSection = tomlKeyParts(header[1]).some(key => isSensitiveKey(key) || privateMappings.has(key)); }
+      catch { privateSection = false; }
+      continue;
+    }
+    try {
+      source.valueRanges!.push({ offset: statement.offset, length: statement.text.length, value: toml(statement.text), private: privateSection });
+    } catch {
+      // A private array or inline table may have readable strings before its syntax error.
+      const assignment = statement.text.match(tomlAssignment);
+      if (!assignment) continue;
+      let keys: string[] = [];
+      try { keys = tomlKeyParts(assignment[1]); }
+      catch { /* Preserve the original syntax error and continue with later private assignments. */ }
+      const privateValue = privateSection || keys.some(key => isSensitiveKey(key) || privateMappings.has(key));
+      if (!privateValue) continue;
+      const valueStart = statement.offset + assignment[0].length;
+      for (const literal of statement.literals) {
+        if (literal.offset < valueStart) continue;
+        let next = literal.offset + literal.length;
+        while (/\s/.test(source.text[next] ?? '')) next++;
+        if (source.text[next] !== '=' && source.text[next] !== '.') literal.private = true;
       }
     }
   }
@@ -196,7 +230,8 @@ export function parseSource(s: Source): Finding[] {
       if (tree) { visit(tree, []); jsonValues(tree, s); const v = getNodeValue(tree); if (!plainObject(v)) issue('parse.structure', 'Expected an object at the top level.'); else s.data = v; }
     } else if (s.path.endsWith('.toml')) {
       syntaxRule = 'parse.toml';
-      s.data = toml(s.text);
+      try { s.data = toml(s.text); }
+      catch (error) { recoverTomlValues(s); throw error; }
       tomlLines(s);
     } else if (/\.ya?ml$/.test(s.path)) {
       syntaxRule = 'parse.yaml';

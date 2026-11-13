@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.10 — 2026-11-14
+
+* Fix copied-value redaction after a whole-file TOML parse failure. v0.3.9 could expose an environment value from malformed TOML when it was repeated in loaded instruction text. Review affected reports before sharing them.
+* Recover readable private TOML assignments for redaction, including escaped and multiline values, duplicate definitions and readable strings in unfinished private arrays or inline tables. Invalid configuration remains withheld and retains its original syntax finding.
+* Scope syntax, field-name, capability and glob diagnostics to each selected client's target discovery decisions.
+* Track discovered files and their invalid flags alongside outside-target explanations. Target and project-boundary changes recompute the relevant findings.
+* Scope filename-placement warnings to configuration namespaces on the target directory chain.
+* Add native Codex, Claude and Copilot comparisons for malformed sibling projects, plus CI, installed-package and portable browser coverage.
+
 ## 0.3.9 — 2026-11-14
 
 * Parse Copilot personal config.json and mcp-config.json as JSONC, including comments and trailing commas. Restore persisted workspace trust and personal MCP definitions from those files.

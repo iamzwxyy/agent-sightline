@@ -9,6 +9,42 @@ import { adapters } from '../packages/adapters/index.js';
 import { VERSION } from '../packages/core/version.js';
 import { createRedactor, redactScanReport } from '../packages/core/redact.js';
 
+test('malformed TOML retains recoverable private assignments for redaction across source scopes', async t => {
+  const cases = [
+    { text: 'model="public-model-label"\n[mcp_servers.fixture.env]\nNORMAL="broken-toml-private-\\u0076alue"\nBROKEN=[\n', values: ['broken-toml-private-value'] },
+    { text: '[mcp_servers.fixture]\nenv={NORMAL="inline-toml-private-value"}\nBROKEN=[\n', values: ['inline-toml-private-value'] },
+    { text: '[mcp_servers.fixture]\nenv.NORMAL="dotted-toml-private-value"\nBROKEN=[\n', values: ['dotted-toml-private-value'] },
+    { text: '[mcp_servers.fixture.env]\nNORMAL="first-toml-private-value"\nNORMAL="second-toml-private-value"\n', values: ['first-toml-private-value', 'second-toml-private-value'] },
+    { text: '[mcp_servers.fixture.env]\nNORMAL="""\nmultiline-toml-private-first\n\nmultiline-toml-private-last"""\nBROKEN=[\n', values: ['multiline-toml-private-first\n\nmultiline-toml-private-last'] },
+    { text: '[[hooks.PreToolUse.hooks]]\ncommand="public-shell-label"\nenv={NORMAL="array-table-private-value"}\nBROKEN=[\n', values: ['array-table-private-value'] },
+    { text: 'model="invalid\\q"\n[mcp_servers.fixture.env]\nNORMAL="after-invalid-escape-private-value"\n', values: ['after-invalid-escape-private-value'] },
+    { text: '[mcp_servers.fixture]\nenv={"NORMAL"="first-inline-private-value","NORMAL"="second-inline-private-value"}\n', values: ['first-inline-private-value', 'second-inline-private-value'] },
+    { text: '[mcp_servers.fixture.env]\nNORMAL=["unfinished-array-private-value",\n', values: ['unfinished-array-private-value'] },
+    { text: '[mcp_servers.fixture]\nenv={NORMAL="unfinished-inline-private-value",BROKEN=[\n', values: ['unfinished-inline-private-value'] },
+    { text: '# Original error follows.\n\nmodel="invalid\\q"\n"invalid\\q"=42\n[mcp_servers.fixture.env]\nNORMAL="after-invalid-key-private-value"\n', values: ['after-invalid-key-private-value'], errorLine: 3 },
+  ];
+  for (const fixture of cases) for (const scope of ['project', 'sibling', 'user']) for (const newline of ['\n', '\r\n']) {
+    const file = scope === 'sibling' ? 'sibling/.codex/config.toml' : '.codex/config.toml';
+    const config = fixture.text.replaceAll('\n', newline);
+    const instructions = 'Safe introduction.\n\npublic-model-label public-shell-label\n\n' + fixture.values.join('\n\n') + '\n\nSafe ending.';
+    const w = await workspace({ 'AGENTS.md': instructions, ...(scope === 'user' ? {} : { [file]: config }) }, scope === 'user' ? { [file]: config } : {});
+    t.after(() => rm(w.root, { recursive: true, force: true }));
+    const report = await scan({ ...w, clients: ['codex'], trust: 'trusted' });
+    const invalid = report.sources.find(source => source.path === path.join(scope === 'user' ? w.home : w.repo, file))!;
+    assert.equal(invalid.invalid, true);
+    assert.equal(invalid.preview, undefined);
+    assert.equal(report.clients[0].settings.filter(setting => setting.status === 'active').length, 0);
+    assert.equal(report.findings.some(finding => finding.ruleId === 'parse.toml'), scope !== 'sibling');
+    if (fixture.errorLine && scope !== 'sibling') assert.equal(report.findings.find(finding => finding.ruleId === 'parse.toml')?.location.line, fixture.errorLine);
+    for (const output of [JSON.stringify(report), json(report), terminal(report, 'explain'), html(report)]) {
+      for (const value of fixture.values) for (const part of value.split('\n').filter(Boolean)) assert.ok(!output.includes(part), scope + ' ' + part);
+      assert.ok(output.includes('Safe introduction.'));
+      assert.ok(output.includes('Safe ending.'));
+      assert.ok(output.includes('public-model-label public-shell-label'));
+    }
+  }
+});
+
 test('permission actions retain generated enums while captured values remain private', async t => {
   const w = await workspace({ '.claude/settings.json': JSON.stringify({ env: { ALLOW: 'allow', ASK: 'ask', DENY: 'deny' }, permissions: { allow: ['Bash(fixture)'], ask: ['Bash'], deny: ['Bash'] } }) });
   t.after(() => rm(w.root, { recursive: true, force: true }));

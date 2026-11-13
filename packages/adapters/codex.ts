@@ -7,7 +7,7 @@ import { bytes, finding, locate, plainObject } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, effectiveValue, finish, flatten, hooks, mcp, settings, skills, truncated } from './common.js';
 
 export const codexMetadata: AdapterMetadata = {
-  id: 'codex', name: 'OpenAI Codex CLI', maturity: 'verified', ruleVersion: '0.167.2', verifiedOn: '2026-11-13',
+  id: 'codex', name: 'OpenAI Codex CLI', maturity: 'verified', ruleVersion: '0.167.2', verifiedOn: '2026-11-14',
   evidence: ['https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/core/src/agents_md.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/codex-home/src/instructions/mod.rs', 'https://developers.openai.com/codex/config-basic', 'https://developers.openai.com/codex/config-advanced#profiles', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/config/src/loader/mod.rs', 'https://developers.openai.com/codex/skills', 'https://learn.chatgpt.com/docs/hooks', 'https://learn.chatgpt.com/docs/app-server'],
   limitations: ['Static single-directory session with explicit profile files. Other CLI overrides and managed/cloud requirements are not inferred.', 'Scalar/MCP precedence, configured hook values and winning files have real-client configuration API tests. Profiles, instruction bodies and line numbers use source/schema fixtures.', 'Global instructions are separate from the project byte budget in 0.167.2; project empty overrides shadow the ordinary file.', 'Hook definition trust is reported as conditional. Bundled/plugin components and starlark exec-policy evaluation are not inspected.'],
 };

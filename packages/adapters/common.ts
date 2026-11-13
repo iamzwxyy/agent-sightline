@@ -5,6 +5,12 @@ import { bytes, cmp, executable, finding, locate, plainObject, prefix, slash, sp
 export { stripComments } from '../core/utils.js';
 import { hookCommandField, validateExtensions, validateMcpConfiguration, probeMcp } from '../core/extensions.js';
 
+export const outsideScopeReason = 'Outside the client’s documented discovery scope for this target.';
+
+export function sourceInScope(effective: Effective, source: Source): boolean {
+  return source.owners.includes(effective.client) && effective.decisions.some(decision => decision.sourceId === source.id && decision.reason !== outsideScopeReason);
+}
+
 export async function base(metadata: AdapterMetadata, ctx: Context): Promise<Effective> {
   const exec = await executable(metadata.id === 'cursor' ? 'cursor-agent' : metadata.id, ctx.directory, ctx.env);
   return { client: metadata.id, metadata, detected: !!exec || ctx.sources.some(s => s.owners.includes(metadata.id)), executable: exec, decisions: [], instructions: '', instructionBytes: 0, estimatedTokens: 0, settings: [], extensions: [], findings: [], notes: [] };
@@ -157,7 +163,7 @@ export function pathPatterns(e: Effective, s: Source, key: string): string[] | n
   e.findings.push(finding('glob.type', 'error', locate(s, key), `"${key}" must be a string or an array of strings.`, 'The rule matcher cannot parse this value.', 'Use documented glob patterns.', e.client)); return [];
 }
 export function finish(e: Effective, ctx: Context): Effective {
-  for (const s of ctx.sources) if (!e.decisions.some(d => d.sourceId === s.id)) decision(e, s, 'ignored', s.owners.includes(e.client) ? 'Outside the client’s documented discovery scope for this target.' : `This source belongs to ${s.owners.join(', ') || 'an unrecognized location'}; ${e.metadata.name} does not load it.`);
+  for (const s of ctx.sources) if (!e.decisions.some(d => d.sourceId === s.id)) decision(e, s, 'ignored', s.owners.includes(e.client) ? outsideScopeReason : `This source belongs to ${s.owners.join(', ') || 'an unrecognized location'}; ${e.metadata.name} does not load it.`);
   e.detected = e.detected || e.decisions.some(d => d.status !== 'ignored');
   return e;
 }

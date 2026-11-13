@@ -357,6 +357,26 @@ test('Copilot native inventories distinguish personal JSONC and strict workspace
   });
 });
 
+test('Copilot native MCP loading leaves malformed sibling project configuration outside the current scope', async t => {
+  const w = await workspace({
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: ['-e', 'require("node:fs").writeFileSync("sibling-scope-server-started","started")'] } } }),
+    'sibling/.mcp.json': '{ broken MCP JSON',
+    'sibling/.github/copilot/settings.json': '{ broken settings JSON',
+  }, { '.copilot/config.json': '{}' });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  const env = isolatedEnvironment(w.home);
+  execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
+  await writeFile(path.join(w.home, '.copilot/config.json'), JSON.stringify({ trustedFolders: [await realpath(w.repo)] }));
+  const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd: w.repo, env, encoding: 'utf8', timeout: 30000 }));
+  assert.equal(native.mcpServers.fixture.enabled, true);
+  const report = await scan({ ...w, clients: ['copilot'] });
+  assert.equal(report.clients[0].extensions.find(extension => extension.name === 'fixture')?.status, 'active');
+  assert.ok(!report.findings.some(finding => finding.ruleId.startsWith('parse.')));
+  await assert.rejects(readFile(path.join(w.repo, 'sibling-scope-server-started')), { code: 'ENOENT' });
+  const sibling = await scan({ ...w, repo: path.join(w.repo, 'sibling'), clients: ['copilot'] });
+  assert.ok(sibling.findings.some(finding => finding.ruleId === 'parse.json'));
+});
+
 test('Copilot native shared-rule inventory keeps root and cwd sources with their path metadata', async t => {
   const w = await workspace({
     '.claude/rules/all.md': 'Unconditional root rule.',

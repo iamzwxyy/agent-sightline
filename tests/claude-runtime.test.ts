@@ -398,6 +398,23 @@ test('Claude native scope precedence keeps the user server when an approved proj
   }
 });
 
+test('Claude native MCP loading leaves malformed sibling project configuration outside the current scope', async t => {
+  const w = await workspace({
+    '.mcp.json': '{"mcpServers":{"fixture":{"type":"http","url":"https://127.0.0.1:1/mcp"}}}',
+    'sibling/.mcp.json': '{ broken MCP JSON',
+    'sibling/.claude/settings.local.json': '{ broken settings JSON',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const actual = readServer(w.repo, isolatedEnvironment(w.home));
+  assert.equal(actual.status, 0, actual.text);
+  assert.match(actual.text, /Scope: Project config/);
+  const report = await scan({ ...w, clients: ['claude'], user: false });
+  assert.equal(report.clients[0].extensions.find(extension => extension.name === 'fixture')?.status, 'conditional');
+  assert.ok(!report.findings.some(finding => finding.ruleId.startsWith('parse.')));
+  const sibling = await scan({ ...w, repo: path.join(w.repo, 'sibling'), clients: ['claude'], user: false });
+  assert.ok(sibling.findings.some(finding => finding.ruleId === 'parse.json'));
+});
+
 test('Claude native MCP policy matching agrees with public scans and explicit probes', { timeout: 90000 }, async t => {
   const w = await workspace({ '.mcp.json': '{}', '.claude/settings.json': '{}', 'server.mjs': fixtureServer }, { '.claude/settings.json': '{}' });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
