@@ -23,6 +23,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Verify native Claude file policies in the isolated Linux runner
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          test ! -e /etc/claude-code
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /etc/claude-code
+          SIGHTLINE_TEST_MANAGED_POLICY=1 node --import tsx --test --test-name-pattern='Claude permission precedence' tests/claude-runtime.test.ts
       - run: npm audit --omit=dev
       - run: npx playwright install --with-deps chromium
       - run: npm run test:web

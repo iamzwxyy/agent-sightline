@@ -158,6 +158,7 @@ export function parseSource(s: Source): Finding[] {
     findings.push(finding(rule, 'error', { path: s.path, line, column }, message, 'The client cannot reliably parse this source.', 'Correct the syntax and rerun the scan.'));
   };
   if (!s.text.trim()) findings.push(finding('source.empty', 'info', { path: s.path, line: 1, column: 1 }, 'Empty configuration source.', 'It contributes no settings or instructions.', 'Add content or remove the unused file.'));
+  if (!s.text.trim() && s.scope === 'system' && s.kind === 'settings' && s.owners.includes('claude')) return findings;
   if (s.kind === 'instructions') return findings;
   s.valueRanges = [];
   let syntaxRule = 'parse.frontmatter';

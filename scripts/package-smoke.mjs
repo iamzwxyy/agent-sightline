@@ -14,6 +14,16 @@ try {
   const tarball = path.join(temp, result[0].filename);
   runNpm(['install', '--offline', '--cache', path.join(temp, 'empty-cache'), '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', path.join(temp, 'install'), tarball]);
   const cli = path.join(temp, 'install/node_modules/agent-sightline/dist/cli/index.js');
+  const claudeHookRepo = path.join(temp, 'claude-hook-repository');
+  const claudeHookHome = path.join(temp, 'claude-hook-home');
+  mkdirSync(path.join(claudeHookRepo, '.claude'), { recursive: true });
+  mkdirSync(path.join(claudeHookHome, '.claude'), { recursive: true });
+  writeFileSync(path.join(claudeHookRepo, '.claude/settings.json'), JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'missing-disabled-installed-claude-hook' }] }] } }));
+  writeFileSync(path.join(claudeHookHome, '.claude/settings.json'), '{\n"disableAllHooks":true\n}');
+  const claudeHookArgs = ['--repo', claudeHookRepo, '--home', claudeHookHome, '--client', 'claude', '--trust', 'trusted'];
+  const claudeHookReport = JSON.parse(execFileSync(process.execPath, [cli, ...claudeHookArgs, '--json'], { encoding: 'utf8' }));
+  const disabledClaudeHook = claudeHookReport.clients[0].extensions.find(extension => extension.kind === 'hook');
+  if (disabledClaudeHook?.status !== 'ignored' || disabledClaudeHook.origins?.[0].location.key !== 'disableAllHooks' || disabledClaudeHook.origins[0].location.line !== 2 || claudeHookReport.findings.some(finding => finding.ruleId === 'hook.command-missing')) throw new Error('Installed Claude hook policy or controlling source failed.');
   const repo = path.join(temp, 'repository'); mkdirSync(path.join(repo, '.git'), { recursive: true }); writeFileSync(path.join(repo, 'AGENTS.md'), 'Installed package works.');
   const output = execFileSync(process.execPath, [cli, '--repo', repo, '--no-user', '--trust', 'trusted', '--client', 'codex', '--json'], { encoding: 'utf8' });
   const report = JSON.parse(output); if (report.clients[0].instructions !== 'Installed package works.') throw new Error('Installed resolver failed.');

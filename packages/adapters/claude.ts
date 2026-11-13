@@ -4,6 +4,7 @@ import { readUserTree } from '../core/discovery.js';
 import { parseSource } from '../core/parse.js';
 import { finding, locate, matches, plainObject, slash, within } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, effectiveValue, expand, finish, hooks, mcp, pathPatterns, permissions, rootOf, settings, skills } from './common.js';
+import { applyClaudePolicy, claudeSettingsSource, discoverClaudeManagedSettings } from './claude-policy.js';
 
 export const claudeMetadata: AdapterMetadata = {
   id: 'claude', name: 'Claude Code', maturity: 'verified', ruleVersion: '2.1.322', verifiedOn: '2026-11-13',
@@ -18,9 +19,7 @@ async function discover(ctx: Context): Promise<Source[]> {
     await readUserTree(ctx, path.join(ctx.claudeHome, 'skills'), 'claude', 'skill', 'SKILL.md');
   }
   if (ctx.options.system) {
-    const system = process.platform === 'darwin' ? '/Library/Application Support/ClaudeCode' : process.platform === 'win32' ? path.join(ctx.env.ProgramFiles ?? 'C:\\Program Files', 'ClaudeCode') : '/etc/claude-code';
-    await ctx.read(path.join(system, 'managed-settings.json'), 'claude', 'settings', 'system');
-    await ctx.read(path.join(system, 'CLAUDE.md'), 'claude', 'instructions', 'system');
+    await discoverClaudeManagedSettings(ctx);
   }
   return ctx.sources.filter(s => s.owners.includes('claude'));
 }
@@ -28,14 +27,29 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
   const e = await base(claudeMetadata, ctx);
   const user = ctx.sources.find(s => s.path === path.join(ctx.claudeHome, 'settings.json'));
   const layers = [user, ctx.sources.find(s => s.path === path.join(ctx.repo, '.claude/settings.json')), ctx.sources.find(s => s.path === path.join(ctx.repo, '.claude/settings.local.json')), ...ctx.sources.filter(s => s.scope === 'system' && s.owners.includes('claude') && s.kind === 'settings')].filter((s): s is Source => !!s).map(source => {
-    if (source.invalid || !source.owners.includes('copilot')) return source;
-    const strict: Source = { ...source, owners: ['claude'], lines: {}, valueRanges: [] };
-    e.findings.push(...parseSource(strict).map(finding => ({ ...finding, client: 'claude' as const })));
-    return strict;
+    let strict = source;
+    if (!source.invalid && source.owners.includes('copilot')) {
+      strict = { ...source, owners: ['claude'], lines: {}, valueRanges: [] };
+      e.findings.push(...parseSource(strict).map(finding => ({ ...finding, client: 'claude' as const })));
+    }
+    return claudeSettingsSource(e, strict);
   });
+  const permissionPolicy = layers.findLast(source => !source.invalid && source.scope === 'system' && typeof source.data.allowManagedPermissionRulesOnly === 'boolean');
+  const hookPolicy = layers.findLast(source => !source.invalid && source.scope === 'system' && typeof source.data.allowManagedHooksOnly === 'boolean');
+  const hookDisable = layers.findLast(source => !source.invalid && typeof source.data.disableAllHooks === 'boolean');
   for (const s of layers) {
     const excluded = ctx.options.trust !== 'trusted' && s.scope !== 'user' && s.scope !== 'system' ? ['enableAllProjectMcpServers', 'enabledMcpjsonServers'] : [];
+    const hookGate = hookDisable?.data.disableAllHooks === true && (s.scope !== 'system' || hookDisable.scope === 'system') ? hookDisable : s.scope !== 'system' && hookPolicy?.data.allowManagedHooksOnly === true ? hookPolicy : undefined;
+    if (hookGate) excluded.push('hooks');
     const data = Object.fromEntries(Object.entries(s.data).filter(([key]) => !excluded.includes(key)));
+    if (permissionPolicy?.data.allowManagedPermissionRulesOnly === true && s.scope !== 'system' && plainObject(data.permissions)) {
+      data.permissions = { ...data.permissions };
+      for (const key of ['allow', 'ask', 'deny']) if (Object.hasOwn(data.permissions, key)) {
+        e.settings.push({ key: 'permissions.' + key, value: data.permissions[key], status: 'ignored', location: locate(s, 'permissions.' + key), reason: `Only managed permission rules apply under ${permissionPolicy.path}.`, overrides: [] });
+        delete data.permissions[key];
+      }
+      if (Object.keys(data.permissions).length === 0) delete data.permissions;
+    }
     const local = path.basename(s.path) === 'settings.local.json';
     const grantStatus: Status = s.scope === 'user' || s.scope === 'system' || ctx.options.trust === 'trusted' ? 'active'
       : local || ctx.options.trust !== 'untrusted' ? 'conditional' : 'ignored';
@@ -51,12 +65,12 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
     }
     settings(e, s, 'active', true, data);
     if (!s.invalid) for (const [key, value] of grants) e.settings.push({ key: 'permissions.' + key, value, status: grantStatus, location: locate(s, 'permissions.' + key), reason: grantReason, overrides: [] });
-    if (!s.invalid) for (const key of excluded) if (s.data[key] !== undefined) e.settings.push({ key, value: s.data[key], location: locate(s, key), status: 'ignored', reason: 'Workspace MCP approval settings require explicit trust.', overrides: [] });
+    if (!s.invalid) for (const key of excluded) if (s.data[key] !== undefined) e.settings.push({ key, value: s.data[key], location: locate(s, key), status: 'ignored', reason: key === 'hooks' ? `Hooks are disabled by policy in ${hookGate!.path}.` : 'Workspace MCP approval settings require explicit trust.', overrides: [] });
     hooks(e, s, s.data.hooks, 'active'); permissions(e, s, 'active', { status: grantStatus, reason: grantReason });
   }
   const excludes = effectiveValue(e, 'claudeMdExcludes', []);
   const excluded = (s: Source) => s.scope !== 'system' && Array.isArray(excludes) && matches(slash(s.path), excludes.filter(x => typeof x === 'string'));
-  const mode = user?.data.pluginConfigs?.['cc-plugin-agents-md@builtin']?.options?.instructionFiles ?? 'claude-md-or-agents-md';
+  const mode = layers.find(source => source.path === user?.path && !source.invalid)?.data.pluginConfigs?.['cc-plugin-agents-md@builtin']?.options?.instructionFiles ?? 'claude-md-or-agents-md';
   const hasClaude = ctx.sources.some(s => ctx.dirs.some(d => ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md'].some(n => s.path === path.join(d, n))));
   const useAgents = mode === 'claude-md-and-agents-md' || mode === 'claude-md-or-agents-md' && !hasClaude;
   for (const s of ctx.sources.filter(s => s.kind === 'instructions' && (s.scope === 'system' || s.path === path.join(ctx.claudeHome, 'CLAUDE.md')) && s.owners.includes('claude'))) {
@@ -113,6 +127,7 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
   if (globalMcp) mcp(e, globalMcp, globalMcp.data.projects?.[ctx.repo]?.mcpServers, `projects.${ctx.repo}.mcpServers`, 'active');
   await skills(e, ctx, [...(ctx.options.user !== false ? [path.join(ctx.claudeHome, 'skills')] : []), ...ctx.dirs.map(d => path.join(d, '.claude/skills'))], 'first');
   for (const x of e.extensions.filter(x => x.kind === 'skill')) if (['synced', 'anthropic-skills'].includes(x.name)) { x.status = 'ignored'; x.reason = 'Reserved Claude skill directory name.'; }
+  applyClaudePolicy(e, ctx);
   e.notes.push(`Project instruction mode: ${mode}. AGENTS.md fallback: ${useAgents ? 'enabled' : 'disabled'}.`, 'CLAUDE.md and rule bodies accumulate; local instruction files are appended per directory.', 'Ancestors outside --repo, session source switches, external import approval, accounts, plugins and managed cloud policies are outside this static report.');
   if (ctx.dirs.some(d => d !== ctx.repo) && layers.every(s => !within(ctx.directory, s.path))) e.notes.push('Settings resolution models the repository project, while instruction discovery follows the target directory chain.');
   return finish(e, ctx);
