@@ -85,7 +85,8 @@ try {
     mkdirSync(path.join(copilotRepo, directory), { recursive: true });
     writeFileSync(path.join(copilotRepo, directory, 'SKILL.md'), '---\nname: shared\ndescription: Installed skill fixture.\n---\nInstructions.\n');
   }
-  writeFileSync(path.join(copilotHome, '.copilot/settings.json'), JSON.stringify({ ignored_skills_locations: [path.join(realpathSync(copilotRepo), '.github/skills')] }));
+  const skillRepository = process.platform === 'win32' ? copilotRepo : realpathSync(copilotRepo);
+  writeFileSync(path.join(copilotHome, '.copilot/settings.json'), JSON.stringify({ ignored_skills_locations: [path.join(skillRepository, '.github/skills')] }));
   const skillReport = JSON.parse(execFileSync(process.execPath, [cli, ...copilotArgs, '--json'], { encoding: 'utf8' }));
   const skills = skillReport.clients[0].extensions.filter(extension => extension.kind === 'skill');
   if (skills.find(skill => skill.status === 'active')?.location.path !== path.join(copilotRepo, '.agents/skills/shared/SKILL.md') || !skills.find(skill => skill.status === 'ignored')?.reason.includes('ignoredSkillsLocations')) throw new Error('Installed Copilot skill exclusion or fallback failed.');

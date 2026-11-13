@@ -19,7 +19,8 @@ test('Copilot excluded skill directories retain their explanation, fallback and 
     '.github/skills/shared/SKILL.md': '---\nname: shared\ndescription: Excluded project skill.\n---\nInstructions.\n',
     '.agents/skills/shared/SKILL.md': '---\nname: shared\ndescription: Available fallback skill.\n---\nInstructions.\n',
   }, { '.copilot/settings.json': '{}' });
-  await writeFile(path.join(w.home, '.copilot/settings.json'), '{\n"ignored_skills_locations":' + JSON.stringify([path.join(await realpath(w.repo), '.github/skills')]) + '\n}');
+  const repository = process.platform === 'win32' ? w.repo : await realpath(w.repo);
+  await writeFile(path.join(w.home, '.copilot/settings.json'), '{\n"ignored_skills_locations":' + JSON.stringify([path.join(repository, '.github/skills')]) + '\n}');
   const server = await serve({ ...w, clients: ['copilot'] });
   try {
     await page.goto(server.url);
@@ -39,6 +40,7 @@ test('Copilot excluded skill directories retain their explanation, fallback and 
       await expect(fallback.locator('.status.active')).toHaveCount(1);
       await excluded.click();
       await expect(page.locator('#detail-dialog')).toContainText('excluded by the effective Copilot ignoredSkillsLocations setting');
+      await expect(page.getByRole('heading', { name: 'Availability setting', exact: true })).toBeVisible();
       await page.locator('.extension-origins').getByRole('button', { name: /^ignoredSkillsLocations ·/ }).click();
       await expect(page.locator('.code-line.highlight')).toContainText('"ignored_skills_locations"');
       await expect(page.locator('.code-line.highlight .line-number')).toHaveText('2');

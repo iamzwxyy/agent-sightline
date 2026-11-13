@@ -4,12 +4,13 @@
 
 Verified locally on macOS with Node 22.23.5 on 2026-11-13.
 
-* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 222-case core suite completed with 221 passes and one Windows-only skip.
-* Nineteen isolated Copilot 1.0.110 skill inventories match Sightline's eligible skill and enabled state. They cover excluded project and personal roots, inherited directories, same-name fallback, path boundaries, aliases, disabled skills and invalid personal documents. Four additional native setting-type checks cover ignoredSkillsLocations. The targeted regressions failed before the implementation and passed afterward.
+* Lint, strict TypeScript checks, build and empty-cache offline installation passed. The 227-case core suite completed with 226 passes and one Windows-only skip.
+* Twenty-four isolated Copilot 1.0.110 skill inventories match Sightline's eligible skill and enabled state. They cover excluded project and personal roots, inherited directories, same-name fallback, path boundaries, aliases, disabled skills and invalid personal documents. Four additional native setting-type checks cover ignoredSkillsLocations. The targeted regressions failed before the implementation and passed afterward.
 * Excluded sources retain an ignored decision and extension, with a link to the original personal setting key and line. They do not shadow an eligible same-name fallback or receive a false name-conflict finding. Repository-only installed scans exclude personal settings from their selection.
 * Installed-package smoke covers root exclusion, fallback, registered aliases, repository-only selection, and replacement of captured paths inside the exported setting value. The native CLI remains outside the production dependency tree.
 * The added browser flow verifies excluded and eligible skill states, skill-source navigation, the exclusion-setting origin, original snake_case source lines and restored priority after removing the exclusion. It exercises live and portable reports.
 * All forty-eight local Chromium browser cases passed, including existing accessibility, phone, history, cancellation, source-navigation, export and website-motion coverage.
+* The first hosted Windows comparison exposed its native short-path spelling, which differs from fs.realpath. The resolver now retains the supplied Windows session spelling and compares both supplied and canonical exclusions with the real CLI. An observed cold MCP-inventory extraction exceeded the former startup allowance, so that isolated native comparison has a 30-second bound.
 
 ## v0.3.1
 
@@ -188,7 +189,7 @@ Verified locally on macOS on 2026-11-13.
 * Lint, strict TypeScript checks and build passed. The 73-case core suite completed with 72 passes and one Windows-only skip.
 * Discovery regressions cover accurate custom budgets, exact and zero entry limits, invalid numeric inputs, severity-filtered completeness, repository paths below 48 directory levels, personal rules below eight directory levels and per-root user file counting in flat directories.
 * All fifteen Chromium browser cases passed, including incomplete-discovery status through refresh and portable export, automated WCAG AA checks, source navigation, profiles, comparison and phone layouts.
-* The package includes nineteen production dependency packages with their license files. Archive inspection found no bundled TypeScript, esbuild, Playwright, ESLint or tsx packages. Production dependency audit reported zero vulnerabilities.
+* The package includes twenty-four production dependency packages with their license files. Archive inspection found no bundled TypeScript, esbuild, Playwright, ESLint or tsx packages. Production dependency audit reported zero vulnerabilities.
 * A real isolated installation used offline mode and an empty npm cache. The installed CLI resolved instructions and a selected Codex profile, produced HTML, reported the release version, ran the bundled sample and served the browser inspector with paired scan/export responses.
 * The standalone example and product screenshots were regenerated and visually inspected.
 

@@ -255,6 +255,8 @@ test('Copilot skill directory exclusions and fallback match the native inventory
     { name: 'forward slash root', settings: { ignoredSkillsLocations: [github.replaceAll('\\', '/')] } },
     { name: 'forward slash repository', settings: { ignoredSkillsLocations: [repository.replaceAll('\\', '/')] } },
     { name: 'forward slash personal path', settings: { ignoredSkillsLocations: [repository.replaceAll('\\', '/'), path.join(w.home, '.copilot/skills').replaceAll('\\', '/')] } },
+    { name: 'supplied repository path', settings: { ignoredSkillsLocations: [path.join(w.repo, '.github/skills')] } },
+    { name: 'supplied repository and personal fallback', settings: { ignoredSkillsLocations: [w.repo, '~/.copilot/skills'] } },
   ];
   for (const scenario of scenarios) await t.test(scenario.name, async () => {
     await writeFile(path.join(w.home, '.copilot/settings.json'), JSON.stringify(scenario.settings));
@@ -263,7 +265,6 @@ test('Copilot skill directory exclusions and fallback match the native inventory
     })).filter((entry: any) => entry.source !== 'builtin');
     const report = await scan({ ...w, clients: ['copilot'], target: scenario.target });
     const selected = report.clients[0].extensions.filter(extension => extension.kind === 'skill' && ['active', 'ignored'].includes(extension.status) && !extension.reason.includes('ignoredSkillsLocations'));
-    t.diagnostic(JSON.stringify({ scenario: scenario.name, settings: scenario.settings, native }));
     assert.deepEqual(await Promise.all(selected.map(async extension => ({
       name: extension.name, directory: await realpath(path.dirname(extension.location.path)), enabled: extension.status === 'active',
     }))), await Promise.all(native.map(async (entry: any) => ({ name: entry.name, directory: await realpath(entry.path), enabled: entry.enabled }))));

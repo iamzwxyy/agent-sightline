@@ -88,10 +88,11 @@ export const copilot = adapter(copilotMetadata, discover, async ctx => {
     return path.normalize(location);
   }).filter(location => path.isAbsolute(location));
   const ignores = (root: string) => ignoredLocations.some(location => within(location, root));
-  // Native project discovery uses the physical session directory. Personal roots
-  // retain the configured home spelling, and exclusion paths stay lexical.
+  // POSIX cwd resolves aliases, while Windows keeps its supplied short-path
+  // spelling. Personal roots and exclusion values also retain their spelling.
+  const skillDirectory = process.platform === 'win32' ? ctx.directory : directory;
   const ignoredRoots = [
-    ...projectSkillRoots.filter(root => ignores(path.resolve(directory, path.relative(ctx.directory, root)))),
+    ...projectSkillRoots.filter(root => ignores(path.resolve(skillDirectory, path.relative(ctx.directory, root)))),
     ...personalSkillRoots.filter(ignores),
   ];
   await skills(e, ctx, [...projectSkillRoots, ...personalSkillRoots], 'first', ignoredRoots);
