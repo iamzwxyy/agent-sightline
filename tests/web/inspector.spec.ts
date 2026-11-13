@@ -14,6 +14,42 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('blocked Claude MCP retains field definitions and original policy lines live and offline', async ({ page }) => {
+  const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'missing-policy-blocked-browser-command' } } }) }, { '.claude/settings.json': '{\n"deniedMcpServers": [\n42,\n{"serverName": "fixture"}\n]\n}' });
+  const server = await serve({ ...w, clients: ['claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('blocked-claude-mcp.html');
+    await (await download).saveAs(file);
+    const exported = await readFile(file, 'utf8');
+    for (const root of [w.repo, await realpath(w.repo), w.home, await realpath(w.home)]) expect(exported).not.toContain(JSON.stringify(root).slice(1, -1));
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.goto(url);
+      await page.locator('#extensions-tab').click();
+      await expect(page.locator('.extension-row .status.ignored')).toHaveCount(1);
+      await page.locator('.extension-row').click();
+      await expect(page.getByRole('heading', { name: 'Field definitions and policy', exact: true })).toBeVisible();
+      await expect(page.locator('.extension-origins').getByRole('button', { name: /^command ·/ })).toBeVisible();
+      await page.setViewportSize({ width: 390, height: 844 });
+      expect(await page.locator('#detail-dialog').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await page.locator('.extension-origins').getByRole('button', { name: /^deniedMcpServers ·/ }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('"serverName": "fixture"');
+      await expect(page.locator('.code-line.highlight .line-number')).toHaveText('4');
+    }
+    await page.context().setOffline(false);
+    await writeFile(path.join(w.home, '.claude/settings.json'), '{}');
+    await page.goto(server.url);
+    await page.locator('#extensions-tab').click();
+    await expect(page.locator('.extension-row .status.active')).toHaveCount(1);
+    await page.locator('#findings-tab').click();
+    await expect(page.locator('#findings-list')).toContainText('was not found or is not executable');
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('disabled Claude hooks retain their controlling setting in live and offline reports', async ({ page }) => {
   const w = await workspace({ '.claude/settings.json': JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'missing-disabled-claude-browser-hook' }] }] } }) }, { '.claude/settings.json': '{\n"disableAllHooks": true\n}' });
   const server = await serve({ ...w, clients: ['claude'], trust: 'trusted' });

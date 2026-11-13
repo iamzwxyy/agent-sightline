@@ -395,3 +395,132 @@ test('Claude native scope precedence keeps the user server when an approved proj
     assert.ok(report.findings.some(finding => finding.severity === 'error' && finding.related.some(location => location.path === path.join(w.home, '.claude.json'))));
   }
 });
+
+test('Claude native MCP policy matching agrees with public scans and explicit probes', { timeout: 90000 }, async t => {
+  const w = await workspace({ '.mcp.json': '{}', '.claude/settings.json': '{}', 'server.mjs': fixtureServer }, { '.claude/settings.json': '{}' });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  const env = { ...isolatedEnvironment(w.home), SIGHTLINE_POLICY_COMMAND: process.execPath, SIGHTLINE_POLICY_HOST: '127.0.0.1', SIGHTLINE_POLICY_PORT: '1', SIGHTLINE_POLICY_WILDCARD: '*', SIGHTLINE_POLICY_PATH: 'api/Mcp:2', SIGHTLINE_POLICY_PARENT: '../Mcp' };
+  const command = [process.execPath, path.join(w.repo, 'server.mjs')];
+  const stdio = { command: command[0], args: command.slice(1) };
+  const remote = { type: 'http', url: 'https://127.0.0.1:1/Mcp' };
+  const cases: { name: string; config?: Record<string, unknown>; user?: Record<string, unknown>; project?: Record<string, unknown>; allowed: boolean }[] = [
+    { name: 'unset allowlist', allowed: true },
+    { name: 'empty allowlist', user: { allowedMcpServers: [] }, allowed: false },
+    { name: 'matching name', user: { allowedMcpServers: [{ serverName: 'fixture' }] }, allowed: true },
+    { name: 'names are literal', user: { allowedMcpServers: [{ serverName: 'fixt*' }] }, allowed: false },
+    { name: 'name denial beats allow', user: { allowedMcpServers: [{ serverName: 'fixture' }], deniedMcpServers: [{ serverName: 'fixture' }] }, allowed: false },
+    { name: 'scope allowlists merge', user: { allowedMcpServers: [] }, project: { allowedMcpServers: [{ serverName: 'fixture' }] }, allowed: true },
+    { name: 'ordinary managed lock is ignored', user: { allowedMcpServers: [{ serverName: 'fixture' }], allowManagedMcpServersOnly: true }, allowed: true },
+    { name: 'exact command', config: stdio, user: { allowedMcpServers: [{ serverCommand: command }] }, allowed: true },
+    { name: 'command arguments differ', config: stdio, user: { allowedMcpServers: [{ serverCommand: [command[0]] }] }, allowed: false },
+    { name: 'command entry supersedes name', config: stdio, user: { allowedMcpServers: [{ serverName: 'fixture' }, { serverCommand: ['different-command'] }] }, allowed: false },
+    { name: 'URL entry leaves stdio name eligible', config: stdio, user: { allowedMcpServers: [{ serverName: 'fixture' }, { serverUrl: 'https://different.test' }] }, allowed: true },
+    { name: 'command env expands', config: stdio, user: { allowedMcpServers: [{ serverCommand: ['${SIGHTLINE_POLICY_COMMAND}', command[1]] }] }, allowed: true },
+    { name: 'command env block is not compared', config: { ...stdio, env: { FIXTURE: 'different' } }, user: { allowedMcpServers: [{ serverCommand: command }] }, allowed: true },
+    { name: 'missing command env default', config: stdio, user: { allowedMcpServers: [{ serverCommand: ['${SIGHTLINE_MISSING_COMMAND:-' + command[0] + '}', command[1]] }] }, allowed: true },
+    { name: 'exact URL', user: { allowedMcpServers: [{ serverUrl: remote.url }] }, allowed: true },
+    { name: 'URL entry supersedes name', user: { allowedMcpServers: [{ serverName: 'fixture' }, { serverUrl: 'https://different.test' }] }, allowed: false },
+    { name: 'command entry leaves remote name eligible', user: { allowedMcpServers: [{ serverName: 'fixture' }, { serverCommand: ['different-command'] }] }, allowed: true },
+    { name: 'exact host without port uses default', user: { allowedMcpServers: [{ serverUrl: 'https://127.0.0.1/*' }] }, allowed: false },
+    { name: 'wildcard port', user: { allowedMcpServers: [{ serverUrl: 'https://127.0.0.1:*/*' }] }, allowed: true },
+    { name: 'wildcard host includes nondefault port', user: { allowedMcpServers: [{ serverUrl: 'https://127.*/*' }] }, allowed: true },
+    { name: 'no path matches any path', user: { allowedMcpServers: [{ serverUrl: 'https://127.0.0.1:1' }] }, allowed: true },
+    { name: 'path case differs', user: { allowedMcpServers: [{ serverUrl: 'https://127.0.0.1:1/mcp' }] }, allowed: false },
+    { name: 'query is part of path matching', config: { ...remote, url: remote.url + '?key=value' }, user: { allowedMcpServers: [{ serverUrl: remote.url }] }, allowed: false },
+    { name: 'query wildcard matches', config: { ...remote, url: remote.url + '?key=value' }, user: { allowedMcpServers: [{ serverUrl: remote.url + '?key=*' }] }, allowed: true },
+    { name: 'fragments are ignored', config: { ...remote, url: remote.url + '#actual' }, user: { allowedMcpServers: [{ serverUrl: remote.url + '#different' }] }, allowed: true },
+    { name: 'literal dot segments normalize', user: { allowedMcpServers: [{ serverUrl: 'https://127.0.0.1:1/api/../Mcp' }] }, allowed: true },
+    { name: 'safe path expansion includes slash and colon', config: { ...remote, url: 'https://127.0.0.1:1/api/Mcp:2' }, user: { allowedMcpServers: [{ serverUrl: 'https://127.0.0.1:1/${SIGHTLINE_POLICY_PATH}' }] }, allowed: true },
+    { name: 'path expansion cannot traverse to parent', user: { allowedMcpServers: [{ serverUrl: 'https://127.0.0.1:1/api/${SIGHTLINE_POLICY_PARENT}' }] }, allowed: false },
+    { name: 'scheme wildcard', user: { allowedMcpServers: [{ serverUrl: '*://127.0.0.1:*/*' }] }, allowed: true },
+    { name: 'default port normalization', config: { type: 'http', url: 'https://127.0.0.1:443/Mcp' }, user: { allowedMcpServers: [{ serverUrl: 'https://127.0.0.1/Mcp' }] }, allowed: true },
+    { name: 'host case and trailing dot', config: { type: 'http', url: 'https://LOCALHOST.:1/Mcp' }, user: { allowedMcpServers: [{ serverUrl: 'https://localhost:*/*' }] }, allowed: true },
+    { name: 'URL denial ignores default-port mismatch', user: { deniedMcpServers: [{ serverUrl: 'https://127.0.0.1/*' }] }, allowed: true },
+    { name: 'URL denial any port', user: { deniedMcpServers: [{ serverUrl: '*://127.0.0.1:*/*' }] }, allowed: false },
+    { name: 'policy host and port env', user: { allowedMcpServers: [{ serverUrl: 'https://${SIGHTLINE_POLICY_HOST}:${SIGHTLINE_POLICY_PORT}/*' }] }, allowed: true },
+    { name: 'allow URL env cannot add wildcard scope', user: { allowedMcpServers: [{ serverUrl: 'https://${SIGHTLINE_POLICY_WILDCARD}:*/*' }] }, allowed: false },
+    { name: 'deny URL env can widen scope', user: { deniedMcpServers: [{ serverUrl: 'https://${SIGHTLINE_POLICY_WILDCARD}:*/*' }] }, allowed: false },
+    { name: 'user env fills live server', config: { type: 'http', url: 'https://${SIGHTLINE_USER_HOST}:1/Mcp' }, user: { env: { SIGHTLINE_USER_HOST: '127.0.0.1' }, allowedMcpServers: [{ serverUrl: remote.url }] }, allowed: true },
+    { name: 'user env cannot broaden allow policy', user: { env: { SIGHTLINE_USER_HOST: '127.0.0.1' }, allowedMcpServers: [{ serverUrl: 'https://${SIGHTLINE_USER_HOST}:1/Mcp' }] }, allowed: false },
+    { name: 'user env can broaden deny policy', user: { env: { SIGHTLINE_USER_HOST: '127.0.0.1' }, deniedMcpServers: [{ serverUrl: 'https://${SIGHTLINE_USER_HOST}:1/Mcp' }] }, allowed: false },
+    { name: 'project env cannot broaden deny policy', project: { env: { SIGHTLINE_USER_HOST: '127.0.0.1' }, deniedMcpServers: [{ serverUrl: 'https://${SIGHTLINE_USER_HOST}:1/Mcp' }] }, allowed: true },
+  ];
+  for (const scenario of cases) await t.test(scenario.name, async () => {
+    await writeFile(path.join(w.repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: scenario.config ?? remote } }));
+    await writeFile(path.join(w.home, '.claude/settings.json'), JSON.stringify({ enableAllProjectMcpServers: true, ...scenario.user }));
+    await writeFile(path.join(w.repo, '.claude/settings.json'), JSON.stringify(scenario.project ?? {}));
+    const native = readServer(w.repo, env);
+    assert.equal(native.status, scenario.allowed ? 0 : 1, native.text);
+    const report = await scan({ ...w, env, clients: ['claude'], trust: 'trusted', probe: true });
+    const extension = report.clients[0].extensions.find(extension => extension.name === 'fixture')!;
+    assert.equal(extension.status, scenario.allowed ? 'active' : 'ignored');
+    if (!scenario.allowed) assert.ok(!report.findings.some(finding => finding.ruleId.startsWith('probe.') || finding.ruleId === 'mcp.command-missing'));
+  });
+});
+
+test('Claude native managed MCP files agree with SDK, built CLI and portable reports', { timeout: 90000, skip: process.env.SIGHTLINE_TEST_MANAGED_POLICY !== '1' }, async t => {
+  assert.equal(process.platform, 'linux');
+  assert.equal(process.env.GITHUB_ACTIONS, 'true');
+  const managedRoot = '/etc/claude-code';
+  assert.deepEqual(await readdir(managedRoot), [], 'Native managed MCP checks require the isolated empty CI policy directory.');
+  const remote = { type: 'http', url: 'https://127.0.0.1:1/Mcp' };
+  const cases: { name: string; managed?: Record<string, unknown>; user?: Record<string, unknown>; project?: Record<string, unknown>; dropins?: Record<string, unknown>; exclusive?: unknown; raw?: string; config?: Record<string, unknown>; allowed: boolean; source?: string }[] = [
+    { name: 'managed empty allowlist', managed: { allowedMcpServers: [] }, allowed: false },
+    { name: 'ordinary allowlist broadens managed list without lock', managed: { allowedMcpServers: [] }, user: { allowedMcpServers: [{ serverName: 'fixture' }] }, allowed: true },
+    { name: 'managed-only lock excludes ordinary allowlist', managed: { allowedMcpServers: [], allowManagedMcpServersOnly: true }, user: { allowedMcpServers: [{ serverName: 'fixture' }] }, allowed: false },
+    { name: 'managed-only quoted false unlocks ordinary list', managed: { allowedMcpServers: [], allowManagedMcpServersOnly: 'false' }, user: { allowedMcpServers: [{ serverName: 'fixture' }] }, allowed: true },
+    { name: 'invalid managed lock fails closed', managed: { allowedMcpServers: [], allowManagedMcpServersOnly: 42 }, user: { allowedMcpServers: [{ serverName: 'fixture' }] }, allowed: false },
+    { name: 'managed allowlist repair fails closed', managed: { allowedMcpServers: 42 }, allowed: false },
+    { name: 'managed allowlist drops invalid predecessor', managed: { allowedMcpServers: [42, { serverName: 'fixture' }] }, allowed: true },
+    { name: 'managed denylist drops invalid predecessor', managed: { deniedMcpServers: [42, { serverName: 'fixture' }] }, allowed: false },
+    { name: 'invalid managed denylist is dropped', managed: { deniedMcpServers: 42 }, allowed: true },
+    { name: 'null managed allowlist is absent', managed: { allowedMcpServers: null }, allowed: true },
+    { name: 'file allowlists merge with dropins', managed: { allowedMcpServers: [] }, dropins: { '20-allow.json': { allowedMcpServers: [{ serverName: 'fixture' }] } }, allowed: true },
+    { name: 'provided server bypasses allowlist', managed: { managedMcpServers: { fixture: remote }, allowedMcpServers: [] }, allowed: true, source: 'managed-settings.json' },
+    { name: 'provided HTTP alias', managed: { managedMcpServers: { fixture: { ...remote, type: 'streamable-http' } }, allowedMcpServers: [] }, allowed: true, source: 'managed-settings.json' },
+    { name: 'personal denial blocks provided server', managed: { managedMcpServers: { fixture: remote }, allowedMcpServers: [] }, user: { deniedMcpServers: [{ serverName: 'fixture' }] }, allowed: false },
+    { name: 'invalid provided HTTP falls back to project', managed: { managedMcpServers: { fixture: { ...remote, url: 'http://127.0.0.1:1/Mcp' } } }, allowed: true, source: '.mcp.json' },
+    { name: 'invalid provided env falls back to project', managed: { managedMcpServers: { fixture: { ...remote, env: {} } } }, allowed: true, source: '.mcp.json' },
+    { name: 'provided entries replace whole across dropins', managed: { managedMcpServers: { fixture: { ...remote, headers: { 'X-Test': 'synthetic-key' } } } }, dropins: { '20-replace.json': { managedMcpServers: { fixture: { ...remote, type: 'sse' } } } }, allowed: true, source: '20-replace.json' },
+    { name: 'empty exclusive file removes personal servers', exclusive: { mcpServers: {} }, allowed: false },
+    { name: 'exclusive server bypasses empty allowlist', exclusive: { mcpServers: { fixture: remote } }, managed: { allowedMcpServers: [] }, allowed: true, source: 'managed-mcp.json' },
+    { name: 'personal denial blocks exclusive server', exclusive: { mcpServers: { fixture: remote } }, user: { deniedMcpServers: [{ serverName: 'fixture' }] }, allowed: false },
+    { name: 'exclusive file takes priority over provided server', exclusive: { mcpServers: { fixture: remote } }, managed: { managedMcpServers: { fixture: { ...remote, type: 'sse' } } }, allowed: true, source: 'managed-mcp.json' },
+    { name: 'empty exclusive retains provided server', exclusive: { mcpServers: {} }, managed: { managedMcpServers: { fixture: remote }, allowedMcpServers: [] }, allowed: true, source: 'managed-settings.json' },
+    { name: 'exclusive outside-env expansion requires allowlist', exclusive: { mcpServers: { fixture: { type: 'http', url: 'https://${SIGHTLINE_MANAGED_HOST}:1/Mcp' } } }, managed: { allowedMcpServers: [] }, allowed: false },
+    { name: 'malformed exclusive file leaves project available', raw: '{ broken JSON', allowed: true, source: '.mcp.json' },
+    { name: 'exclusive file without server map leaves project available', exclusive: {}, allowed: true, source: '.mcp.json' },
+    { name: 'exclusive invalid server map leaves project available', exclusive: { mcpServers: 42 }, allowed: true, source: '.mcp.json' },
+  ];
+  for (const scenario of cases) await t.test(scenario.name, async scenarioTest => {
+    const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: { fixture: scenario.config ?? remote } }), '.claude/settings.json': JSON.stringify(scenario.project ?? {}) }, { '.claude/settings.json': JSON.stringify({ enableAllProjectMcpServers: true, ...scenario.user }) });
+    scenarioTest.after(async () => {
+      await rm(w.root, { recursive: true, force: true, maxRetries: 5 });
+      for (const name of ['managed-settings.json', 'managed-mcp.json', 'managed-settings.d']) await rm(path.join(managedRoot, name), { recursive: true, force: true, maxRetries: 5 });
+    });
+    await writeFile(path.join(managedRoot, 'managed-settings.json'), JSON.stringify(scenario.managed ?? {}, null, 2));
+    if (scenario.raw !== undefined || scenario.exclusive !== undefined) await writeFile(path.join(managedRoot, 'managed-mcp.json'), scenario.raw ?? JSON.stringify(scenario.exclusive));
+    if (scenario.dropins) {
+      await mkdir(path.join(managedRoot, 'managed-settings.d'));
+      for (const [name, value] of Object.entries(scenario.dropins)) await writeFile(path.join(managedRoot, 'managed-settings.d', name), JSON.stringify(value));
+    }
+    const env = { ...isolatedEnvironment(w.home), SIGHTLINE_MANAGED_HOST: '127.0.0.1' };
+    const native = readServer(w.repo, env);
+    assert.equal(native.status, scenario.allowed ? 0 : 1, native.text);
+    const report = await scan({ ...w, env, system: true, clients: ['claude'], trust: 'trusted' });
+    const active = report.clients[0].extensions.filter(extension => extension.kind === 'mcp' && extension.status === 'active');
+    assert.equal(active.length, scenario.allowed ? 1 : 0);
+    if (scenario.source) assert.ok(active[0].location.path.endsWith(scenario.source));
+    const cli = JSON.parse(execFileSync(process.execPath, [path.resolve('dist/cli/index.js'), '--repo', w.repo, '--home', w.home, '--system', '--client', 'claude', '--trust', 'trusted', '--json'], { env, encoding: 'utf8' }));
+    assert.deepEqual(cli.clients[0].extensions, report.clients[0].extensions);
+    if (scenario.name === 'managed denylist drops invalid predecessor') {
+      const blocked = report.clients[0].extensions.find(extension => extension.status === 'ignored')!;
+      assert.ok(blocked.origins?.some(origin => origin.location.key === 'deniedMcpServers.1' && origin.location.line === 4));
+      const file = path.join(w.root, 'policy.html');
+      execFileSync(process.execPath, [path.resolve('dist/cli/index.js'), 'report', '--repo', w.repo, '--home', w.home, '--system', '--client', 'claude', '--trust', 'trusted', '--format', 'html', '--output', file], { env });
+      const exported = await readFile(file, 'utf8');
+      assert.ok(!exported.includes(JSON.stringify(w.home).slice(1, -1)));
+      assert.ok(exported.includes('deniedMcpServers.1'));
+    }
+  });
+});

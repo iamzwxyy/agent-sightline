@@ -29,7 +29,7 @@ jobs:
         run: |
           test ! -e /etc/claude-code
           sudo install -d -o "$(id -u)" -g "$(id -g)" /etc/claude-code
-          SIGHTLINE_TEST_MANAGED_POLICY=1 node --import tsx --test --test-name-pattern='Claude permission precedence' tests/claude-runtime.test.ts
+          SIGHTLINE_TEST_MANAGED_POLICY=1 node --import tsx --test --test-name-pattern='Claude permission precedence|Claude native managed MCP files' tests/claude-runtime.test.ts
       - run: npm audit --omit=dev
       - run: npx playwright install --with-deps chromium
       - run: npm run test:web

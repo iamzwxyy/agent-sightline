@@ -646,6 +646,7 @@
       const origins = node('div', undefined, 'extension-origins setting-origins');
       const heading = extension.kind === 'skill' ? 'Availability setting'
         : extension.status === 'ignored' && ['hook', 'permission'].includes(extension.kind) ? 'Controlling setting'
+        : extension.kind === 'mcp' && extension.origins.some(origin => ['allowedMcpServers', 'deniedMcpServers', 'managed-mcp.json'].includes(origin.key)) ? 'Field definitions and policy'
         : extension.kind === 'permission' ? 'Overriding rules' : 'Field definitions';
       origins.append(node('h3', heading));
       const mappings = [...report.pathMappings ?? []].filter(mapping => !mapping.replacement.startsWith('<repo>')).sort((a, b) => b.path.length - a.path.length);

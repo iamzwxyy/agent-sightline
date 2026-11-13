@@ -178,6 +178,10 @@ try {
   writeFileSync(path.join(claudeRepo, '.mcp.json'), JSON.stringify({ mcpServers: { remote: { type: 'http', url: 'https://example.test/mcp' }, local: { command: process.execPath } } }));
   const approvedClaude = JSON.parse(execFileSync(process.execPath, [cli, ...claudeArgs, '--trust', 'trusted'], { encoding: 'utf8' }));
   if (approvedClaude.clients[0].extensions.some(extension => extension.status !== 'active') || approvedClaude.findings.some(finding => finding.severity === 'error')) throw new Error('Installed corrected Claude transport failed.');
+  writeFileSync(path.join(claudeRepo, '.claude/settings.json'), '{\n"deniedMcpServers": [\n42,\n{"serverName":"local"}\n]\n}');
+  const deniedClaude = JSON.parse(execFileSync(process.execPath, [cli, ...claudeArgs, '--trust', 'trusted'], { encoding: 'utf8' }));
+  const deniedServer = deniedClaude.clients[0].extensions.find(extension => extension.name === 'local');
+  if (deniedServer?.status !== 'ignored' || !deniedServer.origins.some(origin => origin.location.key === 'deniedMcpServers.1' && origin.location.line === 4)) throw new Error('Installed Claude MCP policy source tracking failed.');
   const demo = JSON.parse(execFileSync(process.execPath, [cli, 'demo', '--clients', 'codex,claude,copilot', '--json'], { encoding: 'utf8' }));
   if (new Set(demo.findings.map(f => f.ruleId)).size < 5) throw new Error('Bundled demo failed to demonstrate real findings.');
   if (!demo.findings.some(finding => finding.ruleId === 'instructions.truncated') || demo.clients.find(client => client.client === 'codex')?.settings.find(setting => setting.key === 'project_doc_max_bytes' && setting.status === 'active')?.value !== 160) throw new Error('The installed Git-free sample lost its Codex byte-budget configuration.');

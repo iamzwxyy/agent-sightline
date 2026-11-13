@@ -22,9 +22,10 @@ export async function discoverClaudeManagedSettings(ctx: Context, directory = pr
     }
   }
   await ctx.read(path.join(directory, 'CLAUDE.md'), 'claude', 'instructions', 'system');
+  await ctx.read(path.join(directory, 'managed-mcp.json'), 'claude', 'mcp', 'system');
 }
 
-const managedLocks = ['allowManagedPermissionRulesOnly', 'allowManagedHooksOnly'];
+const managedLocks = ['allowManagedPermissionRulesOnly', 'allowManagedHooksOnly', 'allowManagedMcpServersOnly'];
 interface ClaudeSettingsLayer extends Source { permissionLocations?: Record<string, Location> }
 
 export function claudeSettingsSource(e: Effective, source: Source): ClaudeSettingsLayer {

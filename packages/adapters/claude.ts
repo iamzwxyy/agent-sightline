@@ -1,14 +1,16 @@
 import path from 'node:path';
-import type { AdapterMetadata, Context, Source, Status } from '../core/types.js';
+import type { Adapter, AdapterMetadata, Context, Source, Status } from '../core/types.js';
 import { readUserTree } from '../core/discovery.js';
 import { parseSource } from '../core/parse.js';
 import { finding, locate, matches, plainObject, slash, within } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, effectiveValue, expand, finish, hooks, mcp, pathPatterns, permissions, rootOf, settings, skills } from './common.js';
 import { applyClaudePolicy, claudeSettingsSource, discoverClaudeManagedSettings } from './claude-policy.js';
+import { applyClaudeMcpPolicy, claudeMcpSettingsSource } from './claude-mcp.js';
+import { probeMcp, validateExtensions } from '../core/extensions.js';
 
 export const claudeMetadata: AdapterMetadata = {
   id: 'claude', name: 'Claude Code', maturity: 'verified', ruleVersion: '2.1.322', verifiedOn: '2026-11-14',
-  evidence: ['https://code.claude.com/docs/en/memory', 'https://code.claude.com/docs/en/settings', 'https://code.claude.com/docs/en/mcp', 'https://code.claude.com/docs/en/skills', 'https://code.claude.com/docs/en/permissions', 'https://code.claude.com/docs/en/hooks', 'https://code.claude.com/docs/en/managed-settings', 'https://code.claude.com/docs/en/settings-reference'],
+  evidence: ['https://code.claude.com/docs/en/memory', 'https://code.claude.com/docs/en/settings', 'https://code.claude.com/docs/en/mcp', 'https://code.claude.com/docs/en/skills', 'https://code.claude.com/docs/en/permissions', 'https://code.claude.com/docs/en/hooks', 'https://code.claude.com/docs/en/managed-settings', 'https://code.claude.com/docs/en/settings-reference', 'https://code.claude.com/docs/en/managed-mcp'],
   limitations: [
     'Repository boundary excludes filesystem ancestors outside --repo; they may contribute instructions.',
     'No account-synced or plugin/managed-cloud configuration. AGENTS.md fallback models the documented 2.1.277+ default.',
@@ -30,7 +32,8 @@ async function discover(ctx: Context): Promise<Source[]> {
   }
   return ctx.sources.filter(s => s.owners.includes('claude'));
 }
-export const claude = adapter(claudeMetadata, discover, async ctx => {
+const sessionEnvironments = new WeakMap<Context, NodeJS.ProcessEnv>();
+const claudeAdapter = adapter(claudeMetadata, discover, async ctx => {
   const e = await base(claudeMetadata, ctx);
   const user = ctx.sources.find(s => s.path === path.join(ctx.claudeHome, 'settings.json'));
   const layers = [user, ctx.sources.find(s => s.path === path.join(ctx.repo, '.claude/settings.json')), ctx.sources.find(s => s.path === path.join(ctx.repo, '.claude/settings.local.json')), ...ctx.sources.filter(s => s.scope === 'system' && s.owners.includes('claude') && s.kind === 'settings')].filter((s): s is Source => !!s).map(source => {
@@ -39,11 +42,12 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
       strict = { ...source, owners: ['claude'], lines: {}, valueRanges: [] };
       e.findings.push(...parseSource(strict).map(finding => ({ ...finding, client: 'claude' as const })));
     }
-    return claudeSettingsSource(e, strict);
+    return claudeMcpSettingsSource(e, claudeSettingsSource(e, strict));
   });
   const permissionPolicy = layers.findLast(source => !source.invalid && source.scope === 'system' && typeof source.data.allowManagedPermissionRulesOnly === 'boolean');
   const hookPolicy = layers.findLast(source => !source.invalid && source.scope === 'system' && typeof source.data.allowManagedHooksOnly === 'boolean');
   const hookDisable = layers.findLast(source => !source.invalid && typeof source.data.disableAllHooks === 'boolean');
+  const mcpPolicy = layers.findLast(source => !source.invalid && source.scope === 'system' && typeof source.data.allowManagedMcpServersOnly === 'boolean');
   for (const s of layers) {
     const excluded = ctx.options.trust !== 'trusted' && s.scope !== 'user' && s.scope !== 'system' ? ['enableAllProjectMcpServers', 'enabledMcpjsonServers'] : [];
     let hookGate: Source | undefined;
@@ -51,7 +55,9 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
     if (hookDisable?.data.disableAllHooks === true && (s.scope !== 'system' || hookDisable.scope === 'system')) { hookGate = hookDisable; hookGateKey = 'disableAllHooks'; }
     else if (s.scope !== 'system' && hookPolicy?.data.allowManagedHooksOnly === true) hookGate = hookPolicy;
     if (hookGate) excluded.push('hooks');
+    if (s.scope !== 'system' && mcpPolicy?.data.allowManagedMcpServersOnly === true) excluded.push('allowedMcpServers');
     const data = Object.fromEntries(Object.entries(s.data).filter(([key]) => !excluded.includes(key)));
+    delete data.managedMcpServers;
     if (!s.invalid && permissionPolicy?.data.allowManagedPermissionRulesOnly === true && s.scope !== 'system' && plainObject(data.permissions)) {
       data.permissions = { ...data.permissions };
       for (const key of ['allow', 'ask', 'deny']) if (Object.hasOwn(data.permissions, key)) {
@@ -77,8 +83,9 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
     settings(e, s, 'active', true, data);
     if (!s.invalid) for (const [key, value] of grants) e.settings.push({ key: 'permissions.' + key, value, status: grantStatus, location: locate(s, 'permissions.' + key), reason: grantReason, overrides: [] });
     if (!s.invalid) for (const key of excluded) if (s.data[key] !== undefined) {
-      e.settings.push({ key, value: s.data[key], location: locate(s, key), status: 'ignored', reason: key === 'hooks' ? `Hooks are disabled by ${hookGateKey}.` : 'Workspace MCP approval settings require explicit trust.', overrides: [] });
+      e.settings.push({ key, value: s.data[key], location: locate(s, key), status: 'ignored', reason: key === 'hooks' ? `Hooks are disabled by ${hookGateKey}.` : key === 'allowedMcpServers' ? 'Only the managed MCP allowlist applies under allowManagedMcpServersOnly.' : 'Workspace MCP approval settings require explicit trust.', overrides: [] });
       if (key === 'hooks') e.findings.push(finding('claude.policy-ignored', 'info', locate(s, key), `Claude ignores these hooks under ${hookGateKey}.`, 'The effective hook control excludes handlers from this settings layer.', 'Review the controlling setting to confirm which hooks can run.', 'claude', [locate(hookGate!, hookGateKey)]));
+      if (key === 'allowedMcpServers') e.findings.push(finding('claude.policy-ignored', 'info', locate(s, key), 'Claude ignores this ordinary MCP allowlist under managed-only policy.', 'allowManagedMcpServersOnly restricts the allowlist to managed sources. Denials still merge from every scope.', 'Review the controlling managed policy.', 'claude', [locate(mcpPolicy!, 'allowManagedMcpServersOnly')]));
     }
     hooks(e, s, s.data.hooks, 'active'); permissions(e, s, 'active', { status: grantStatus, reason: grantReason }, s.permissionLocations);
   }
@@ -139,11 +146,18 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
     }
   }
   if (globalMcp) mcp(e, globalMcp, globalMcp.data.projects?.[ctx.repo]?.mcpServers, `projects.${ctx.repo}.mcpServers`, 'active');
+  sessionEnvironments.set(ctx, applyClaudeMcpPolicy(e, ctx, layers).live);
   await skills(e, ctx, [...(ctx.options.user !== false ? [path.join(ctx.claudeHome, 'skills')] : []), ...ctx.dirs.map(d => path.join(d, '.claude/skills'))], 'first');
   for (const x of e.extensions.filter(x => x.kind === 'skill')) if (['synced', 'anthropic-skills'].includes(x.name)) { x.status = 'ignored'; x.reason = 'Reserved Claude skill directory name.'; }
   applyClaudePolicy(e, ctx);
   e.notes.push(`Project instruction mode: ${mode}. AGENTS.md fallback: ${useAgents ? 'enabled' : 'disabled'}.`, 'CLAUDE.md and rule bodies accumulate; local instruction files are appended per directory.', 'Ancestors outside --repo, session source switches, external import approval, accounts, plugins and managed cloud policies are outside this static report.');
-  e.notes.push(ctx.options.system ? 'Managed file-policy results assume this machine selects the file-based tier. Remote, MDM, registry and embedding-host selection require session evidence.' : 'System file policy is excluded. Add --system to inspect managed permission and hook controls.');
+  e.notes.push(ctx.options.system ? 'Managed file-policy results assume this machine selects the file-based tier. Remote, MDM, registry and embedding-host selection require session evidence.' : 'System file policy is excluded. Add --system to inspect managed permissions, hooks and MCP controls.');
   if (ctx.dirs.some(d => d !== ctx.repo) && layers.every(s => !within(ctx.directory, s.path))) e.notes.push('Settings resolution models the repository project, while instruction discovery follows the target directory chain.');
   return finish(e, ctx);
 });
+
+export const claude: Adapter = {
+  ...claudeAdapter,
+  validate: (ctx, effective) => validateExtensions({ ...ctx, env: sessionEnvironments.get(ctx) ?? ctx.env }, effective),
+  probe: (extension, ctx) => probeMcp(extension, { ...ctx, env: sessionEnvironments.get(ctx) ?? ctx.env }, 'claude'),
+};
