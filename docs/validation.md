@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.8
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* Lint, strict TypeScript, build and empty-cache offline installation passed. The 345-case core suite completed with 343 passes and two platform-gated skips. The production dependency audit reported zero vulnerabilities.
+* Forty native Claude MCP policy cases cover command/name/URL selection, merged lists, deny priority, ports, paths, queries, fragments and pinned environment expansion. Two additional scripted-API cases verify that malformed ordinary MCP policies retain other valid settings in that file.
+* The isolated Linux file-policy matrix includes 53 permission/hook scenarios and 32 MCP scenarios. It compares the native fixed system directory with the public SDK, built CLI and portable export. Initial failures exposed null managed allowlists and malformed exclusive files suppressing ordinary servers. Regression cases also cover unreadable files, directory-shaped paths and broken symlinks.
+* Fixtures preserve whole-entry replacement for provided servers, managed-file precedence, allowlist exemptions, managed-only controls, typed repair and original policy locations after invalid entries. Blocked servers retain their field definitions and skip executable/startup probes.
+* All 54 Chromium browser cases passed. The added policy journey follows original denylist lines in live and offline reports, verifies correction and checks phone layout. Desktop and phone dialogs received visual review.
+* All 27 previously published package archive digests were verified before publication.
+
 ## v0.3.7
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.

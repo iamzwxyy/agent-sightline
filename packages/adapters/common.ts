@@ -43,6 +43,7 @@ export function settings(e: Effective, s: Source, status: Status, mergeArrays = 
 export function effectiveValue(e: Effective, key: string, fallback?: any): any { return e.settings.findLast(x => x.key === key && x.status === 'active')?.value ?? fallback; }
 export function mcp(e: Effective, s: Source, servers: unknown, key: string, status: Status, merge = false): void {
   if (s.invalid || servers === undefined) return;
+  if (status === 'ignored' && !plainObject(servers)) return;
   if (!plainObject(servers)) { e.findings.push(finding('mcp.servers-type', 'error', locate(s, key), 'MCP servers must be an object keyed by server name.', 'The server collection cannot be resolved from this value.', 'Use an object containing named server definitions.', e.client)); return; }
   for (const [name, data] of Object.entries(servers)) {
     const previousStatuses = merge && status === 'conditional' ? ['active', 'conditional'] : ['active'];
@@ -53,7 +54,7 @@ export function mcp(e: Effective, s: Source, servers: unknown, key: string, stat
     const extension: Extension = { kind: 'mcp', name, config, status, location: locate(s, `${key}.${name}`), reason,
       ...(plainObject(data) ? { origins: mcpOrigins(s, config, data, `${key}.${name}`, inherited) } : {}),
     };
-    const errors = e.client === 'claude' ? validateMcpConfiguration(extension, e.client, s) : [];
+    const errors = e.client === 'claude' && ['active', 'conditional'].includes(status) ? validateMcpConfiguration(extension, e.client, s) : [];
     if (errors.length) {
       if (old) {
         old.reason = 'A higher-priority declaration failed structural validation. This definition remains applicable.';

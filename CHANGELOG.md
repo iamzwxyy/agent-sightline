@@ -1,11 +1,12 @@
 # Changelog
 
-## 0.3.8 — Unreleased
+## 0.3.8 — 2026-11-14
 
 * Discover Claude's exclusive managed-mcp.json and servers provided through managedMcpServers. Preserve whole-entry replacement and managed-file priority.
 * Apply MCP allowlists, denylists and managed-only allowlist controls with command, name and URL matching. Account for default ports, wildcards, path/query matching and pinned policy environments.
 * Explain blocked servers with their original policy keys and source lines. Retain field origins, skip blocked startup checks/probes and support policy navigation in live and portable browser reports.
 * Recover managed MCP list entries without shifting source locations. Validate provided HTTPS servers and retain valid fallback definitions.
+* Match native fail-closed behavior for null managed allowlists and malformed, empty or unreadable exclusive MCP paths.
 
 ## 0.3.7 — 2026-11-14
 

@@ -177,7 +177,7 @@ function policyMatches(rule: PolicyRule, extension: Extension, environments: Ret
   return url !== undefined && pattern !== undefined && urlMatches(pattern, url);
 }
 
-function exclusiveLocation(ctx: Context): Location | undefined {
+export function claudeExclusiveMcpLocation(ctx: Context): Location | undefined {
   const source = ctx.sources.find(source => source.scope === 'system' && source.kind === 'mcp' && source.owners.includes('claude'));
   return source ? locate(source) : ctx.findings.find(finding => finding.ruleId === 'claude.managed-mcp-unreadable')?.location;
 }
@@ -185,9 +185,10 @@ function exclusiveLocation(ctx: Context): Location | undefined {
 export function applyClaudeMcpPolicy(e: Effective, ctx: Context, layers: McpSettingsSource[]): ReturnType<typeof claudeMcpEnvironments> {
   const valid = layers.filter(source => !source.invalid);
   const managedFile = ctx.sources.find(source => source.scope === 'system' && source.kind === 'mcp');
-  const exclusive = exclusiveLocation(ctx);
+  const exclusive = claudeExclusiveMcpLocation(ctx);
   if (exclusive) {
-    for (const extension of e.extensions) if (extension.kind === 'mcp' && ['active', 'conditional', 'shadowed'].includes(extension.status)) block(extension, 'managed-mcp.json', [exclusive], 'The exclusive managed MCP file suppresses user, project and local servers, including when the file is malformed.');
+    const ordinary = new Set(ctx.sources.filter(source => source.kind === 'mcp' && source.scope !== 'system').map(source => source.path));
+    for (const extension of e.extensions) if (extension.kind === 'mcp' && ordinary.has(extension.location.path)) block(extension, 'managed-mcp.json', [exclusive], 'The exclusive managed MCP file suppresses user, project and local servers, including when the file is malformed.');
   }
   for (const source of valid) if (plainObject(source.data.managedMcpServers)) {
     for (const [name, value] of Object.entries(source.data.managedMcpServers)) {

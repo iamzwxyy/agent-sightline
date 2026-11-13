@@ -5,7 +5,7 @@ import { parseSource } from '../core/parse.js';
 import { finding, locate, matches, plainObject, slash, within } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, effectiveValue, expand, finish, hooks, mcp, pathPatterns, permissions, rootOf, settings, skills } from './common.js';
 import { applyClaudePolicy, claudeSettingsSource, discoverClaudeManagedSettings } from './claude-policy.js';
-import { applyClaudeMcpPolicy, claudeMcpSettingsSource } from './claude-mcp.js';
+import { applyClaudeMcpPolicy, claudeExclusiveMcpLocation, claudeMcpSettingsSource } from './claude-mcp.js';
 import { probeMcp, validateExtensions } from '../core/extensions.js';
 
 export const claudeMetadata: AdapterMetadata = {
@@ -116,7 +116,10 @@ const claudeAdapter = adapter(claudeMetadata, discover, async ctx => {
     else addInstruction(e, s, patterns ? 'paths frontmatter matches the opened target file.' : 'Unconditional rule in the user/project rules directory.');
   }
   const globalMcp = ctx.sources.find(s => s.path === path.join(ctx.home, '.claude.json'));
-  if (globalMcp) { decision(e, globalMcp, 'active', 'Only global and this project’s MCP entries are inspected; session/account state is not exported.'); mcp(e, globalMcp, globalMcp.data.mcpServers, 'mcpServers', 'active'); }
+  const exclusiveMcp = claudeExclusiveMcpLocation(ctx);
+  const ordinaryMcpStatus = exclusiveMcp ? 'ignored' : 'active';
+  const exclusiveReason = 'The exclusive managed MCP file suppresses ordinary MCP sources.';
+  if (globalMcp) { decision(e, globalMcp, ordinaryMcpStatus, exclusiveMcp ? exclusiveReason : 'Only global and this project’s MCP entries are inspected; session/account state is not exported.'); mcp(e, globalMcp, globalMcp.data.mcpServers, 'mcpServers', ordinaryMcpStatus); }
   const validLayers = layers.filter(source => !source.invalid);
   const stringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string');
   for (const source of validLayers) for (const key of ['enableAllProjectMcpServers', 'enabledMcpjsonServers', 'disabledMcpjsonServers']) {
@@ -129,11 +132,11 @@ const claudeAdapter = adapter(claudeMetadata, discover, async ctx => {
     const enabled = approvalLayers.findLast(source => source.data.enableAllProjectMcpServers !== undefined)?.data.enableAllProjectMcpServers === true;
     const approved = approvalLayers.flatMap(source => stringArray(source.data.enabledMcpjsonServers) ? source.data.enabledMcpjsonServers : []);
     const disabled = validLayers.flatMap(source => stringArray(source.data.disabledMcpjsonServers) ? source.data.disabledMcpjsonServers : []);
-    const projectDecision = decision(e, projectMcp, 'conditional', 'Project MCP definitions need server approval in interactive sessions.');
-    mcp(e, projectMcp, projectMcp.data.mcpServers, 'mcpServers', 'conditional');
+    const projectDecision = decision(e, projectMcp, exclusiveMcp ? 'ignored' : 'conditional', exclusiveMcp ? exclusiveReason : 'Project MCP definitions need server approval in interactive sessions.');
+    mcp(e, projectMcp, projectMcp.data.mcpServers, 'mcpServers', exclusiveMcp ? 'ignored' : 'conditional');
     const projectEntries = e.extensions.filter(x => x.kind === 'mcp' && x.location.path === projectMcp.path);
     for (const x of projectEntries) {
-      if (x.status === 'invalid') continue;
+      if (exclusiveMcp || x.status === 'invalid') continue;
       if (disabled.includes(x.name)) { x.status = 'ignored'; x.reason = 'disabledMcpjsonServers blocks this server.'; }
       else if (enabled || approved.includes(x.name) || ctx.options.trust === 'trusted') {
         x.status = 'active'; x.reason = ctx.options.trust === 'trusted' ? 'Project/server approval explicitly assumed by --trust trusted.' : 'Enabled by a user or managed MCP approval setting.';
@@ -141,11 +144,11 @@ const claudeAdapter = adapter(claudeMetadata, discover, async ctx => {
       }
       else x.reason = 'Project MCP approval is pending. Repository approval settings require an explicitly trusted workspace.';
     }
-    if (!projectMcp.invalid && projectEntries.every(extension => extension.status !== 'conditional')) {
+    if (!exclusiveMcp && !projectMcp.invalid && projectEntries.every(extension => extension.status !== 'conditional')) {
       projectDecision.status = 'active'; projectDecision.reason = 'Project MCP definitions are inspected with their individual approval and validation states.';
     }
   }
-  if (globalMcp) mcp(e, globalMcp, globalMcp.data.projects?.[ctx.repo]?.mcpServers, `projects.${ctx.repo}.mcpServers`, 'active');
+  if (globalMcp) mcp(e, globalMcp, globalMcp.data.projects?.[ctx.repo]?.mcpServers, `projects.${ctx.repo}.mcpServers`, ordinaryMcpStatus);
   sessionEnvironments.set(ctx, applyClaudeMcpPolicy(e, ctx, layers).live);
   await skills(e, ctx, [...(ctx.options.user !== false ? [path.join(ctx.claudeHome, 'skills')] : []), ...ctx.dirs.map(d => path.join(d, '.claude/skills'))], 'first');
   for (const x of e.extensions.filter(x => x.kind === 'skill')) if (['synced', 'anthropic-skills'].includes(x.name)) { x.status = 'ignored'; x.reason = 'Reserved Claude skill directory name.'; }

@@ -82,13 +82,15 @@ test('Claude exclusive managed MCP suppresses ordinary servers, retains provided
   const { effective, ctx } = await managedFixture(t, {
     'managed-mcp.json': { mcpServers: { fixture: { command: process.execPath }, denied: { command: 'missing-denied-managed-command' } } },
     'managed-settings.json': { managedMcpServers: { fixture: { type: 'http', url: 'https://example.test' }, provided: { type: 'http', url: 'https://example.test' } }, allowedMcpServers: [] },
-  }, { deniedMcpServers: [{ serverName: 'denied' }] }, {}, { personal: { command: 'missing-excluded-managed-command' } });
+  }, { deniedMcpServers: [{ serverName: 'denied' }] }, {}, { personal: { command: 'missing-excluded-managed-command' }, invalid: { type: 'sdk' } });
   const active = effective.extensions.filter(extension => extension.status === 'active');
   assert.deepEqual(active.map(extension => extension.name).sort(), ['fixture', 'provided']);
   assert.equal(active.find(extension => extension.name === 'fixture')?.config.command, process.execPath);
   assert.equal(effective.extensions.find(extension => extension.name === 'personal')?.status, 'ignored');
+  assert.equal(effective.extensions.find(extension => extension.name === 'invalid')?.status, 'ignored');
   assert.equal(effective.extensions.find(extension => extension.name === 'denied')?.status, 'ignored');
-  assert.ok(!effective.findings.some(finding => finding.ruleId === 'mcp.command-missing'));
+  assert.ok(!effective.findings.some(finding => finding.ruleId === 'mcp.command-missing' || finding.ruleId === 'mcp.transport-type'));
+  assert.equal(effective.decisions.find(decision => decision.path.endsWith('.mcp.json'))?.status, 'ignored');
   assert.ok(ctx.sources.some(source => source.scope === 'system' && source.kind === 'mcp' && source.path.endsWith('managed-mcp.json')));
 });
 
