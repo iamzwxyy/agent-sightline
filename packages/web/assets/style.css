@@ -253,7 +253,7 @@ dialog::backdrop { background: #252f2338; backdrop-filter: blur(3px); }
 .dialog-content { padding: 25px 28px 28px; }
 .dialog-content h2 { font-size: 20px; line-height: 1.4; font-weight: 500; letter-spacing: -.4px; color: #4e6a36; margin: 12px 0 20px; }
 .dialog-content h3 { margin: 24px 0 8px; font-size: 13px; color: #626b59; }
-.dialog-content p { font-size: 12px; color: #626b59; line-height: 1.8; }
+.dialog-content p { font-size: 12px; color: #626b59; line-height: 1.8; overflow-wrap: anywhere; }
 .dialog-content .path { font-size: 12px; padding: 10px 0; }
 .dialog-content .fix-suggestion { background: #f3f6ed; border: 1px solid #e5ebda; border-radius: 6px; padding: 13px 15px; color: #626b59; }
 .dialog-content .related-list { list-style: none; padding: 0; }
@@ -326,6 +326,7 @@ dialog::backdrop { background: #252f2338; backdrop-filter: blur(3px); }
 .setting-origins > button { display: block; text-align: left; font: 12px/1.8 var(--mono); color: #5f6b54; overflow-wrap: anywhere; margin: 7px 0; }
 .setting-origins > button:hover { text-decoration: underline; }
 .extension-origins > button { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; width: 100%; padding: 5px 0; border-bottom: 1px solid var(--line); }
+@media (max-width: 760px) { .extension-origins > button { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
 #setting-summary { padding-top: 12px; }
 @media (max-width: 1100px) { .getting-started { align-items: flex-start; flex-direction: column; gap: 16px; } }
 @media (max-width: 760px) { .getting-started { padding: 18px; } .getting-started-actions { flex-shrink: 1; } .getting-started-actions .button { font-size: 12px; white-space: normal; } #comparison-text { grid-template-columns: 1fr; } .comparison-document-text { min-height: 100px; max-height: 240px; } .effective-text { padding: 18px; font-size: 12px; } }

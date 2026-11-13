@@ -26,18 +26,22 @@ test('disabled Claude hooks retain their controlling setting in live and offline
     const exported = await readFile(file, 'utf8');
     for (const root of [w.repo, await realpath(w.repo), w.home, await realpath(w.home)]) expect(exported).not.toContain(JSON.stringify(root).slice(1, -1));
     for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.setViewportSize({ width: 1440, height: 1000 });
       await page.context().setOffline(url.startsWith('file:'));
       await page.goto(url);
       await page.locator('#extensions-tab').click();
       await expect(page.locator('.extension-row .status.ignored')).toHaveCount(1);
       await page.locator('.extension-row').click();
       await expect(page.getByRole('heading', { name: 'Controlling setting', exact: true })).toBeVisible();
+      await page.setViewportSize({ width: 390, height: 844 });
+      expect(await page.locator('#detail-dialog').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       await page.locator('.extension-origins').getByRole('button', { name: /^disableAllHooks ·/ }).click();
       await expect(page.locator('.code-line.highlight')).toContainText('"disableAllHooks": true');
       await expect(page.locator('.code-line.highlight .line-number')).toHaveText('2');
     }
     await page.context().setOffline(false);
     await writeFile(path.join(w.home, '.claude/settings.json'), '{"disableAllHooks": false}');
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(server.url);
     await page.locator('#extensions-tab').click();
     await expect(page.locator('.extension-row .status.active')).toHaveCount(1);

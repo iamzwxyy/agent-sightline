@@ -7,8 +7,8 @@ import { adapter, addInstruction, base, decision, effectiveValue, expand, finish
 import { applyClaudePolicy, claudeSettingsSource, discoverClaudeManagedSettings } from './claude-policy.js';
 
 export const claudeMetadata: AdapterMetadata = {
-  id: 'claude', name: 'Claude Code', maturity: 'verified', ruleVersion: '2.1.322', verifiedOn: '2026-11-13',
-  evidence: ['https://code.claude.com/docs/en/memory', 'https://code.claude.com/docs/en/settings', 'https://code.claude.com/docs/en/mcp', 'https://code.claude.com/docs/en/skills', 'https://code.claude.com/docs/en/permissions', 'https://code.claude.com/docs/en/hooks'],
+  id: 'claude', name: 'Claude Code', maturity: 'verified', ruleVersion: '2.1.322', verifiedOn: '2026-11-14',
+  evidence: ['https://code.claude.com/docs/en/memory', 'https://code.claude.com/docs/en/settings', 'https://code.claude.com/docs/en/mcp', 'https://code.claude.com/docs/en/skills', 'https://code.claude.com/docs/en/permissions', 'https://code.claude.com/docs/en/hooks', 'https://code.claude.com/docs/en/managed-settings', 'https://code.claude.com/docs/en/settings-reference'],
   limitations: ['Repository boundary excludes filesystem ancestors outside --repo; they may contribute instructions.', 'No account-synced or plugin/managed-cloud configuration. AGENTS.md fallback models the documented 2.1.277+ default.', 'Path-scoped rules over 40,000 characters are conditional because model/context-specific limits cannot be inferred. No universal CLAUDE.md truncation budget is invented.', 'Nested skills may also be directory-qualified at runtime; bare-name preference is shown.', 'Local permission grants without explicit workspace trust depend on native Git and session checks; shown as conditional. Session permission modes and the remaining tool inventory are outside this static inspection.'],
 };
 async function discover(ctx: Context): Promise<Source[]> {
@@ -39,7 +39,9 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
   const hookDisable = layers.findLast(source => !source.invalid && typeof source.data.disableAllHooks === 'boolean');
   for (const s of layers) {
     const excluded = ctx.options.trust !== 'trusted' && s.scope !== 'user' && s.scope !== 'system' ? ['enableAllProjectMcpServers', 'enabledMcpjsonServers'] : [];
-    const hookGate = hookDisable?.data.disableAllHooks === true && (s.scope !== 'system' || hookDisable.scope === 'system') ? hookDisable : s.scope !== 'system' && hookPolicy?.data.allowManagedHooksOnly === true ? hookPolicy : undefined;
+    let hookGate: Source | undefined;
+    if (hookDisable?.data.disableAllHooks === true && (s.scope !== 'system' || hookDisable.scope === 'system')) hookGate = hookDisable;
+    else if (s.scope !== 'system' && hookPolicy?.data.allowManagedHooksOnly === true) hookGate = hookPolicy;
     if (hookGate) excluded.push('hooks');
     const data = Object.fromEntries(Object.entries(s.data).filter(([key]) => !excluded.includes(key)));
     if (permissionPolicy?.data.allowManagedPermissionRulesOnly === true && s.scope !== 'system' && plainObject(data.permissions)) {
@@ -129,6 +131,7 @@ export const claude = adapter(claudeMetadata, discover, async ctx => {
   for (const x of e.extensions.filter(x => x.kind === 'skill')) if (['synced', 'anthropic-skills'].includes(x.name)) { x.status = 'ignored'; x.reason = 'Reserved Claude skill directory name.'; }
   applyClaudePolicy(e, ctx);
   e.notes.push(`Project instruction mode: ${mode}. AGENTS.md fallback: ${useAgents ? 'enabled' : 'disabled'}.`, 'CLAUDE.md and rule bodies accumulate; local instruction files are appended per directory.', 'Ancestors outside --repo, session source switches, external import approval, accounts, plugins and managed cloud policies are outside this static report.');
+  e.notes.push(ctx.options.system ? 'Managed file-policy results assume this machine selects the file-based tier. Remote, MDM, registry and embedding-host selection require session evidence.' : 'System file policy is excluded. Add --system to inspect managed permission and hook controls.');
   if (ctx.dirs.some(d => d !== ctx.repo) && layers.every(s => !within(ctx.directory, s.path))) e.notes.push('Settings resolution models the repository project, while instruction discovery follows the target directory chain.');
   return finish(e, ctx);
 });

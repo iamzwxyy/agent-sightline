@@ -91,9 +91,9 @@ export function applyClaudePolicy(e: Effective, ctx: Context): void {
   const permissionLock = enabled('allowManagedPermissionRulesOnly');
   const hookLock = enabled('allowManagedHooksOnly');
   const hookDisable = e.settings.findLast(setting => setting.key === 'disableAllHooks' && setting.status === 'active');
-  const ignore = (entry: { status: string; reason: string }, setting: Setting) => {
+  const ignore = (entry: Pick<Setting, 'status' | 'reason'>, setting: Setting) => {
     entry.status = 'ignored';
-    entry.reason = `Disabled by ${setting.key} in ${setting.location.path}.`;
+    entry.reason = `Disabled by the effective ${setting.key} setting.`;
   };
   for (const extension of e.extensions) {
     const isManaged = managed.has(extension.location.path);
@@ -114,12 +114,9 @@ export function applyClaudePolicy(e: Effective, ctx: Context): void {
       e.findings.push(finding('claude.skill-tools-ignored', 'info', locate(source, 'allowed-tools'), 'Skill tool pre-approval is ignored by managed policy.', 'The skill remains discoverable, while allowManagedPermissionRulesOnly removes its allowed-tools grant.', 'Use administrator-approved permission rules for the required tools.', 'claude', [permissionLock.location]));
     }
   }
-  if (permissionLock) for (const setting of e.settings) {
-    if (!managed.has(setting.location.path) && ['permissions.allow', 'permissions.ask', 'permissions.deny'].includes(setting.key) && ['active', 'conditional'].includes(setting.status)) ignore(setting, permissionLock);
-  }
   const blocked = e.findings.find(finding => finding.ruleId === 'claude.managed-policy-invalid');
   if (blocked) {
-    const reason = `Claude startup is blocked by malformed managed policy in ${blocked.location.path}.`;
+    const reason = 'Claude startup is blocked by malformed managed policy.';
     for (const entry of [...e.settings, ...e.extensions]) if (['active', 'conditional'].includes(entry.status)) { entry.status = 'ignored'; entry.reason = reason; }
     for (const entry of e.decisions) if (['active', 'conditional', 'truncated'].includes(entry.status)) {
       entry.status = 'ignored'; entry.reason = reason; entry.content = ''; entry.loadedBytes = 0; entry.estimatedTokens = 0;

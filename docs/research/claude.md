@@ -1,6 +1,6 @@
 # Claude evidence ledger
 
-Verified 2026-11-13 against Claude Code 2.1.322. MCP and permission behavior have native CLI comparisons. Instructions, other settings, skills and hooks retain official-document fixtures.
+Verified 2026-11-14 against Claude Code 2.1.322. MCP, permission precedence and configured hook gates have native CLI comparisons. Instructions, other settings and skill metadata retain official-document fixtures.
 
 Sources: [memory/instructions](https://code.claude.com/docs/en/memory), [settings](https://code.claude.com/docs/en/settings), [MCP](https://code.claude.com/docs/en/mcp), [skills](https://code.claude.com/docs/en/skills), [permissions](https://code.claude.com/docs/en/permissions), [hooks](https://code.claude.com/docs/en/hooks).
 
@@ -12,11 +12,12 @@ Sources: [memory/instructions](https://code.claude.com/docs/en/memory), [setting
 | Imports | @path relative to referring file; code spans/fences excluded; escaped spaces; max four hops; external references reported/skipped by privacy boundary |
 | Rules | .claude/rules recursively; paths YAML matches relative to rule base; bare *.md matches descendants; leading / anchors to base |
 | Exclusions | claudeMdExcludes arrays merge and match absolute source paths |
-| Settings | User → shared repository .claude/settings.json → local → optional system managed; arrays merge, scalar values override |
+| Settings | User → shared repository .claude/settings.json → local → optional system managed-settings.json and immediate nonhidden managed-settings.d/*.json, alphabetically; arrays merge, scalar values override |
 | MCP | User ~/.claude.json → repository .mcp.json → current-project local entry in ~/.claude.json; whole server replacement; interactive approval conditional |
 | Skills | Personal over project bare names; body loads on invocation; nested directory-qualified variants are a recorded runtime limitation |
 | Hooks/permissions | Hook event/matcher definitions discovered. Proven whole-rule masking follows deny → ask → allow, retaining every highest-priority origin. Bash(*) is tool-wide. EndConversation ask entries are ignored and denial depends on the remaining tool inventory |
 | Permission trust | User/system grants are independent of workspace trust. Shared project allow/additionalDirectories entries require explicit trusted state; unknown trust is conditional. Local grants without explicit trust retain native Git/session conditions. Restrictive ask/deny entries remain applicable |
+| Managed gates | Managed-only permission rules exclude ordinary allow/ask/deny and personal/project skill allowed-tools. Managed-only hooks exclude ordinary handlers. disableAllHooks follows scalar precedence and protects managed hooks from ordinary disabling |
 | Limits | No global 32 KiB cap. On-demand path rules beyond 40,000 characters are conditional because context/model limits vary in 2.1.309+ |
 | Invalid formats | JSON, YAML metadata, duplicate keys and known deterministic field/type errors produce findings |
 
@@ -29,6 +30,14 @@ Nineteen isolated scenarios run the pinned CLI in manual mode against a loopback
 The native print session applies an untracked local grant after its Git check, and withholds a tracked local grant in the same untrusted folder. Static reports retain both as conditional until workspace trust is explicitly modeled. The inspection has no live-session acceptance state. General wildcard containment, session permission modes and the remaining EndConversation tool inventory retain partial scope. [Permission reference](https://code.claude.com/docs/en/permissions)
 
 Structural validation was reviewed against the official MCP, hooks and permissions references on 2026-11-13. Fixtures now cover malformed server/handler collections, typed extension fields, individual permission-entry locations and private strings inside invalid environment/header containers. Command hooks with `args` use literal executable resolution. The documented command handler fields exclude per-handler `cwd`, `env` and `commandWindows`, which receive warnings. The current hooks reference also lists `mcp_tool`; Sightline retains its declaration as hook metadata. Runtime dispatch and MCP-tool invocation remain outside this inspection.
+
+## Managed file policy and hook gates
+
+The local scripted-API matrix includes 25 permission, trust and ordinary-hook cases. A separate serialized Linux CI step expands that matrix to 51 cases using fixtures in the native `/etc/claude-code` directory. It starts with an empty policy directory in an ephemeral runner, removes each fixture before the next case, and compares both the public scan API and built CLI. Assertions inspect native file writes, actual hook markers, tool removal and startup failure. The distributed 2.1.322 binary has fixed system roots, so an environment path override supplies no test evidence.
+
+The native file-policy cases cover managed-only grants, ignored ordinary restrictions, quoted and invalid Boolean locks, null and empty policies, base/drop-in ordering, accumulated permission arrays, hook-only controls, ordinary versus managed disableAllHooks, supported permission-list repairs and malformed base/drop-in startup blocking. Portable export retains controlling keys while replacing private home paths. A browser journey follows an ignored hook to its controlling setting online and offline, then verifies correction.
+
+Skill allowed-tools withholding uses official-reference fixtures while retaining skill discovery. Static file-policy results assume the file-based managed tier is selected. Remote, MDM, registry and embedding-host policy selection require session evidence. Managed schema recovery covers the two implemented locks, disableAllHooks and permission-list types. Other managed schema repairs and whole-entry map exceptions retain partial coverage. [Managed settings](https://code.claude.com/docs/en/managed-settings) [Settings reference](https://code.claude.com/docs/en/settings-reference)
 
 ## Native MCP comparisons
 
