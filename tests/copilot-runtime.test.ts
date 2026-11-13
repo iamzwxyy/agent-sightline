@@ -57,7 +57,8 @@ async function withRuntime(home: string, cwd: string, run: (request: (method: st
   });
   const request = (method: string, params: Record<string, unknown> = {}): Promise<any> => new Promise((resolve, reject) => {
     const id = ++requestId;
-    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Copilot timed out during ${method}.`)); }, 15000);
+    const timeout = method === 'connect' ? 30000 : 15000;
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Copilot timed out during ${method}.`)); }, timeout);
     pending.set(id, { resolve, reject, timer });
     const body = JSON.stringify({ jsonrpc: '2.0', id, method, params });
     child.stdin.write(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);

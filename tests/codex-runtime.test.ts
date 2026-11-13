@@ -74,7 +74,14 @@ async function readRuntimeConfig(cwd: string, env: NodeJS.ProcessEnv): Promise<a
       }
     }, 1000);
     await closed;
-    clearTimeout(timer); lines.close();
+    clearTimeout(timer);
+    // Native plugin clones can outlive the app-server wrapper and keep writing
+    // into its temporary home after the wrapper closes its stdio.
+    if (process.platform !== 'win32' && child.pid) {
+      try { process.kill(-child.pid, 'SIGKILL'); }
+      catch (error) { assert.equal((error as NodeJS.ErrnoException).code, 'ESRCH', 'Codex test process group could not be stopped.'); }
+    }
+    lines.close();
   }
 }
 
@@ -240,7 +247,7 @@ test('the configuration oracle uses the pinned Codex binary', () => {
 
 for (const fixture of cases) test(`Codex runtime configuration matches Sightline for ${fixture.name}`, { timeout: 30000 }, async t => {
   const w = await workspace(fixture.files);
-  t.after(() => rm(w.root, { recursive: true, force: true }));
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
   await rm(path.join(w.repo, '.git'), { recursive: true });
   const repo = await realpath(w.repo);
   const home = await realpath(w.home);
