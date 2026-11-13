@@ -2,6 +2,8 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
+import { fileURLToPath } from 'node:url';
+import { build } from 'esbuild';
 import { scan } from '../dist/core/index.js';
 import { html, portable } from '../dist/reporter/index.js';
 const originalSite = 'https://agent-sightline.williamtse700.chatgpt.site';
@@ -19,6 +21,20 @@ const destination = path.resolve('website/dist');
 rmSync(destination, { recursive: true, force: true });
 mkdirSync(destination, { recursive: true });
 cpSync('website/public', destination, { recursive: true });
+await build({
+  entryPoints: [fileURLToPath(new URL('../website/public/hero.js', import.meta.url))],
+  outdir: destination,
+  bundle: true,
+  splitting: true,
+  format: 'esm',
+  minify: true,
+  target: 'es2022',
+  chunkNames: 'motion/[name]-[hash]',
+  legalComments: 'linked',
+});
+rmSync(path.join(destination, 'hero-scene.js'));
+const motionNotices = ['GSAP 3.15.1\nCopyright GreenSock. Distributed under the GSAP Standard License.\nhttps://gsap.com/standard-license/\n', ...['lenis', 'three'].map(name => name + '\n' + readFileSync(new URL('../node_modules/' + name + '/LICENSE', import.meta.url), 'utf8'))];
+writeFileSync(path.join(destination, 'motion/licenses.txt'), motionNotices.join('\n'));
 cpSync(new URL('../dist/web/assets/clients', import.meta.url), path.join(destination, 'icons'), { recursive: true });
 for (const name of ['index.html', 'guide.html', 'robots.txt', 'sitemap.xml']) {
   const file = path.join(destination, name);

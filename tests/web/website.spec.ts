@@ -8,22 +8,28 @@ test('opening motion follows client selection and supports pause and reduced mot
   try {
     await page.goto(server.url);
     await expect(page.locator('#demo-sources button').first()).toBeVisible();
-    const supported = await page.evaluate(() => !!document.createElement('canvas').getContext('webgl'));
+    const supported = await page.evaluate(() => !!document.createElement('canvas').getContext('webgl2'));
     const hero = page.locator('.hero');
     if (supported) {
       await expect(hero).toHaveAttribute('data-renderer', 'webgl');
       await page.getByRole('button', { name: 'Pause animation', exact: true }).click();
       await expect(hero).toHaveAttribute('data-motion', 'paused');
       await page.waitForTimeout(850);
-      const first = await page.locator('#context-field').screenshot();
+      const first = createHash('sha256').update(await page.locator('#context-field').screenshot()).digest('hex');
       await page.waitForTimeout(180);
-      expect(await page.locator('#context-field').screenshot()).toEqual(first);
+      expect(createHash('sha256').update(await page.locator('#context-field').screenshot()).digest('hex')).toBe(first);
       await page.getByRole('button', { name: 'Play animation', exact: true }).click();
       await expect(hero).toHaveAttribute('data-motion', 'playing');
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await expect(hero).toHaveAttribute('data-motion', 'paused');
+      await expect(page.locator('#context-field')).toHaveCount(0);
+      await expect(page.locator('.hero-poster')).toBeVisible();
+      await expect(page.locator('#motion-toggle')).toBeHidden();
+      expect(await page.evaluate(() => document.documentElement.classList.contains('lenis'))).toBe(false);
     }
-    await page.getByRole('button', { name: 'Claude Code', exact: true }).click();
+    await page.getByRole('button', { name: 'Claude Code', exact: true }).focus();
+    await expect(page.getByRole('button', { name: 'Claude Code', exact: true })).toBeFocused();
+    await page.keyboard.press('Enter');
     await expect(hero).toHaveAttribute('data-client', 'claude');
     await expect(page.locator('#hero-source')).toHaveText('CLAUDE.md');
     await expect(page.locator('#hero-verdict')).toHaveText('Loaded for Claude Code');
@@ -32,11 +38,6 @@ test('opening motion follows client selection and supports pause and reduced mot
       expect(await icon.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
     }
     await expect(page.locator('.client-strip img')).toHaveCount(6);
-    if (supported) {
-      await page.locator('#context-field').evaluate((canvas: HTMLCanvasElement) => canvas.getContext('webgl')?.getExtension('WEBGL_lose_context')?.loseContext());
-      await expect(hero).toHaveAttribute('data-renderer', 'static');
-      await expect(page.locator('#motion-toggle')).toBeHidden();
-    }
   } finally { await server.close(); }
 });
 
@@ -50,7 +51,6 @@ test('opening retains its content and client preview when WebGL is unavailable',
         return (original as any).call(this, type, ...options);
       };
     });
-    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(server.url);
     await expect(page.locator('.hero')).toHaveAttribute('data-renderer', 'static');
@@ -122,4 +122,68 @@ test('website stays readable and navigable on a phone', async ({ page }) => {
     await expect(page.locator('#comparison-matrix')).toContainText('AGENTS.override.md');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   } finally { await server.close(); }
+});
+
+
+test('opening uses the poster after context loss and suspends when blurred or offscreen', async ({ page }) => {
+  const server = await serveStatic('website/dist');
+  try {
+    await page.goto(server.url);
+    const supported = await page.evaluate(() => !!document.createElement('canvas').getContext('webgl2'));
+    test.skip(!supported, 'This browser has no WebGL2 renderer.');
+    const hero = page.locator('.hero');
+    await expect(hero).toHaveAttribute('data-renderer', 'webgl');
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await expect(hero).toHaveAttribute('data-rendering', 'suspended');
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(hero).toHaveAttribute('data-rendering', 'running');
+    await page.locator('#download').scrollIntoViewIfNeeded();
+    await expect(hero).toHaveAttribute('data-rendering', 'suspended');
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(hero).toHaveAttribute('data-rendering', 'running');
+    await page.locator('#context-field').evaluate((canvas: HTMLCanvasElement) => canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext());
+    await expect(hero).toHaveAttribute('data-renderer', 'static');
+    await expect(page.locator('#context-field')).toHaveCount(0);
+    await expect(page.locator('#motion-toggle')).toBeHidden();
+    await expect(page.locator('.hero-poster')).toBeVisible();
+    await page.getByRole('button', { name: 'Claude Code', exact: true }).click();
+    await expect(page.locator('#hero-verdict')).toHaveText('Loaded for Claude Code');
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })));
+    expect(await page.evaluate(() => document.documentElement.classList.contains('lenis'))).toBe(false);
+  } finally { await server.close(); }
+});
+
+test('reduced motion starts with a complete poster and restores motion when the preference changes', async ({ page }) => {
+  const server = await serveStatic('website/dist');
+  try {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(server.url);
+    await expect(page.locator('#context-field')).toHaveCount(0);
+    await expect(page.locator('.hero-poster')).toBeVisible();
+    await expect(page.locator('#motion-toggle')).toBeHidden();
+    expect(await page.locator('.hero-poster').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.classList.contains('lenis'))).toBe(false);
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    const supported = await page.evaluate(() => !!document.createElement('canvas').getContext('webgl2'));
+    if (supported) await expect(page.locator('.hero')).toHaveAttribute('data-renderer', 'webgl');
+    await page.getByRole('link', { name: /Explore the demo/ }).click();
+    await expect(page.locator('#mode-label')).toHaveText('Report snapshot');
+  } finally { await server.close(); }
+});
+
+test('opening and primary navigation remain complete with JavaScript disabled', async ({ browser }) => {
+  const server = await serveStatic('website/dist');
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+  try {
+    const page = await context.newPage();
+    await page.goto(server.url);
+    await expect(page.getByRole('heading', { name: /Know what your agent/ })).toBeVisible();
+    await expect(page.locator('.hero-poster')).toBeVisible();
+    expect(await page.locator('.hero-poster').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+    await expect(page.locator('#motion-toggle')).toBeHidden();
+    await page.getByRole('link', { name: 'Get Sightline', exact: true }).first().click();
+    await expect(page.getByRole('link', { name: /Download CLI package/ })).toBeInViewport();
+    await page.getByRole('link', { name: /Installation guide/ }).click();
+    await expect(page.getByRole('heading', { name: 'Install Sightline', exact: true })).toBeVisible();
+  } finally { await context.close(); await server.close(); }
 });

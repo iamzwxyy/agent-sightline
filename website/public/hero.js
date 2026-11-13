@@ -1,172 +1,159 @@
-(() => {
-  const canvas = document.getElementById('context-field');
-  if (!canvas) return;
-  const hero = canvas.closest('.hero');
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import Lenis from 'lenis';
+
+const hero = document.querySelector('.hero');
+if (hero) {
+  gsap.registerPlugin(ScrollTrigger);
   const toggle = document.getElementById('motion-toggle');
   const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
-  const gl = canvas.getContext('webgl', { alpha: false, antialias: false, powerPreference: 'low-power' });
-  if (!gl) return;
-
-  const vertexSource = `
-    attribute vec2 position;
-    varying vec2 uv;
-    void main() {
-      uv = position * 0.5 + 0.5;
-      gl_Position = vec4(position, 0.0, 1.0);
-    }
-  `;
-  const fragmentSource = `
-    precision highp float;
-    varying vec2 uv;
-    uniform vec2 resolution;
-    uniform vec2 pointer;
-    uniform float time;
-    uniform float perspective;
-
-    float grain(vec2 p) {
-      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-    }
-
-    void main() {
-      float aspect = resolution.x / resolution.y;
-      vec2 p = vec2((uv.x - 0.5) * aspect, uv.y);
-      p += pointer * vec2(0.018, 0.008);
-      vec3 background = vec3(0.039, 0.047, 0.055);
-      vec3 light = mix(vec3(0.95, 0.46, 0.24), vec3(0.47, 0.62, 1.0), perspective * 0.5);
-      float travel = sin(time * 0.16) * 0.75;
-      vec3 color = background;
-      float haze = exp(-pow((p.y - 0.27) * 5.5, 2.0) - pow(p.x * 0.75, 2.0));
-      color += vec3(0.14, 0.09, 0.068) * haze * 0.36;
-
-      // Layered contours share the selected client's light.
-      for (int i = 0; i < 46; i++) {
-        float layer = float(i) / 45.0;
-        float depth = 0.62 + layer * 0.58;
-        float x = p.x / depth;
-        float wave = sin(x * 1.55 + layer * 1.9 + time * 0.07) * 0.115;
-        wave += sin(x * 3.4 - layer * 1.1 - time * 0.045) * 0.024;
-        float y = 0.30 - layer * 0.17 + wave;
-        float distanceToLayer = abs(p.y - y);
-        float lineWidth = 0.0006 + 0.7 / resolution.y;
-        float line = exp(-distanceToLayer / lineWidth);
-        float bloom = exp(-distanceToLayer * 100.0) * 0.075;
-        float illumination = 0.16 + exp(-pow((x - travel) * 1.9, 2.0)) * 0.85;
-        float edge = pow(1.0 - layer, 3.0);
-        vec3 tint = mix(light * 0.48, vec3(0.97, 0.88, 0.70), edge);
-        tint = mix(tint, vec3(0.55, 0.66, 0.84), pow(layer, 4.0) * 0.6);
-        color += tint * (line + bloom) * illumination * (0.55 + edge * 0.45);
-      }
-
-      // A moving light reveals the intersections between neighboring layers.
-      float beamX = sin(time * 0.16) * 0.75;
-      float beamY = 0.30 + sin(beamX * 1.55 + time * 0.07) * 0.115;
-      beamY += sin(beamX * 3.4 - time * 0.045) * 0.024;
-      vec2 delta = p - vec2(beamX * 0.62, beamY);
-      float core = exp(-length(delta * vec2(0.9, 3.0)) * 100.0);
-      float halo = exp(-length(delta * vec2(1.0, 1.7)) * 15.0);
-      color += vec3(1.0, 0.90, 0.72) * core * 1.2 + light * halo * 0.25;
-      color *= 0.88 + 0.12 * sin(uv.x * 3.14159);
-      color += (grain(gl_FragCoord.xy) - 0.5) * 0.022;
-      gl_FragColor = vec4(color, 1.0);
-    }
-  `;
-
-  function compile(type, source) {
-    const shader = gl.createShader(type);
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      gl.deleteShader(shader);
-      throw new Error('The motion shader could not compile.');
-    }
-    return shader;
-  }
-
-  let program;
-  try {
-    program = gl.createProgram();
-    const vertex = compile(gl.VERTEX_SHADER, vertexSource);
-    const fragment = compile(gl.FRAGMENT_SHADER, fragmentSource);
-    gl.attachShader(program, vertex); gl.attachShader(program, fragment); gl.linkProgram(program);
-    gl.deleteShader(vertex); gl.deleteShader(fragment);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('The motion shader could not link.');
-  } catch {
-    if (program) gl.deleteProgram(program);
-    return;
-  }
-  gl.useProgram(program);
-  const buffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
-  const position = gl.getAttribLocation(program, 'position');
-  gl.enableVertexAttribArray(position);
-  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-  const uniforms = Object.fromEntries(['resolution', 'pointer', 'time', 'perspective'].map(name => [name, gl.getUniformLocation(program, name)]));
-  let elapsed = 8;
-  let frame = 0;
-  let previous = 0;
+  const coarsePointer = window.matchMedia('(pointer: coarse)');
+  const events = new AbortController();
+  const iconBase = new URL('ui/', import.meta.url);
+  let canvas = document.getElementById('context-field');
+  let field;
+  let lenis;
+  let intro;
   let visible = true;
-  let paused = preference.matches;
-  let perspective = 0;
-  let targetPerspective = 0;
-  let pointer = [0, 0];
-  let targetPointer = [0, 0];
-  let contextLost = false;
+  let focused = true;
+  let paused = false;
+  let disposed = false;
+  let generation = 0;
+  let lastFrame = 0;
+  let resizeObserver;
+  let pointerX = 0;
+  let pointerY = 0;
+  let pointerPending = false;
+  const reveals = [];
 
-  function draw() {
-    if (contextLost) return;
-    perspective += (targetPerspective - perspective) * 0.04;
-    pointer = pointer.map((value, index) => value + (targetPointer[index] - value) * 0.04);
-    gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
-    gl.uniform2f(uniforms.pointer, ...pointer);
-    gl.uniform1f(uniforms.time, elapsed);
-    gl.uniform1f(uniforms.perspective, perspective);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-  }
-  function animate(timestamp) {
-    frame = window.requestAnimationFrame(animate);
-    if (timestamp - previous < 32) return;
-    elapsed += Math.min(timestamp - previous, 64) / 1000;
-    previous = timestamp;
-    draw();
-  }
   function updateMotion() {
-    window.cancelAnimationFrame(frame);
-    hero.dataset.motion = paused ? 'paused' : 'playing';
+    const reduced = preference.matches;
+    hero.dataset.motion = reduced || paused ? 'paused' : 'playing';
+    hero.dataset.rendering = field && visible && focused && !document.hidden && !paused && !reduced ? 'running' : 'suspended';
+    toggle.hidden = !field || reduced;
     toggle.setAttribute('aria-pressed', String(paused));
     toggle.setAttribute('aria-label', paused ? 'Play animation' : 'Pause animation');
     toggle.querySelector('.motion-label').textContent = paused ? 'Play motion' : 'Pause motion';
-    toggle.querySelector('.motion-symbol').textContent = paused ? '▷' : 'Ⅱ';
-    if (!paused && visible && !document.hidden && !contextLost) {
-      previous = window.performance.now(); frame = window.requestAnimationFrame(animate);
+    toggle.querySelector('img').src = new URL(paused ? 'play-linear.svg' : 'pause-linear.svg', iconBase).href;
+    lastFrame = 0;
+  }
+  function removeField() {
+    generation++;
+    resizeObserver?.disconnect();
+    resizeObserver = undefined;
+    field?.dispose();
+    field = undefined;
+    canvas?.remove();
+    canvas = undefined;
+    hero.dataset.renderer = 'static';
+    updateMotion();
+  }
+  async function mountField() {
+    const currentGeneration = ++generation;
+    try {
+      const { createContextField } = await import('./hero-scene.js');
+      if (disposed || preference.matches || generation !== currentGeneration) return;
+      if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.id = 'context-field';
+        canvas.setAttribute('aria-hidden', 'true');
+        hero.querySelector('.hero-poster').after(canvas);
+      }
+      field = createContextField(canvas, hero);
+      field.select(hero.dataset.client);
+      resizeObserver = new window.ResizeObserver(() => field?.resize());
+      resizeObserver.observe(hero);
+      canvas.addEventListener('webglcontextlost', event => {
+        event.preventDefault();
+        removeField();
+      }, { once: true, signal: events.signal });
+      hero.dataset.renderer = 'webgl';
+      updateMotion();
+    } catch {
+      if (generation === currentGeneration) removeField();
     }
   }
-  function resize() {
-    const ratio = Math.min(window.devicePixelRatio || 1, 1.25);
-    canvas.width = Math.round(hero.clientWidth * ratio);
-    canvas.height = Math.round(hero.clientHeight * ratio);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    draw();
+  function startMotion() {
+    ScrollTrigger.enable();
+    gsap.ticker.add(tick);
+    lenis = new Lenis({ autoRaf: false, smoothWheel: true, syncTouch: false, anchors: true, lerp: 0.12 });
+    lenis.on('scroll', ScrollTrigger.update);
+    intro = gsap.timeline({ defaults: { ease: 'power2.out' } });
+    intro.from('.hero h1 .heading-word', { opacity: 0.72, y: 12, duration: 0.9, stagger: 0.055 }, 0)
+      .from('.hero-description, .hero-actions', { opacity: 0.78, y: 8, duration: 0.8, stagger: 0.12 }, 0.25)
+      .from('.hero-bottom', { opacity: 0.8, y: 6, duration: 0.7 }, 0.5);
+    for (const heading of document.querySelectorAll('.story h2, .download-copy h2')) {
+      reveals.push(gsap.from(heading, { y: 8, opacity: 0.85, duration: 0.65, scrollTrigger: { trigger: heading, start: 'top 92%', once: true } }));
+    }
+    mountField();
   }
-  new window.ResizeObserver(resize).observe(hero);
-  new window.IntersectionObserver(entries => { visible = entries[0].isIntersecting; updateMotion(); }).observe(hero);
+  function stopMotion() {
+    gsap.ticker.remove(tick);
+    lenis?.destroy();
+    lenis = undefined;
+    intro?.progress(1).kill();
+    intro = undefined;
+    for (const reveal of reveals.splice(0)) {
+      reveal.scrollTrigger?.kill();
+      reveal.progress(1).kill();
+    }
+    ScrollTrigger.disable();
+    removeField();
+  }
+  function tick(time) {
+    lenis?.raf(time * 1000);
+    if (!field || hero.dataset.rendering !== 'running' || time - lastFrame < 1 / 24) return;
+    if (pointerPending) {
+      const bounds = hero.getBoundingClientRect();
+      field.point((pointerX - bounds.left) / bounds.width - 0.5, 0.5 - (pointerY - bounds.top) / bounds.height);
+      pointerPending = false;
+    }
+    field.render(lastFrame ? time - lastFrame : 0);
+    lastFrame = time;
+  }
+  function refresh() {
+    if (!disposed) { lenis?.resize(); ScrollTrigger.refresh(); }
+  }
+  const title = hero.querySelector('h1');
+  title.setAttribute('aria-label', title.innerText.replace(/\s+/g, ' ').trim());
+  for (const line of title.querySelectorAll('.heading-line')) {
+    line.setAttribute('aria-hidden', 'true');
+    line.replaceChildren(...line.textContent.split(' ').flatMap((word, index) => {
+      const span = document.createElement('span');
+      span.className = 'heading-word';
+      span.textContent = word;
+      return index ? [document.createTextNode(' '), span] : [span];
+    }));
+  }
+  const observer = new window.IntersectionObserver(entries => { visible = entries[0].isIntersecting; updateMotion(); });
+  observer.observe(hero);
   hero.addEventListener('pointermove', event => {
-    const bounds = hero.getBoundingClientRect();
-    targetPointer = [(event.clientX - bounds.left) / bounds.width - 0.5, 0.5 - (event.clientY - bounds.top) / bounds.height];
-  }, { passive: true });
-  hero.addEventListener('pointerleave', () => { targetPointer = [0, 0]; });
-  document.addEventListener('sightline:client-change', event => {
-    targetPerspective = { codex: 0, claude: 1, copilot: 2 }[event.detail.client] ?? 0;
-    if (paused) { perspective = targetPerspective; draw(); }
-  });
-  toggle.onclick = () => { paused = !paused; updateMotion(); };
-  preference.addEventListener('change', () => { paused = preference.matches; updateMotion(); });
-  document.addEventListener('visibilitychange', updateMotion);
-  canvas.addEventListener('webglcontextlost', event => {
-    event.preventDefault(); contextLost = true; window.cancelAnimationFrame(frame); hero.dataset.renderer = 'static'; toggle.hidden = true;
-  });
-  resize();
-  hero.dataset.renderer = 'webgl';
-  toggle.hidden = false;
-  updateMotion();
-})();
+    if (!field || paused || preference.matches || coarsePointer.matches) return;
+    pointerX = event.clientX;
+    pointerY = event.clientY;
+    pointerPending = true;
+  }, { passive: true, signal: events.signal });
+  hero.addEventListener('pointerleave', () => { pointerPending = false; field?.point(0, 0); }, { signal: events.signal });
+  document.addEventListener('sightline:client-change', event => field?.select(event.detail.client), { signal: events.signal });
+  document.addEventListener('visibilitychange', updateMotion, { signal: events.signal });
+  window.addEventListener('blur', () => { focused = false; updateMotion(); }, { signal: events.signal });
+  window.addEventListener('focus', () => { focused = true; updateMotion(); }, { signal: events.signal });
+  toggle.addEventListener('click', () => { paused = !paused; if (paused) intro?.progress(1); updateMotion(); }, { signal: events.signal });
+  preference.addEventListener('change', () => {
+    stopMotion();
+    if (!preference.matches) startMotion();
+    refresh();
+  }, { signal: events.signal });
+  for (const image of document.images) image.addEventListener('load', refresh, { once: true, signal: events.signal });
+  document.fonts.ready.then(refresh);
+  if (preference.matches) stopMotion();
+  else startMotion();
+  window.addEventListener('pagehide', event => {
+    if (event.persisted) return;
+    disposed = true;
+    events.abort();
+    observer.disconnect();
+    gsap.ticker.remove(tick);
+    stopMotion();
+  }, { signal: events.signal });
+}

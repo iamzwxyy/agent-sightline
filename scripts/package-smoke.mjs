@@ -10,7 +10,7 @@ if (!npm) throw new Error('Run this script using npm run smoke.');
 const runNpm = args => execFileSync(process.execPath, [npm, ...args], { encoding: 'utf8' });
 try {
   const result = JSON.parse(runNpm(['pack', '--ignore-scripts', '--json', '--pack-destination', temp]));
-  if (result[0].files.some(file => /node_modules\/(?:@openai\/codex(?:[/-]|$)|@anthropic-ai\/claude-code(?:[/-]|$)|@github\/copilot(?:[/-]|$)|typescript\/|@playwright\/|eslint\/|tsx\/|esbuild\/)/.test(file.path))) throw new Error('The production archive includes development tools.');
+  if (result[0].files.some(file => /node_modules\/(?:@openai\/codex(?:[/-]|$)|@anthropic-ai\/claude-code(?:[/-]|$)|@github\/copilot(?:[/-]|$)|typescript\/|@playwright\/|eslint\/|tsx\/|esbuild\/|gsap\/|lenis\/|three\/)/.test(file.path))) throw new Error('The production archive includes development tools.');
   const tarball = path.join(temp, result[0].filename);
   runNpm(['install', '--offline', '--cache', path.join(temp, 'empty-cache'), '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', path.join(temp, 'install'), tarball]);
   const cli = path.join(temp, 'install/node_modules/agent-sightline/dist/cli/index.js');

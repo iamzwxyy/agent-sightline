@@ -2,10 +2,12 @@
 
 ## 0.3.0 — 2026-11-13
 
-* Introduce a cinematic WebGL opening with layered contours, moving light, film grain and pointer parallax. Client selection updates the real example result and its lighting.
-* Add explicit motion controls, reduced-motion support, offscreen/hidden-page pausing and a static composition for unavailable or lost WebGL contexts.
+* Introduce a Three.js configuration-layer opening with layered contours, moving light, film grain and pointer parallax. Client selection updates the real example result and its lighting.
+* Add explicit motion controls, reduced-motion support, offscreen/blur/hidden-page pausing and a captured static poster for unavailable or lost WebGL contexts.
 * Replace letter avatars with six sourced client marks across the website, local inspector, comparisons and findings. Share the same assets with self-contained offline reports.
 * Preserve source geometry and colors, include upstream notices, and record each asset's provenance. Codex uses the community-maintained Lobe Icons asset.
+* Use Instrument Sans and a cool blue palette, sourced Solar utility icons, GSAP choreography and Lenis scrolling. Load the shader scene separately and remove it under reduced motion.
+* Give each of the nine accessibility routes its own test timeout.
 * Keep the real example, download and guide paths connected to the new opening. Include website JavaScript in lint checks.
 
 ## 0.2.13 — 2026-11-13
