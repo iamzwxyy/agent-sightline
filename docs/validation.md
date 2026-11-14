@@ -11,6 +11,8 @@ Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
 * The 413-case core suite completed with 411 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
 * All 74 Chromium browser cases passed, including live and offline provenance search at desktop and phone sizes, keyboard recovery, existing source navigation, linked-line reload, mobile navigation, website motion and automated WCAG AA checks.
 * All 39 historical published archive hashes matched their release manifest before packaging.
+* The exact packed CLI passed staging installation and complete live/portable browser journeys, including provenance search, normalized captured paths, scope recovery, keyboard focus, import navigation, linked-line reload and physical touch. Desktop and phone search states received visual review.
+* Windows, macOS and Linux release verification passed. Linux Firefox completed with 71 passes and three browser-gated skips for touch emulation and WebGL context-loss checks. Anonymous download of the published archive matched its recorded SHA-256. [Release verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43607816801)
 
 ## v0.3.20
 
