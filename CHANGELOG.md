@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.20 — 2026-11-14
+
+* Restore linked source-line visibility after browser document loading restores its saved scroll position. A public v0.3.19 installation reproduced a marked line below the viewport after keyboard traversal reached Copy source content and the page was reloaded.
+* Reuse the current rendered highlight for source jumps and the fresh-page display lifecycle. The callback follows the latest source selection and view.
+* Verify reload after source-list traversal in live and portable inspections at desktop and phone sizes, alongside source focus and history navigation.
+
 ## 0.3.19 — 2026-11-14
 
 * Focus the destination heading when opening a view. Source inspection focuses a semantic filename heading with its loading status available as an accessible description.

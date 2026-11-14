@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.20
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* The public v0.3.19 package reproduced a linked source line outside the viewport after keyboard traversal reached Copy source content and the page was reloaded. A regression fixture failed on the portable desktop journey.
+* Instrumented file and HTTP snapshots showed an initial source jump followed by native scroll restoration during document display. A fresh-page display callback now reapplies the current rendered highlight after that restoration. Post-fix timing traces show the linked line within the viewport.
+* The 413-case core suite completed with 411 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* All 72 Chromium browser cases passed. The added journey covers live and portable reload after source-list traversal, keyboard focus on source controls, desktop and phone sizes, visible linked lines and the original browser location.
+* All 38 historical published archive hashes matched their release manifest before packaging.
+
 ## v0.3.19
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.

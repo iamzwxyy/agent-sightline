@@ -15,6 +15,50 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('reloading after keyboard source-list traversal keeps the linked source line visible live and offline', async ({ page }) => {
+  const imports = Array.from({ length: 45 }, (_, index) => `import-${index}.md`);
+  const settings = ['{', '"hooks":{"UserPromptSubmit":[', ...Array(350).fill(''), '{"hooks":[{"type":"command","command":"missing-reload-focus-hook"}]}', ']}}'].join('\n');
+  const w = await workspace({
+    'CLAUDE.md': imports.map(filename => '@' + filename).join('\n'),
+    '.claude/settings.json': settings,
+    ...Object.fromEntries(imports.map(filename => [filename, 'Imported instruction.'])),
+  });
+  const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('keyboard-reload-source.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await test.step(`${url === server.url ? 'live' : 'portable'} ${viewport.width}`, async () => {
+          await page.setViewportSize(viewport);
+          await page.goto('about:blank');
+          await page.goto(url + '#view=findings');
+          await page.locator('#findings-list .finding').filter({ hasText: 'Hook command was not found or is not executable.' }).click();
+          await page.getByRole('button', { name: /Inspect source/ }).click();
+          const highlighted = page.locator('.code-line.highlight');
+          await expect(highlighted).toContainText('missing-reload-focus-hook');
+          await expect(highlighted).toBeInViewport({ ratio: 1 });
+          const hash = new URL(page.url()).hash;
+          await page.keyboard.press('Shift+Tab');
+          await expect(page.locator('#sources .source.selected')).toBeFocused();
+          await page.keyboard.press('End');
+          await expect(page.locator('#sources .source').last()).toBeFocused();
+          await page.keyboard.press('Tab');
+          await expect(page.locator('#copy-source')).toBeFocused();
+          await page.reload();
+          await expect(highlighted).toContainText('missing-reload-focus-hook');
+          await expect(highlighted).toBeInViewport({ ratio: 1 });
+          expect(new URL(page.url()).hash).toBe(hash);
+        });
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('keyboard source inspection focuses its named heading and returns to the selected source live and offline', async ({ page }) => {
   const settings = ['{', '"hooks":{"UserPromptSubmit":[', ...Array(130).fill(''), '{"hooks":[{"type":"command","command":"missing-keyboard-hook"}]}', ']}}'].join('\n');
   const w = await workspace({ 'AGENTS.md': 'Codex instructions.', 'CLAUDE.md': 'Claude instructions.', '.claude/settings.json': settings });

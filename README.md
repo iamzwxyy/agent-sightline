@@ -7,18 +7,18 @@ One file. Several agents. Different instructions. Sightline shows every discover
 Open a terminal in your project folder and run one command to inspect your repository in the browser.
 
 ```sh
-npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.19/agent-sightline-0.3.19.tgz ui
+npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.20/agent-sightline-0.3.20.tgz ui
 ```
 
 For repeated use, install the CLI. The bundled demo provides a sample workspace with intentional configuration problems.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.19/agent-sightline-0.3.19.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.20/agent-sightline-0.3.20.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.19.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.20.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -109,7 +109,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.3.19.tgz
+npm install -g ./agent-sightline-0.3.20.tgz
 agent-sightline demo
 ```
 

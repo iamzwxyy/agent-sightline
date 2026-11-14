@@ -542,13 +542,11 @@
     }
     $('why').replaceChildren(...why);
     updateHeaderHeights();
-    const highlighted = code.querySelector('.code-line.highlight');
-    if (highlighted) window.requestAnimationFrame(() => {
-      // History traversal restores its scroll position before the next frame.
-      if (highlighted.isConnected && state.view === 'effective' && state.instructionView === 'sources') {
-        highlighted.scrollIntoView({ block: 'center', inline: 'nearest' });
-      }
-    });
+    if (code.querySelector('.code-line.highlight')) window.requestAnimationFrame(revealHighlightedSource);
+  }
+  function revealHighlightedSource() {
+    if (state.view !== 'effective' || state.instructionView !== 'sources') return;
+    $('instructions').querySelector('.code-line.highlight')?.scrollIntoView({ block: 'center', inline: 'nearest' });
   }
   function showSetting(setting, client) {
     $('detail-category').textContent = `${names[client]} / setting`;
@@ -981,6 +979,10 @@
     state.highlightLine = state.source && Number.isSafeInteger(line) && line > 0 ? line : null;
   }
   readLocation();
+  window.addEventListener('pageshow', event => {
+    // Scroll restoration during document loading can overwrite the initial source jump.
+    if (!event.persisted) window.requestAnimationFrame(revealHighlightedSource);
+  });
   window.addEventListener('popstate', () => {
     if (location.hash === '#main-content') return;
     readLocation();
