@@ -9,6 +9,7 @@ Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
 * The 413-case core suite completed with 411 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
 * All 66 Chromium browser cases passed. Long-list journeys cover live and offline reports at 1440×1000, 390×844 and 844×390, repeated decisions, reload, browser history, keyboard focus, window resizing, local refresh and source-search editing. Source-line jumps retain their visible highlight while the list adjusts its own scroll position.
 * Desktop and phone source-list screenshots received visual review. All 35 historical published archive hashes matched their release manifest before packaging.
+* Windows, macOS and Linux release verification passed. Linux Firefox completed with 63 passes and three browser-gated skips for touch emulation and WebGL context-loss checks. Anonymous download of the published archive matched its recorded SHA-256. [Release verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43589622443)
 
 ## v0.3.16
 
