@@ -10,6 +10,7 @@ Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
 * All 68 Chromium browser cases passed. Added live/offline journeys cover desktop and phone layouts, active and ignored coverage states, repeated-import selection, source-row filtering, reload and browser history. Back/Forward clears an excluding search and retains a matching query. Local refresh retains search text, including a query with no matching sources.
 * A legacy renderer fixture retains the second truncated contribution and its eight-byte count after following an effective-text origin from an empty search result.
 * All 36 historical published archive hashes matched their release manifest before packaging.
+* Windows, macOS and Linux release verification passed. Linux Firefox completed with 65 passes and three browser-gated skips for touch emulation and WebGL context-loss checks. Anonymous download of the published archive matched its recorded SHA-256. [Release verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43593563077)
 
 ## v0.3.17
 
