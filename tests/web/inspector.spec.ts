@@ -59,7 +59,7 @@ test('Claude instruction approval and source order survive refresh, copying and 
     '.claude/CLAUDE.md': 'USER_INSTRUCTION\n',
     '.claude/rules/global.md': 'USER_RULE_INSTRUCTION\n',
   });
-  const project = await realpath(w.repo);
+  const project = process.platform === 'win32' ? w.repo.replaceAll('\\', '/') : await realpath(w.repo);
   const saveApproval = async (approved?: boolean) => writeFile(path.join(w.home, '.claude.json'), JSON.stringify({
     projects: { [project]: approved === undefined ? {} : { hasClaudeMdExternalIncludesApproved: approved } },
     account: { email: 'browser-private-claude-state@example.test' },

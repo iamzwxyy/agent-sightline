@@ -21,10 +21,11 @@ interface MemoryScenario {
   home?: Record<string, string>;
   directory?: string;
   approval?: boolean;
-  approvalScope?: 'project' | 'directory';
-  approvalKey?: 'logical' | 'canonical';
+  approvalScope?: 'project' | 'directory' | 'main';
+  approvalKey?: 'logical' | 'canonical' | 'native';
   readTarget?: boolean;
   noGit?: boolean;
+  worktree?: boolean;
 }
 
 function blockText(block: any): string {
@@ -39,6 +40,21 @@ function blockText(block: any): string {
 test('Claude instruction order and imports agree with the pinned native request', { timeout: 90000 }, async t => {
   assert.equal(require(platformPackage + '/package.json').version, claudeMetadata.ruleVersion);
   const scenarios: MemoryScenario[] = [
+    {
+      name: 'native project path spelling selects saved import approval',
+      directory: 'src', approval: true, approvalKey: 'native',
+      files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n' },
+    },
+    {
+      name: 'linked worktree imports use native shared project approval',
+      directory: 'src', worktree: true, approval: true, approvalScope: 'main',
+      files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n' },
+    },
+    {
+      name: 'linked worktree state keys follow native project selection',
+      directory: 'src', worktree: true, approval: true,
+      files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n' },
+    },
     {
       name: 'user rules precede project instructions and local files follow each directory rules', directory: 'src',
       home: {
@@ -147,7 +163,7 @@ test('Claude instruction order and imports agree with the pinned native request'
       }
     },
     {
-      name: 'canonical saved project state approves external imports', directory: 'src', approval: true, approvalKey: 'canonical', files: {
+      name: 'canonical saved project keys follow native project selection', directory: 'src', approval: true, approvalKey: 'canonical', files: {
         'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n'
       }
     },
@@ -229,20 +245,33 @@ test('Claude instruction order and imports agree with the pinned native request'
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_TELEMETRY: '1', DISABLE_ERROR_REPORTING: '1',
       ANTHROPIC_API_KEY: 'synthetic-fixture-key', ANTHROPIC_BASE_URL: 'http://127.0.0.1:' + (server.address() as AddressInfo).port,
     };
+    const mainRepository = w.repo;
     if (scenario.noGit) await rm(path.join(w.repo, '.git'), { recursive: true });
     else execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
+    if (scenario.worktree) {
+      execFileSync('git', ['add', '.'], { cwd: w.repo, env });
+      execFileSync('git', ['-c', 'user.name=Memory fixture', '-c', 'user.email=memory-fixture@example.test', 'commit', '--quiet', '-m', 'Create the isolated memory fixture'], { cwd: w.repo, env });
+      const linked = path.join(w.root, 'linked');
+      execFileSync('git', ['worktree', 'add', '--quiet', '-b', 'memory-fixture', linked], { cwd: w.repo, env });
+      w.repo = linked;
+    }
     const directory = path.join(w.repo, scenario.directory ?? '.');
     const project = scenario.noGit ? await realpath(directory) : execFileSync('git', ['rev-parse', '--show-toplevel'], { env, cwd: directory, encoding: 'utf8' }).trim();
     const projects: Record<string, Record<string, unknown>> = {};
-    for (const location of [w.repo, project, directory, await realpath(w.repo), await realpath(directory)]) projects[location] = { hasTrustDialogAccepted: true };
+    for (const location of [w.repo, project, directory, mainRepository, await realpath(mainRepository), await realpath(w.repo), await realpath(directory)]) {
+      for (const key of [location, location.replaceAll('\\', '/')]) projects[key] = { hasTrustDialogAccepted: true };
+    }
     if (scenario.approval !== undefined) {
-      const approvedDirectory = scenario.approvalScope === 'directory' ? directory : w.repo;
-      const keys = scenario.approvalKey === 'logical' ? [approvedDirectory] : scenario.approvalKey === 'canonical' ? [await realpath(approvedDirectory)] : [approvedDirectory, await realpath(approvedDirectory), ...(scenario.approvalScope === 'directory' ? [] : [project])];
+      const approvedDirectory = scenario.approvalScope === 'directory' ? directory : scenario.approvalScope === 'main' ? mainRepository : w.repo;
+      const canonical = await realpath(approvedDirectory);
+      const variants = [approvedDirectory, canonical, approvedDirectory.replaceAll('\\', '/'), canonical.replaceAll('\\', '/'), ...(scenario.approvalScope === undefined || scenario.approvalScope === 'project' ? [project] : [])];
+      const explicitKeys = { logical: approvedDirectory, canonical, native: process.platform === 'win32' ? approvedDirectory.replaceAll('\\', '/') : canonical };
+      const keys = scenario.approvalKey ? [explicitKeys[scenario.approvalKey]] : variants;
       for (const location of keys) projects[location].hasClaudeMdExternalIncludesApproved = scenario.approval;
     }
     await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true, projects, account: { email: 'private-state-sentinel@example.test' } }));
     requests = [];
-    readPath = scenario.readTarget ? await realpath(path.join(w.repo, 'src/file.ts')) : undefined;
+    readPath = scenario.readTarget ? path.join(w.repo, 'src/file.ts') : undefined;
     const child = spawn(runtime, ['-p', 'Run the isolated fixture.', '--output-format', 'json', '--no-session-persistence', '--strict-mcp-config', '--tools', readPath ? 'Read' : '', '--system-prompt', 'Fixture system.'], { env, cwd: directory, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let output = '', errors = '';
     child.stdout.on('data', chunk => { output += chunk; });
@@ -275,6 +304,7 @@ test('Claude instruction order and imports agree with the pinned native request'
         toolResults: nativeMessages.filter((message: any) => message.role === 'user').flatMap((message: any) => message.content).filter((block: any) => block.type === 'tool_result').map(blockText),
         permissionDenials: JSON.parse(output).permission_denials,
       };
+      assert.deepEqual(diagnostics.permissionDenials, [], JSON.stringify(diagnostics));
       assert.deepEqual(report.clients[0].instructions.match(/[A-Z_]+_INSTRUCTION/g) ?? [], memory.match(/[A-Z_]+_INSTRUCTION/g) ?? [], JSON.stringify(diagnostics));
       const nativeFiles = await Promise.all([...memory.matchAll(/^Contents of (.+?)(?: \([^\n]*\))?:$/gm)].map(match => realpath(match[1])));
       const reportedFiles = await Promise.all(report.clients[0].decisions.filter(source => ['instructions', 'rules'].includes(source.kind) && source.status === 'active' && source.content.trim()).map(source => realpath(source.path)));
@@ -293,11 +323,30 @@ test('Claude instruction order and imports agree with the pinned native request'
 test('excluding personal configuration withholds saved external-import approval', async t => {
   const w = await workspace({ 'CLAUDE.md': '@docs/policy.md\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n', 'src/file.ts': 'export {};\n' });
   t.after(() => rm(w.root, { recursive: true, force: true }));
-  await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ projects: { [await realpath(w.repo)]: { hasClaudeMdExternalIncludesApproved: true } } }));
+  const project = process.platform === 'win32' ? w.repo.replaceAll('\\', '/') : await realpath(w.repo);
+  await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ projects: { [project]: { hasClaudeMdExternalIncludesApproved: true } } }));
   const approved = await scan({ ...w, target: 'src/file.ts', clients: ['claude'], trust: 'trusted' });
   assert.ok(approved.clients[0].instructions.includes('IMPORTED_INSTRUCTION'));
   const excluded = await scan({ ...w, target: 'src/file.ts', clients: ['claude'], trust: 'trusted', user: false });
   assert.ok(!excluded.clients[0].instructions.includes('IMPORTED_INSTRUCTION'));
   assert.equal(excluded.clients[0].decisions.find(source => source.path.endsWith('policy.md'))?.status, 'conditional');
   assert.ok(excluded.sources.every(source => !source.path.startsWith(w.home)));
+});
+
+test('unresolvable Git metadata makes external approval conditional only when needed', async t => {
+  const w = await workspace({ 'CLAUDE.md': 'ROOT_INSTRUCTION\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n', 'src/file.ts': 'export {};\n' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  await rm(path.join(w.repo, '.git'), { recursive: true });
+  await writeFile(path.join(w.repo, '.git'), 'gitdir: missing-metadata\n');
+  const project = process.platform === 'win32' ? w.repo.replaceAll('\\', '/') : await realpath(w.repo);
+  await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ projects: { [project]: { hasClaudeMdExternalIncludesApproved: true } } }));
+  const ordinary = await scan({ ...w, target: 'src/file.ts', clients: ['claude'], trust: 'trusted' });
+  assert.ok(ordinary.clients[0].instructions.includes('ROOT_INSTRUCTION'));
+  assert.ok(!ordinary.findings.some(finding => finding.ruleId === 'claude.project-state'));
+
+  await writeFile(path.join(w.repo, 'CLAUDE.md'), 'ROOT_INSTRUCTION\n@docs/policy.md\n@docs/policy.md\n');
+  const external = await scan({ ...w, target: 'src/file.ts', clients: ['claude'], trust: 'trusted' });
+  assert.ok(!external.clients[0].instructions.includes('IMPORTED_INSTRUCTION'));
+  assert.equal(external.clients[0].decisions.find(source => source.path === path.join(w.repo, 'docs/policy.md'))?.status, 'conditional');
+  assert.equal(external.findings.filter(finding => finding.ruleId === 'claude.project-state').length, 1);
 });

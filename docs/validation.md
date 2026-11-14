@@ -1,6 +1,13 @@
 # Release validation
 
-## v0.3.28
+## v0.3.29
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
+
+* Twenty-nine isolated Claude Code 2.1.322 scenarios captured thirty-three loopback Messages API requests. The comparisons check instruction order, source-file lists and empty native permission-denial lists. Scripted Read paths retain the native launch namespace.
+* Main-only and linked-only approval fixtures compare linked-worktree project selection with the pinned client. Windows approval keys use logical paths with forward slashes, and POSIX keys use canonical paths. Git metadata is inspected only when an external import needs approval. A focused regression retains conditional approval and one warning when metadata is unreadable.
+
+## v0.3.28 candidate
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 
@@ -12,6 +19,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 * Product instruction, comparison and finding images and the bundled example HTML were captured from the current interfaces. Desktop and phone approval-state screenshots received visual review.
 * A fresh offline installation with an empty npm cache passed the compiled CLI's pending, approved and rejected import states. JSON, terminal explanations, offline phone HTML and clipboard content retained their expected instruction sequence and private-state handling.
 * A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,158 ms. Fixture creation warmed the filesystem cache. All 44 historical published archive hashes matched the website release manifest.
+
+* The tag verification passed Linux and macOS but failed Windows. A follow-up diagnostic run isolated a short-logical versus canonical path mismatch that denied the scripted Read, alongside approval-key selection differences. This candidate remains unpublished. [Candidate verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43650017275) [Diagnostic run](https://github.com/iamzwxyy/agent-sightline/actions/runs/43651201979)
 
 ## v0.3.27
 

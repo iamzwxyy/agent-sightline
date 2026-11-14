@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { realpath } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import type { Context, Effective, Location, Source, Status } from '../core/types.js';
 import { findRepositoryRoot } from '../core/discovery.js';
 import { finding, locate, matches, slash, stripComments, within } from '../core/utils.js';
@@ -11,15 +11,62 @@ interface Contribution {
   importedFrom?: Location;
 }
 
+async function projectStateRoot(ctx: Context): Promise<string> {
+  const discovered = await findRepositoryRoot(ctx.directory, ctx.options.signal);
+  const root = process.platform === 'win32' ? discovered : await realpath(discovered);
+  const project = process.platform === 'win32' ? slash(root) : root;
+  const marker = path.join(root, '.git');
+  const markerInfo = await stat(marker).catch(error => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  });
+  if (!markerInfo?.isFile()) return project;
+  if (markerInfo.size > 2 * 1024 * 1024) throw new Error('Git metadata exceeds the inspection limit.');
+  const pointer = await readFile(marker, { encoding: 'utf8', signal: ctx.options.signal });
+  if (!pointer.startsWith('gitdir: ')) throw new Error('Invalid Git directory pointer.');
+  const target = pointer.slice(8).replace(/[\r\n]+$/, '');
+  if (!target) throw new Error('Empty Git directory pointer.');
+  const directory = path.resolve(root, target);
+  if (!(await stat(directory)).isDirectory()) throw new Error('Git directory pointer requires a directory.');
+  const commonFile = path.join(directory, 'commondir');
+  let common: string;
+  try {
+    const info = await stat(commonFile);
+    if (info.size > 2 * 1024 * 1024) throw new Error('Git metadata exceeds the inspection limit.');
+    common = await readFile(commonFile, { encoding: 'utf8', signal: ctx.options.signal });
+  } catch (error) {
+    ctx.options.signal?.throwIfAborted();
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return project;
+    throw error;
+  }
+  const shared = common.replace(/[\r\n]+$/, '');
+  if (!shared) throw new Error('Empty shared Git directory pointer.');
+  const main = path.dirname(path.resolve(directory, shared));
+  return process.platform === 'win32' ? slash(main) : realpath(main);
+}
+
 export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: string, state?: Source): Promise<void> {
   const excludes = effectiveValue(e, 'claudeMdExcludes', []);
   const excluded = (source: Source) => source.scope !== 'system' && Array.isArray(excludes) && matches(slash(source.path), excludes.filter(value => typeof value === 'string'));
   const hasClaude = ctx.sources.some(source => ctx.dirs.some(directory => ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md'].some(name => source.path === path.join(directory, name))));
   const useAgents = mode === 'claude-md-and-agents-md' || mode === 'claude-md-or-agents-md' && !hasClaude;
-  const projectRoot = state && !state.invalid ? await realpath(await findRepositoryRoot(ctx.directory, ctx.options.signal)) : ctx.repo;
-  const projectKey = [projectRoot, slash(projectRoot)].find(key => Object.hasOwn(state?.data.projects ?? {}, key));
-  const approved = projectKey && !state?.invalid ? state?.data.projects?.[projectKey]?.hasClaudeMdExternalIncludesApproved : undefined;
-  const approvalLocation = state && projectKey ? locate(state, `projects.${projectKey}.hasClaudeMdExternalIncludesApproved`) : undefined;
+  let approval: { approved?: unknown; location?: Location } | undefined;
+  const externalApproval = async () => {
+    if (approval) return approval;
+    approval = {};
+    if (!state || state.invalid) return approval;
+    try {
+      const projectKey = await projectStateRoot(ctx);
+      if (Object.hasOwn(state.data.projects ?? {}, projectKey)) {
+        approval.approved = state.data.projects[projectKey].hasClaudeMdExternalIncludesApproved;
+        approval.location = locate(state, `projects.${projectKey}.hasClaudeMdExternalIncludesApproved`);
+      }
+    } catch {
+      ctx.options.signal?.throwIfAborted();
+      e.findings.push(finding('claude.project-state', 'warn', { path: path.join(ctx.repo, '.git'), line: 1, column: 1 }, 'Claude project approval state cannot be resolved.', 'The selected Git directory pointer or shared-worktree metadata could not be inspected.', 'Repair the Git metadata and rerun the inspection.', 'claude'));
+    }
+    return approval;
+  };
   const sessionDirectory = await realpath(ctx.directory);
   const expanded = new Set<string>();
   const scopedRules: { source: Source; patterns: string[]; contribution: Contribution }[] = [];
@@ -74,6 +121,7 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
       let status: Status = contribution.status;
       let reason = `Imported by ${canonical}.`;
       if (source.scope !== 'user' && source.scope !== 'system' && !within(sessionDirectory, resolved)) {
+        const { approved, location: approvalLocation } = await externalApproval();
         if (approved !== true) {
           status = approved === false ? 'ignored' : 'conditional';
           reason = approved === false ? 'Saved project state rejects imports outside the session directory.' : 'Loading this import depends on separate external-import approval for this project.';
@@ -122,5 +170,5 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
     addInstruction(e, source, conditional ? 'On-demand rule exceeds the 200K-context per-file character limit; exact truncation depends on model/context size.' : contribution.reason + ' Its paths frontmatter matches the opened target file after startup instructions load.', stripComments(source.body), conditional ? 'conditional' : contribution.status);
     if (contribution.importedFrom) e.decisions.at(-1)!.importedFrom = contribution.importedFrom;
   }
-  e.notes.push(`Project instruction mode: ${mode}. AGENTS.md fallback: ${useAgents ? 'enabled' : 'disabled'}.`, 'User rules precede project instructions. Unconditional rules load before local instruction files at each directory level. Matching path-scoped rules follow startup instructions.', 'Project external-import approval uses the saved canonical project state in ~/.claude.json. Pending approval stays conditional, and saved rejection skips the import.', 'Ancestors outside --repo, session source switches, accounts, plugins and managed cloud policies are outside this static report.');
+  e.notes.push(`Project instruction mode: ${mode}. AGENTS.md fallback: ${useAgents ? 'enabled' : 'disabled'}.`, 'User rules precede project instructions. Unconditional rules load before local instruction files at each directory level. Matching path-scoped rules follow startup instructions.', 'Project external-import approval uses the native project identity in ~/.claude.json. Linked worktrees share the main project entry. Windows project keys retain the logical path with forward slashes. Pending approval stays conditional, and saved rejection skips the import.', 'Ancestors outside --repo, session source switches, accounts, plugins and managed cloud policies are outside this static report.');
 }
