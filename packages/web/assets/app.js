@@ -358,8 +358,9 @@
     return [...client.decisions]
       .sort((left, right) => (left.order ?? Infinity) - (right.order ?? Infinity))
       .map(source => {
-        const occurrence = (occurrences.get(source.path) ?? 0) + 1;
-        occurrences.set(source.path, occurrence);
+        const path = source.path.replace(/\\/g, '/');
+        const occurrence = (occurrences.get(path) ?? 0) + 1;
+        occurrences.set(path, occurrence);
         return { source, occurrence };
       });
   }
@@ -1020,9 +1021,10 @@
     if (report.clients.some(client => client.client === hash.get('client'))) state.client = hash.get('client');
     state.instructionView = hash.get('text') === 'effective' ? 'document' : 'sources';
     const sourcePath = hash.get('source');
-    state.source = sourcePath ? report.sources.find(source => short(source.path) === sourcePath)?.path ?? null : null;
     const occurrence = Number(hash.get('occurrence'));
     state.sourceOccurrence = Number.isSafeInteger(occurrence) && occurrence > 0 ? occurrence : 1;
+    const entry = sourceEntries().find(entry => short(entry.source.path) === sourcePath && entry.occurrence === state.sourceOccurrence);
+    state.source = entry?.source.path ?? (sourcePath ? report.sources.find(source => short(source.path) === sourcePath)?.path ?? null : null);
     const line = Number(hash.get('line'));
     state.highlightLine = state.source && Number.isSafeInteger(line) && line > 0 ? line : null;
   }

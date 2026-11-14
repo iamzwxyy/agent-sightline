@@ -15,6 +15,56 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('mixed Windows path separators preserve alias decisions through export and offline re-export', async ({ page }) => {
+  const w = await workspace({ '.agents/skills/shared/SKILL.md': '---\nname: shared-links\ndescription: Windows path fixture.\n---\nInvoke this body explicitly.\n' });
+  try {
+    const report = await scan({ ...w, user: false, clients: ['codex'], trust: 'trusted' });
+    const original = report.clients[0].decisions.find(source => source.kind === 'skill')!;
+    const source = report.sources.find(source => source.id === original.sourceId)!;
+    const repository = 'C:\\sightline-fixture\\repo';
+    const projectPath = repository + '\\.agents\\skills\\shared\\SKILL.md';
+    const userPath = 'C:\\sightline-fixture\\home\\.codex\\skills\\shared\\SKILL.md';
+    report.repository = repository;
+    report.target = repository;
+    report.sessionDirectory = repository;
+    report.sources = [{ ...source, id: 'user-skill', path: userPath }, { ...source, id: 'project-skill', path: projectPath }];
+    report.clients[0].decisions = [
+      { ...original, sourceId: 'user-skill', path: userPath, scope: 'user', status: 'active', order: 1 },
+      { ...original, sourceId: 'project-skill', path: projectPath, status: 'ignored', order: null, loadedBytes: 0, reason: 'Canonical alias fixture.' },
+    ];
+    report.pathMappings = [{ path: userPath, replacement: '<repo>/.agents/skills/shared/SKILL.md' }];
+    const live = test.info().outputPath('windows-alias-live.html');
+    await writeFile(live, html(report, { live: true, portable: false }));
+    const exportReport = async (filename: string) => {
+      const pending = page.waitForEvent('download');
+      await page.getByRole('button', { name: /Export report/ }).click();
+      const file = test.info().outputPath(filename);
+      await (await pending).saveAs(file);
+      return pathToFileURL(file).href;
+    };
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await page.goto(pathToFileURL(live).href + '#view=effective&client=codex&source=.agents%2Fskills%2Fshared%2FSKILL.md&line=2');
+      await expect(page.locator('#source-status')).toHaveText('Not loaded');
+      const portable = await exportReport(`windows-alias-${viewport.width}.html`);
+      await page.context().setOffline(true);
+      await page.goto(portable);
+      await expect(page.locator('#source-status')).toHaveText('Not loaded');
+      await expect(page.locator('#why')).toContainText('Canonical alias fixture.');
+      expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
+      await expect(page.locator('.code-line.highlight')).toContainText('name: shared-links');
+      await page.reload();
+      await expect(page.locator('#source-status')).toHaveText('Not loaded');
+      const reshared = await exportReport(`windows-alias-reshared-${viewport.width}.html`);
+      await page.goto(reshared);
+      await expect(page.locator('#source-status')).toHaveText('Not loaded');
+      await page.goto(reshared + '#view=effective&client=codex&source=.agents%2Fskills%2Fshared%2FSKILL.md&occurrence=1');
+      await expect(page.locator('#source-status')).toHaveText('Loaded');
+      await page.context().setOffline(false);
+    }
+  } finally { await page.context().setOffline(false); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('linked Codex skills retain disabled metadata and distinct alias decisions in live and portable inspections', async ({ page }) => {
   const skill = (name: string) => `---\nname: ${name}\ndescription: Linked skill fixture.\n---\nInvoke this skill body explicitly.\n`;
   const w = await workspace({ 'AGENTS.md': 'Project instructions.', '.agents/skills/shared/SKILL.md': skill('shared-links') });

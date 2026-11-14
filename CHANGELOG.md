@@ -1,14 +1,14 @@
 # Changelog
 
-## 0.3.24 — 2026-11-15
+## 0.3.25 — 2026-11-15
 
 * Discover Codex Skill metadata through directory links in documented user and project roots. Match regular SKILL.md files, hidden-directory rules and the pinned client’s six-level discovery depth.
 * Deduplicate canonical Skill aliases and resolve disabled Skill paths through their declaring configuration file. Preserve the logical installation paths in source explanations.
 * Apply matching-file and traversal budgets during linked metadata discovery. Mark loading decisions as unverified when a root has incomplete discovery. Record captured canonical source identities for portable path replacement.
-* Preserve the selected loading decision when portable path replacements identify multiple aliases as the same source, including offline re-export.
+* Preserve the selected loading decision when portable path replacements identify multiple aliases as the same source, including offline re-export. Normalize Windows path separators when identifying occurrences and restoring source links.
 * Compare linked Skill names, canonical files, enabled states and user/project scopes with Codex 0.167.2’s native skills/list API. Keep Windows user fixtures under their isolated CODEX_HOME. Verify live and portable inspection of disabled metadata and alias decisions.
 
-v0.3.23 remained an unpublished candidate after Windows native inventory validation exposed a user-home fixture-isolation difference.
+v0.3.23 and v0.3.24 remained unpublished candidates. Windows validation exposed a user-home fixture-isolation difference and a mixed-separator source-selection regression in portable reports.
 
 ## 0.3.22 — 2026-11-14
 

@@ -1,17 +1,17 @@
 # Release validation
 
-## v0.3.24
+## v0.3.25
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-15.
 
 * A same-environment comparison with v0.3.22 reproduced four external-link warnings for installed Codex Skill directories. Linked metadata discovery increased the captured source count from 63 to 66 and the Codex Skill definition count from 42 to 45. Discovery completed with zero external-link warnings.
 * Native Codex 0.167.2 skills/list comparisons cover directory links, canonical alias deduplication, user/project scope and canonical, linked and configuration-relative disable selectors. Fixtures cover directory cycles, hidden children, visible links into hidden directories, depth six/seven and ignored file symlinks.
 * Discovery fixtures verify per-root matching-file, directory and entry limits. Unsupported candidates found by other adapters remain excluded. Captured candidates beyond an incomplete Codex inspection receive conditional decisions. Linked catalogs expose selected Skill metadata while neighboring instruction bodies remain unread.
-* A browser regression reproduced an ignored alias reopening as loaded after portable path replacements merged its displayed path with another decision. Live export and offline re-export now retain the selected captured decision and its portable occurrence.
-* The 421-case core suite completed with 419 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. All 77 Chromium browser cases passed. The production dependency audit reported zero vulnerabilities.
-* A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,224 ms. Fixture creation warmed the filesystem cache. The same benchmark measured 1,199 ms for v0.3.22.
+* Browser regressions reproduced an ignored alias reopening as loaded after portable path replacements merged its displayed path with another decision. A synthetic Windows capture also failed locally when replacement paths used forward slashes alongside captured backslashes. Source occurrences normalize separators and restored links select the matching decision. Live export, reload, explicit fragments and offline re-export retain that decision on desktop and phone.
+* The 421-case core suite completed with 419 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. All 78 Chromium browser cases passed. The production dependency audit reported zero vulnerabilities.
+* A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,187 ms. Fixture creation warmed the filesystem cache. The same benchmark measured 1,199 ms for v0.3.22.
 * All 41 historical published archive hashes matched their release manifest before final packaging.
-* The unpublished v0.3.23 candidate passed Linux release verification. Its Windows native inventory fixture expected HOME and USERPROFILE to relocate the separate ~/.agents root. Native Codex uses the Windows Known Folder API for that root. The corrected Windows fixture keeps its user metadata under the isolated CODEX_HOME, with both user roots still compared on macOS and Linux.
+* The unpublished v0.3.23 candidate passed Linux release verification. Its Windows native inventory fixture expected HOME and USERPROFILE to relocate the separate ~/.agents root. Native Codex uses the Windows Known Folder API for that root. The corrected Windows fixture keeps its user metadata under the isolated CODEX_HOME, with both user roots still compared on macOS and Linux. The v0.3.24 candidate then exposed the Windows portable-report separator regression and remained unpublished.
 
 ## v0.3.22
 
