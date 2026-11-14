@@ -24,7 +24,7 @@ function isolatedEnvironment(home: string): NodeJS.ProcessEnv {
   };
 }
 
-async function readRuntimeConfig(cwd: string, env: NodeJS.ProcessEnv): Promise<any> {
+async function readRuntime(cwd: string, env: NodeJS.ProcessEnv, method: 'config/read' | 'skills/list' = 'config/read'): Promise<any> {
   const child = spawn(process.execPath, [runtime, 'app-server'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
   const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   let requestId = 0;
@@ -61,7 +61,7 @@ async function readRuntimeConfig(cwd: string, env: NodeJS.ProcessEnv): Promise<a
     const initialized = await request('initialize', { clientInfo: { name: 'sightline_conformance', version: '1' } });
     assert.ok(initialized.userAgent.includes('/' + codexMetadata.ruleVersion));
     child.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n');
-    return await request('config/read', { cwd, includeLayers: true });
+    return await request(method, method === 'skills/list' ? { cwds: [cwd], forceReload: true } : { cwd, includeLayers: true });
   } finally {
     // Stop the owned tree while its app-server wrapper is still running.
     // This also stops background plugin clones before fixture cleanup.
@@ -252,7 +252,7 @@ test('Codex user-only settings retain their scope inside a wider inspection boun
   const w = await workspace({ 'index.ts': '' }, { '.codex/config.toml': 'notify=["synthetic-notification-command"]\n[analytics]\nenabled=false\n' });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
   const env = isolatedEnvironment(w.home);
-  const actual = await readRuntimeConfig(w.repo, env);
+  const actual = await readRuntime(w.repo, env);
   const report = await scan({ ...w, repo: w.root, target: 'repo/index.ts', clients: ['codex'] });
   assert.deepEqual(actual.config.notify, ['synthetic-notification-command']);
   assert.deepEqual(report.clients[0].settings.find(setting => setting.key === 'notify' && setting.status === 'active')?.value, actual.config.notify);
@@ -276,7 +276,7 @@ for (const fixture of cases) test(`Codex runtime configuration matches Sightline
   const canonicalTrust = fixture.canonicalTrust ? `\n[projects.${JSON.stringify(repo)}]\ntrust_level=${JSON.stringify(fixture.canonicalTrust)}\n` : '';
   await writeFile(path.join(home, '.codex/config.toml'), fixture.user + `\n[analytics]\nenabled=false\n[projects.${JSON.stringify(trustRoot)}]\ntrust_level=${JSON.stringify(fixture.trust ?? 'trusted')}\n` + canonicalTrust);
   const cwd = path.join(boundary, fixture.cwd ?? 'src');
-  const actual = await readRuntimeConfig(cwd, env);
+  const actual = await readRuntime(cwd, env);
   const report = await scan({ repo: boundary, target: path.join(fixture.cwd ?? 'src', 'example.ts'), home, env, clients: ['codex'] });
   for (const key of [...fixture.keys, ...fixture.originKeys ?? []]) {
     const value = key.split('.').reduce((object, part) => object?.[part], actual.config);
@@ -305,4 +305,68 @@ for (const fixture of cases) test(`Codex runtime configuration matches Sightline
   if ((fixture.canonicalTrust ?? fixture.trust) === 'untrusted') assert.ok(actual.layers.some((layer: any) => layer.name.type === 'project' && layer.disabledReason));
   // Only initialize, initialized and config/read are sent to the real client.
   assert.equal(actual.config.analytics.enabled, false);
+});
+
+
+test('Codex native skill inventory follows directory links, canonical aliases and disable selectors', async t => {
+  const skill = (name: string) => `---\nname: sightline-native-link-${name}\ndescription: Native linked skill fixture.\n---\nInvoke this body explicitly.\n`;
+  const w = await workspace({ 'AGENTS.md': 'Project instructions.' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const catalog = path.join(w.root, 'skill-catalog');
+  for (const name of ['repo', 'user', 'compat', 'file']) {
+    const directory = path.join(catalog, name);
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, 'SKILL.md'), skill(name));
+    await writeFile(path.join(directory, 'AGENTS.md'), 'UNRELATED_LINKED_PRIVATE_INSTRUCTIONS');
+  }
+  const roots = [path.join(w.repo, '.agents/skills'), path.join(w.home, '.agents/skills'), path.join(w.home, '.codex/skills')];
+  for (const directory of roots) await mkdir(directory, { recursive: true });
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+  for (const [directory, name] of [[roots[0], 'repo'], [roots[1], 'user'], [roots[2], 'compat']]) {
+    await symlink(path.join(catalog, name), path.join(directory, 'linked'), linkType);
+  }
+  await symlink(path.join(catalog, 'compat'), path.join(roots[0], 'compat-alias'), linkType);
+  await symlink(path.join(catalog, 'compat'), path.join(roots[2], 'second-alias'), linkType);
+  await mkdir(path.join(roots[2], 'cycle'));
+  await writeFile(path.join(roots[2], 'cycle/SKILL.md'), skill('cycle'));
+  await symlink(roots[2], path.join(roots[2], 'cycle/loop'), linkType);
+  await mkdir(path.join(roots[2], '.hidden/deeper'), { recursive: true });
+  await writeFile(path.join(roots[2], '.hidden/deeper/SKILL.md'), skill('hidden'));
+  await symlink(path.join(roots[2], '.hidden'), path.join(roots[2], 'visible-hidden'), linkType);
+  for (const depth of [6, 7]) {
+    const directory = path.join(roots[2], ...Array.from({ length: depth }, (_, index) => `depth-${depth}-${index}`));
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, 'SKILL.md'), skill(`depth-${depth}`));
+  }
+  if (process.platform !== 'win32') {
+    await mkdir(path.join(roots[2], 'file-link'));
+    await symlink(path.join(catalog, 'file/SKILL.md'), path.join(roots[2], 'file-link/SKILL.md'));
+  }
+  const env = isolatedEnvironment(w.home);
+  const canonicalSelector = await realpath(path.join(catalog, 'compat/SKILL.md'));
+  const selectors = [
+    { name: 'discovered inventory', path: undefined },
+    { name: 'canonical disable selector', path: canonicalSelector },
+    { name: 'linked disable selector', path: path.join(roots[2], 'linked/SKILL.md') },
+    { name: 'relative disable selector', path: 'skills/linked/SKILL.md' },
+  ];
+  for (const fixture of selectors) await t.test(fixture.name, async () => {
+    const selector = fixture.path;
+    await writeFile(path.join(w.home, '.codex/config.toml'), selector ? `[[skills.config]]\npath=${JSON.stringify(selector)}\nenabled=false\n` : '');
+    const native = await readRuntime(w.repo, env, 'skills/list');
+    const expected = await Promise.all(native.data.flatMap((entry: any) => entry.skills)
+      .filter((entry: any) => entry.name.startsWith('sightline-native-link-'))
+      .map(async (entry: any) => ({ name: entry.name, path: await realpath(entry.path), enabled: entry.enabled, scope: entry.scope })));
+    const report = await scan({ ...w, env, clients: ['codex'], trust: 'trusted' });
+    const actual = await Promise.all(report.clients[0].extensions
+      .filter(extension => extension.kind === 'skill' && extension.name.startsWith('sightline-native-link-'))
+      .map(async extension => ({ name: extension.name, path: await realpath(extension.location.path), enabled: extension.status === 'active', scope: report.sources.find(source => source.path === extension.location.path)?.scope === 'user' ? 'user' : 'repo' })));
+    const byName = (left: { name: string }, right: { name: string }) => left.name.localeCompare(right.name);
+    assert.deepEqual(actual.sort(byName), expected.sort(byName));
+    assert.equal(actual.filter(entry => entry.name === 'sightline-native-link-compat').length, 1);
+    assert.ok(!report.clients[0].instructions.includes('Invoke this body explicitly.'));
+    assert.ok(!JSON.stringify(report).includes('UNRELATED_LINKED_PRIVATE_INSTRUCTIONS'));
+    assert.ok(!JSON.stringify(report.sources).includes('canonicalPath'));
+    assert.ok(!report.findings.some(finding => finding.ruleId === 'skill.name-conflict' && finding.message.includes('sightline-native-link-compat')));
+  });
 });

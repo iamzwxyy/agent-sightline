@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs, { mkdir, rm, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { scan } from '../packages/core/index.js';
-import { findRepositoryRoot, makeContext, readUserTree } from '../packages/core/discovery.js';
+import { findRepositoryRoot, makeContext, readConfigurationTree, readUserTree } from '../packages/core/discovery.js';
 import { filter, json, terminal } from '../packages/reporter/index.js';
 import { workspace } from './helpers.js';
 import { searchTargets } from '../packages/web/targets.js';
@@ -121,4 +121,25 @@ test('scan cancellation also applies during final portable-path mapping', async 
     await rm(w.root, { recursive: true, force: true });
   });
   await assert.rejects(scan({ ...w, user: false, clients: ['codex'], signal: controller.signal }), { name: 'AbortError' });
+});
+
+
+test('configuration tree traversal limits stop directory and entry discovery', async t => {
+  const w = await workspace({}, {
+    '.agents/skills/a/SKILL.md': '---\nname: a\ndescription: First fixture.\n---\n',
+    '.agents/skills/b/SKILL.md': '---\nname: b\ndescription: Second fixture.\n---\n',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  for (const fixture of [{ name: 'directories', maxDirectories: 2, maxEntries: 20, count: 1 }, { name: 'entries', maxDirectories: 20, maxEntries: 1, count: 0 }]) {
+    const ctx = await makeContext(w);
+    const result = await readConfigurationTree(ctx, path.join(w.home, '.agents/skills'), 'codex', 'skill', 'SKILL.md', {
+      acceptFile: entry => entry.isFile() && entry.name === 'SKILL.md',
+      maxDirectories: fixture.maxDirectories,
+      maxEntries: fixture.maxEntries,
+    });
+    assert.equal(result.sources.length, fixture.count, fixture.name);
+    assert.equal(result.complete, false, fixture.name);
+    assert.equal(ctx.discovery?.complete, false, fixture.name);
+    assert.equal(ctx.findings.filter(finding => finding.ruleId === 'source.tree-scan-limit').length, 1, fixture.name);
+  }
 });

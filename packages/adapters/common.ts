@@ -133,18 +133,39 @@ export function permissions(
     });
   }
 }
-export async function skills(e: Effective, ctx: Context, roots: string[], behavior: 'coexist' | 'first', ignoredRoots: string[] = []): Promise<void> {
-  const candidates = ctx.sources.filter(s => s.kind === 'skill' && roots.some(r => within(r, s.path))).sort((a, b) => {
+export async function skills(e: Effective, ctx: Context, roots: string[], behavior: 'coexist' | 'first', ignoredRoots: string[] = [], discoveredPaths?: ReadonlySet<string>): Promise<void> {
+  const candidates = ctx.sources.filter(s => s.kind === 'skill' && s.owners.includes(e.client) && (!discoveredPaths || discoveredPaths.has(s.path)) && roots.some(r => within(r, s.path))).sort((a, b) => {
     const rank = (s: Source) => roots.findIndex(r => within(r, s.path)); return rank(a) - rank(b) || cmp(a.path, b.path);
   });
+  const canonicalPaths = new Map<Source, string>();
+  const canonicalSources = new Map<string, Source>();
+  const selectors: { path?: string; name?: string; enabled: boolean }[] = [];
+  if (e.client === 'codex') {
+    for (const source of candidates) {
+      const canonical = source.canonicalPath ?? await realpath(source.path).catch(() => source.path);
+      canonicalPaths.set(source, canonical);
+      const previous = canonicalSources.get(canonical);
+      if (!previous || previous.scope !== 'user' && source.scope === 'user') canonicalSources.set(canonical, source);
+    }
+    const setting = e.settings.findLast(setting => setting.key === 'skills.config' && setting.status === 'active');
+    for (const selector of Array.isArray(setting?.value) ? setting.value : []) {
+      if (typeof selector.enabled !== 'boolean') continue;
+      const filename = typeof selector.path === 'string' ? path.resolve(path.dirname(setting!.location.path), selector.path) : undefined;
+      selectors.push({ name: selector.name, enabled: selector.enabled, path: filename ? await realpath(filename).catch(() => filename) : undefined });
+    }
+  }
   for (const s of candidates) {
+    const canonical = canonicalPaths.get(s);
+    if (canonical && canonicalSources.get(canonical) !== s) {
+      decision(e, s, 'ignored', 'Another discovered path refers to the same canonical Codex skill.');
+      continue;
+    }
     const name = typeof s.data.name === 'string' ? s.data.name : path.basename(path.dirname(s.path));
     const excluded = ignoredRoots.some(root => within(root, s.path));
     const old = excluded ? undefined : e.extensions.find(x => x.kind === 'skill' && x.name === name && x.status === 'active');
     let status: Status = excluded ? 'ignored' : s.invalid ? 'invalid' : old && behavior === 'first' ? 'shadowed' : 'active';
     if (e.client === 'codex') {
-      const config = effectiveValue(e, 'skills.config', []);
-      for (const x of Array.isArray(config) ? config : []) if ((x.path === s.path || x.name === name) && typeof x.enabled === 'boolean') status = x.enabled ? 'active' : 'ignored';
+      for (const selector of selectors) if (selector.path === canonical || selector.name === name) status = selector.enabled ? 'active' : 'ignored';
     }
     const reason = excluded ? 'The skill discovery directory is excluded by the effective Copilot ignoredSkillsLocations setting.'
       : status === 'shadowed' ? 'A higher-priority skill with the same name wins.'

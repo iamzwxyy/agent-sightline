@@ -19,7 +19,7 @@ Primary source: [agents_md.rs at rust-v0.167.2](https://github.com/openai/codex/
 | Project-only restrictions | The pinned loader removes top-level provider/auth/notification/profile/telemetry routing keys before merging project configuration. Sightline retains ignored definitions with source locations. Additional field-specific runtime restrictions remain outside this static contract. |
 | MCP | mcp_servers tables in TOML; per-field merge across config layers, command/env/cwd validation |
 | Hooks | hooks.json alongside active layers and inline event tables accumulate; hooks.state stores enabled/trust-hash overrides as settings. The final features.hooks flag controls hook discovery. Command and MCP tool handlers are supported. Prompt/agent handlers are parsed and skipped. Windows selects commandWindows or the TOML command_windows alias. Coexisting same-layer handler definitions warn; exact hash trust is conditional |
-| Skills | Metadata discovery only; duplicate names can coexist; skills.config disable selectors evaluated |
+| Skills | Native-checked metadata inventory; directory links, canonical alias deduplication and disabled paths; regular SKILL.md files, hidden-directory filtering and six-level depth |
 | Invalid config | Official version-pinned schema and parser errors produce invalid decisions; inspector continues other sources |
 
 Fixture: `fixtures/codex/chain.json`; additional resolver tests cover empty overrides, no markers, trust and split UTF-8. The current official prose simplifies empty-file and trust details; the release-pinned Rust source takes priority where they differ.
@@ -56,3 +56,10 @@ A native configuration comparison places malformed TOML in a sibling project out
 Malformed-TOML privacy fixtures place synthetic environment values in readable assignments and copy them into loaded instructions. Recovery retains values for redaction across project, user and sibling discovery scopes, with LF/CRLF, escapes, multiline strings, duplicate definitions and unfinished private arrays or inline tables. Settings remain invalid and the original parser error location is retained. Installed-package and live/offline browser checks exercise the public output boundary.
 
 A native configuration read verifies a user-only notification setting when the inspection boundary also contains CODEX_HOME. Explicit personal discovery supplies the cached file's user scope, preserving the active notification value that project-file validation would discard.
+
+
+## Native Skill discovery
+
+Verified against Codex 0.167.2 on 2026-11-15. The host loader follows user and repository directory links and skips hidden descendants. Its walk uses six directory levels, 2,000 directories and 20,000 entries per root. Regular SKILL.md files supply metadata. Canonical files define Skill identity, and the root merge keeps the first canonical occurrence before sorting the inventory. [Host loader](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/host.rs) [Discovery](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/discovery.rs) [Root merge](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/host_merge.rs)
+
+The native inventory fixture creates temporary user and repository roots, external linked catalogs, repeated aliases, a directory cycle, hidden metadata behind a visible alias and files at the depth boundary. Four isolated app-server runs compare names, canonical files, enabled states and user/project scope. They exercise initial discovery and disable selectors using canonical, linked and configuration-relative file paths. The probe exposed the earlier external-directory skips and eligibility of a symlinked SKILL.md file. `npm run test:codex` runs these comparisons with the configuration suite. [Filesystem cases](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/discovery_tests.rs)

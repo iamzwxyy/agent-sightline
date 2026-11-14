@@ -14,6 +14,8 @@ export interface Source {
   scope: 'user' | 'repository' | 'directory' | 'system' | 'import'; baseDir: string;
   bytes: number; text: string; body: string; bodyLine: number;
   data: Record<string, any>; lines: Record<string, number>; invalid: boolean;
+  /** Captured filesystem identity for skill resolution and portable aliases. */
+  canonicalPath?: string;
   /** Internal parser offsets and decoded values, omitted from public reports. */
   valueRanges?: { offset: number; length: number; value?: unknown; private?: boolean }[];
 }
@@ -57,7 +59,7 @@ export interface Report {
   discovery?: Discovery;
   pathMappings?: { path: string; replacement: string }[];
   repository: string; target: string; sessionDirectory: string;
-  assumptions: string[]; sources: (Omit<Source, 'text' | 'body' | 'data' | 'lines' | 'baseDir' | 'valueRanges'> & { preview?: string })[];
+  assumptions: string[]; sources: (Omit<Source, 'text' | 'body' | 'data' | 'lines' | 'baseDir' | 'valueRanges' | 'canonicalPath'> & { preview?: string })[];
   clients: Effective[]; findings: Finding[];
   diff: { content: string; clients: ClientId[]; sources: Location[] }[];
   instructionDiff?: InstructionBlock[];
@@ -72,9 +74,11 @@ export interface ScanOptions {
 export interface Context {
   repo: string; target: string; directory: string; home: string; codexHome: string;
   claudeHome: string; copilotHome: string; dirs: string[]; sources: Source[];
+  codexSkillPaths?: Set<string>;
+  codexSkillIncompleteRoots?: Set<string>;
   findings: Finding[]; options: ScanOptions; env: NodeJS.ProcessEnv;
   discovery?: Discovery;
-  read: (path: string, owner: ClientId, kind: Kind, scope?: Source['scope']) => Promise<Source | null>;
+  read: (path: string, owner: ClientId, kind: Kind, scope?: Source['scope'], options?: { allowExternal?: boolean }) => Promise<Source | null>;
 }
 export interface Adapter {
   metadata: AdapterMetadata;

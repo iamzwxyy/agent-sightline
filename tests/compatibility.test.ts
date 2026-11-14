@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { workspace } from './helpers.js';
 
@@ -87,4 +87,40 @@ test('Codex global/project separator and bytes reflect versioned source', async 
 test('a later adapter import is still explained as ignored for earlier clients', async t => {
   const w = await workspace({ 'AGENTS.md': 'codex', 'CLAUDE.md': '@policy.md', 'policy.md': 'imported policy' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const r = await scan({ ...w, clients: ['codex', 'claude'], trust: 'trusted' }); assert.ok(r.clients[0].decisions.some(d => d.path === path.join(w.repo, 'policy.md') && d.status === 'ignored')); assert.ok(r.clients[1].instructions.includes('imported policy'));
+});
+
+
+test('Codex linked user skills respect the matching-file budget and user selection', async t => {
+  const w = await workspace({ 'AGENTS.md': 'Project instructions.' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const root = path.join(w.home, '.codex/skills');
+  await mkdir(root, { recursive: true });
+  for (const name of ['first', 'second']) {
+    const directory = path.join(w.root, 'catalog', name);
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, 'SKILL.md'), `---\nname: ${name}\ndescription: Linked user fixture.\n---\n`);
+    await symlink(directory, path.join(root, name), process.platform === 'win32' ? 'junction' : 'dir');
+  }
+  const complete = await scan({ ...w, clients: ['codex'], trust: 'trusted' });
+  assert.equal(complete.clients[0].extensions.filter(extension => extension.kind === 'skill').length, 2);
+  assert.equal(complete.discovery?.complete, true);
+  const limited = await scan({ ...w, clients: ['codex'], trust: 'trusted', maxUserFiles: 1 });
+  assert.deepEqual(limited.clients[0].extensions.filter(extension => extension.kind === 'skill').map(extension => extension.name), ['first']);
+  assert.equal(limited.discovery?.complete, false);
+  assert.ok(limited.findings.some(finding => finding.ruleId === 'source.user-file-limit'));
+  const project = await scan({ ...w, clients: ['codex'], trust: 'trusted', user: false });
+  assert.equal(project.clients[0].extensions.filter(extension => extension.kind === 'skill').length, 0);
+  assert.equal(project.discovery?.complete, true);
+});
+
+test('Codex marks generically discovered skills beyond its inspection budget as unverified', async t => {
+  const w = await workspace({}, {
+    '.codex/skills/a/SKILL.md': '---\nname: first\ndescription: Inspected fixture.\n---\n',
+    '.codex/skills/b/SKILL.md': '---\nname: second\ndescription: Deferred fixture.\n---\n',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, repo: w.home, clients: ['codex'], maxUserFiles: 1, trust: 'trusted' });
+  assert.equal(report.discovery?.complete, false);
+  assert.equal(report.clients[0].decisions.find(source => source.path === path.join(w.home, '.codex/skills/b/SKILL.md'))?.status, 'conditional');
+  assert.deepEqual(report.clients[0].extensions.filter(extension => extension.kind === 'skill').map(extension => extension.name), ['first']);
 });

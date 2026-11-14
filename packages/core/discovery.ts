@@ -1,6 +1,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { lstat, realpath, readdir, readFile, stat } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
 import { CLIENTS, type ClientId, type Context, type Discovery, type Kind, type ScanOptions, type Source } from './types.js';
 import { bytes, cmp, finding, hash, parents, slash, within } from './utils.js';
 import { parseSource } from './parse.js';
@@ -106,7 +107,7 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
     copilotHome: options.home ? path.join(home, '.copilot') : path.resolve(env.COPILOT_HOME ?? path.join(home, '.copilot')),
     read: async () => null,
   };
-  ctx.read = async (file, owner, kind, scope) => {
+  ctx.read = async (file, owner, kind, scope, readOptions) => {
     ctx.options.signal?.throwIfAborted();
     const abs = path.resolve(file);
     const existing = ctx.sources.find(s => s.path === abs);
@@ -138,7 +139,7 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
     try {
       const real = await realpath(abs);
       // Only explicitly selected config paths and imports are read outside the repo.
-      if (!within(await realpath(repo), real) && scope !== 'user' && scope !== 'system') {
+      if (!within(await realpath(repo), real) && scope !== 'user' && scope !== 'system' && !readOptions?.allowExternal) {
         discovery.complete = false;
         ctx.findings.push(finding('source.external-symlink', 'warn', { path: abs, line: 1, column: 1 }, 'Symlink points outside the inspected repository.', 'The client may follow it; Sightline does not read unrelated private files.', 'Inspect that directory explicitly with --repo, or place the configuration inside this repository.', owner)); return null;
       }
@@ -147,7 +148,7 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
       if (info.size > 2 * 1024 * 1024) { discovery.complete = false; ctx.findings.push(finding('source.read-limit', 'warn', { path: abs, line: 1, column: 1 }, 'Configuration exceeds the 2 MiB inspection limit.', 'This is a Sightline safety limit, not a client truncation rule.', 'Split the file into smaller instruction sources.', owner)); return null; }
       const text = await readFile(abs, { encoding: 'utf8', signal: ctx.options.signal });
       const owners = scope === undefined ? classify(abs)?.owners ?? [owner] : [owner];
-      const s: Source = { id: hash(abs), path: abs, relativePath: within(repo, abs) ? slash(path.relative(repo, abs)) : abs, owners, kind, scope: scope ?? (path.dirname(abs) === repo ? 'repository' : 'directory'), baseDir: path.dirname(abs), bytes: bytes(text), text, body: text, bodyLine: 1, data: {}, lines: {}, invalid: false };
+      const s: Source = { id: hash(abs), path: abs, canonicalPath: real, relativePath: within(repo, abs) ? slash(path.relative(repo, abs)) : abs, owners, kind, scope: scope ?? (path.dirname(abs) === repo ? 'repository' : 'directory'), baseDir: path.dirname(abs), bytes: bytes(text), text, body: text, bodyLine: 1, data: {}, lines: {}, invalid: false };
       ctx.findings.push(...parseSource(s)); ctx.sources.push(s); return s;
     } catch (error) {
       ctx.options.signal?.throwIfAborted();
@@ -198,38 +199,75 @@ export async function discoverRepository(ctx: Context): Promise<void> {
 }
 
 export async function readUserTree(ctx: Context, dir: string, owner: ClientId, kind: Kind, suffix: string): Promise<void> {
+  await readConfigurationTree(ctx, dir, owner, kind, suffix);
+}
+
+interface TreeOptions {
+  scope?: Source['scope'];
+  allowExternal?: boolean;
+  acceptFile?: (entry: Dirent) => boolean;
+  enterDirectory?: (entry: Dirent) => boolean;
+  maxDepth?: number;
+  maxDirectories?: number;
+  maxEntries?: number;
+  fileLimit?: number;
+}
+
+export async function readConfigurationTree(ctx: Context, dir: string, owner: ClientId, kind: Kind, suffix: string, options: TreeOptions = {}): Promise<{ sources: Source[]; complete: boolean }> {
   const coverage = discoveryState(ctx);
+  const result = { sources: [] as Source[], complete: true };
   const seen = new Set<string>();
   let files = 0;
+  let entriesRead = 0;
   let stopped = false;
   let realRoot: string;
   try { realRoot = await realpath(dir); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') unreadableDirectory(ctx, dir, owner); return; }
-  const walk = async (d: string): Promise<void> => {
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { result.complete = false; unreadableDirectory(ctx, dir, owner); } return result; }
+  const stopTraversal = (reason: string): void => {
+    coverage.complete = false;
+    result.complete = false;
+    stopped = true;
+    ctx.findings.push(finding('source.tree-scan-limit', 'warn', { path: dir, line: 1, column: 1 }, 'Configuration discovery reached its traversal limit.', reason, 'Reduce the number of files or directories under this configuration root.', owner));
+  };
+  const walk = async (d: string, depth: number): Promise<void> => {
     ctx.options.signal?.throwIfAborted();
-    if (stopped) return;
-    let real: string; try { real = await realpath(d); } catch { unreadableDirectory(ctx, d, owner); return; }
-    // User skill/rule symlinks can lead to private unrelated trees. Report instead.
-    if (!within(realRoot, real)) { coverage.complete = false; ctx.findings.push(finding('source.external-symlink', 'warn', { path: d, line: 1, column: 1 }, 'User configuration directory points outside its declared root.', 'Sightline keeps user scans within documented configuration directories.', 'Inspect the destination explicitly.', owner)); return; }
-    if (seen.has(real)) return; seen.add(real);
-    let entries; try { entries = await readdir(d, { withFileTypes: true }); } catch { unreadableDirectory(ctx, d, owner); return; }
+    if (stopped || depth > (options.maxDepth ?? Infinity)) return;
+    let real: string; try { real = await realpath(d); } catch { result.complete = false; unreadableDirectory(ctx, d, owner); return; }
+    if (!options.allowExternal && !within(realRoot, real)) { coverage.complete = false; result.complete = false; ctx.findings.push(finding('source.external-symlink', 'warn', { path: d, line: 1, column: 1 }, 'User configuration directory points outside its declared root.', 'Sightline keeps user scans within documented configuration directories.', 'Inspect the destination explicitly.', owner)); return; }
+    if (seen.has(real)) return;
+    if (seen.size >= (options.maxDirectories ?? Infinity)) { stopTraversal(`This root is limited to ${options.maxDirectories} inspected directories.`); return; }
+    seen.add(real);
+    let entries; try { entries = await readdir(d, { withFileTypes: true }); } catch { result.complete = false; unreadableDirectory(ctx, d, owner); return; }
     for (const e of entries.sort((a, b) => cmp(a.name, b.name))) {
       if (stopped) return;
+      if (entriesRead >= (options.maxEntries ?? Infinity)) { stopTraversal(`This root is limited to ${options.maxEntries} inspected entries.`); return; }
+      entriesRead++;
       const p = path.join(d, e.name);
-      if (e.isDirectory() || (e.isSymbolicLink() && !e.name.endsWith(suffix))) await walk(p);
-      else if (e.name.endsWith(suffix)) {
-        if (files >= coverage.userFileLimit) {
+      let directory = e.isDirectory();
+      if (e.isSymbolicLink()) {
+        try { directory = (await stat(p)).isDirectory(); }
+        catch { directory = !e.name.endsWith(suffix); }
+      }
+      if (directory) {
+        if (!options.enterDirectory || options.enterDirectory(e)) await walk(p, depth + 1);
+      } else if (options.acceptFile ? options.acceptFile(e) : e.name.endsWith(suffix)) {
+        const fileLimit = options.fileLimit ?? coverage.userFileLimit;
+        if (files >= fileLimit) {
           coverage.complete = false;
+          result.complete = false;
           stopped = true;
-          ctx.findings.push(finding('source.user-file-limit', 'warn', { path: p, line: 1, column: 1 }, 'User configuration discovery reached its file limit.', `The discovery budget is ${coverage.userFileLimit.toLocaleString('en-US')} matching files per user configuration root. Additional files were left uninspected.`, 'Raise --max-user-files to inspect the remaining configuration files.', owner));
+          ctx.findings.push(finding('source.user-file-limit', 'warn', { path: p, line: 1, column: 1 }, 'User configuration discovery reached its file limit.', `The discovery budget is ${fileLimit.toLocaleString('en-US')} matching files per user configuration root. Additional files were left uninspected.`, 'Raise --max-user-files to inspect the remaining configuration files.', owner));
           return;
         }
         files++;
-        await ctx.read(p, owner, kind, 'user');
+        const source = await ctx.read(p, owner, kind, options.scope ?? 'user', { allowExternal: options.allowExternal });
+        if (source) result.sources.push(source);
+        else result.complete = false;
       }
     }
   };
-  await walk(dir);
+  await walk(dir, 0);
+  return result;
 }
 
 export const selectedClients = (options: ScanOptions): ClientId[] => options.clients ?? [...CLIENTS];

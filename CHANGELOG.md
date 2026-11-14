@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.23 — 2026-11-15
+
+* Discover Codex Skill metadata through directory links in documented user and project roots. Match regular SKILL.md files, hidden-directory rules and the pinned client’s six-level discovery depth.
+* Deduplicate canonical Skill aliases and resolve disabled Skill paths through their declaring configuration file. Preserve the logical installation paths in source explanations.
+* Apply matching-file and traversal budgets during linked metadata discovery. Mark loading decisions as unverified when a root has incomplete discovery. Record captured canonical source identities for portable path replacement.
+* Preserve the selected loading decision when portable path replacements identify multiple aliases as the same source, including offline re-export.
+* Compare linked Skill names, canonical files, enabled states and user/project scopes with Codex 0.167.2’s native skills/list API. Verify live and portable inspection of disabled metadata and alias decisions.
+
 ## 0.3.22 — 2026-11-14
 
 * Open exported HTML reports at the selected view and source location, including the client, repeated import occurrence, highlighted line and effective-text mode.

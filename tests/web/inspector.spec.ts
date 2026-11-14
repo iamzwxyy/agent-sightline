@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { serve } from '../../packages/web/server.js';
 import { workspace } from '../helpers.js';
 import { trustWorkspace } from '../copilot-trust-fixture.js';
-import { readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { html } from '../../packages/reporter/index.js';
 import type { Report } from '../../packages/core/types.js';
@@ -14,6 +14,67 @@ import { scan } from '../../packages/core/index.js';
 import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
+
+test('linked Codex skills retain disabled metadata and distinct alias decisions in live and portable inspections', async ({ page }) => {
+  const skill = (name: string) => `---\nname: ${name}\ndescription: Linked skill fixture.\n---\nInvoke this skill body explicitly.\n`;
+  const w = await workspace({ 'AGENTS.md': 'Project instructions.', '.agents/skills/shared/SKILL.md': skill('shared-links') });
+  const catalog = path.join(w.root, 'skill-catalog');
+  await mkdir(catalog);
+  await writeFile(path.join(catalog, 'SKILL.md'), skill('review-links'));
+  await writeFile(path.join(catalog, 'AGENTS.md'), 'UNRELATED_SKILL_PRIVATE_FILE');
+  const userSkills = path.join(w.home, '.codex/skills');
+  await mkdir(userSkills, { recursive: true });
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+  await symlink(catalog, path.join(userSkills, 'review'), linkType);
+  await symlink(path.join(w.repo, '.agents/skills/shared'), path.join(userSkills, 'shared'), linkType);
+  const canonicalFile = await realpath(path.join(catalog, 'SKILL.md'));
+  await writeFile(path.join(w.home, '.codex/config.toml'), `[[skills.config]]\npath=${JSON.stringify(canonicalFile)}\nenabled=false\n`);
+  const server = await serve({ ...w, clients: ['codex'], trust: 'trusted' });
+  const exportReport = async (filename: string) => {
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath(filename);
+    await (await downloading).saveAs(file);
+    const content = await readFile(file, 'utf8');
+    for (const value of [w.repo, await realpath(w.repo), w.home, await realpath(w.home), canonicalFile]) expect(content).not.toContain(JSON.stringify(value).slice(1, -1));
+    expect(content).not.toContain('UNRELATED_SKILL_PRIVATE_FILE');
+    return pathToFileURL(file).href;
+  };
+  try {
+    await page.goto(server.url + '#view=extensions');
+    await page.getByRole('button', { name: 'Skills', exact: true }).click();
+    await expect(page.locator('.extension-row')).toHaveCount(2);
+    const review = page.locator('.extension-row').filter({ hasText: 'review-links' });
+    await expect(review).toContainText('Not loaded');
+    await review.click();
+    await page.getByRole('button', { name: /Inspect source/ }).click();
+    await expect(page.locator('#source-title')).toContainText('.codex/skills/review/SKILL.md');
+    await expect(page.locator('#source-status')).toHaveText('Not loaded');
+    const first = await exportReport('linked-disabled-skill.html');
+    await page.context().setOffline(true);
+    await page.goto(first);
+    await expect(page.locator('#source-title')).toHaveText('~/.codex/skills/review/SKILL.md');
+    await expect(page.locator('#source-status')).toHaveText('Not loaded');
+    await expect(page.locator('#instructions')).toContainText('Invoke this skill body explicitly.');
+    await page.context().setOffline(false);
+    await page.goto(server.url + '#view=effective&client=codex&source=.agents%2Fskills%2Fshared%2FSKILL.md');
+    await expect(page.locator('#source-status')).toHaveText('Not loaded');
+    await expect(page.locator('#why')).toContainText('same canonical Codex skill');
+    const second = await exportReport('linked-alias-decision.html');
+    await page.context().setOffline(true);
+    await page.goto(second);
+    await expect(page.locator('#source-status')).toHaveText('Not loaded');
+    await expect(page.locator('#why')).toContainText('same canonical Codex skill');
+    expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
+    const third = await exportReport('reshared-alias-decision.html');
+    await page.goto(third);
+    await expect(page.locator('#source-status')).toHaveText('Not loaded');
+    expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('#source-title')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
 
 test('exported reports open at the inspected line and retain changed locations through offline re-export', async ({ page }) => {
   const settings = ['{', '"hooks":{"UserPromptSubmit":[', ...Array(180).fill(''), '{"hooks":[{"type":"command","command":"missing-shared-report-hook"}]}', ']}}'].join('\n');

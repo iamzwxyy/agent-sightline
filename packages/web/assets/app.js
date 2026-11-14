@@ -170,12 +170,12 @@
       if (restoreFocus) $('mobile-menu').focus({ preventScroll: true });
     }
   }
-  function inspectionHash(sourcePath = state.source && short(state.source)) {
+  function inspectionHash(sourcePath = state.source && short(state.source), occurrence = state.sourceOccurrence) {
     const hash = new URLSearchParams({ view: state.view });
     if (state.view === 'effective') {
       hash.set('client', state.client);
       if (sourcePath) hash.set('source', sourcePath);
-      if (sourcePath && state.sourceOccurrence > 1) hash.set('occurrence', String(state.sourceOccurrence));
+      if (sourcePath && occurrence > 1) hash.set('occurrence', String(occurrence));
       if (sourcePath && state.highlightLine !== null) hash.set('line', String(state.highlightLine));
       if (state.instructionView === 'document') hash.set('text', 'effective');
     }
@@ -306,7 +306,7 @@
     }));
     const conditional = report.clients.some(client => client.decisions.some(source => source.status === 'conditional'));
     $('trust-notice').hidden = !conditional;
-    $('trust-notice').replaceChildren(node('span', 'Some sources depend on workspace trust or approval. '), button('Review scan assumptions', () => $('scope-dialog').showModal(), 'text-button'));
+    $('trust-notice').replaceChildren(node('span', 'Some loading decisions depend on trust, approval, session conditions or discovery coverage. '), button('Review scan assumptions', () => $('scope-dialog').showModal(), 'text-button'));
   }
   function showFinding(finding) {
     $('detail-category').textContent = finding.ruleId;
@@ -968,11 +968,14 @@
     const snapshot = new window.DOMParser().parseFromString(exportDocument, 'text/html');
     const captured = JSON.parse(snapshot.getElementById('report-data').textContent);
     const client = selectedClient();
-    const sourceIndex = client?.decisions.findIndex(source => source.path === state.source) ?? -1;
-    const source = captured.clients.find(candidate => candidate.client === client?.client)?.decisions[sourceIndex];
+    const selected = selectedSourceEntry(sourceEntries(client))?.source;
+    const sourceIndex = client?.decisions.indexOf(selected) ?? -1;
+    const capturedClient = captured.clients.find(candidate => candidate.client === client?.client);
+    const source = capturedClient?.decisions[sourceIndex];
+    const occurrence = sourceEntries(capturedClient).find(entry => entry.source === source)?.occurrence ?? 1;
     const destination = snapshot.querySelector('meta[name="sightline-view"]') ?? snapshot.createElement('meta');
     destination.name = 'sightline-view';
-    destination.content = inspectionHash(source ? short(source.path, captured.repository) : null);
+    destination.content = inspectionHash(source ? short(source.path, captured.repository) : null, occurrence);
     snapshot.head.append(destination);
     const content = '<!doctype html>\n' + snapshot.documentElement.outerHTML;
     const url = URL.createObjectURL(new Blob([content], { type: 'text/html' }));

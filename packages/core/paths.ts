@@ -27,6 +27,12 @@ export async function collectPathMappings(ctx: Context, configuration: unknown[]
     if (!mappings.has(root.canonical)) mappings.set(root.canonical, root.replacement);
   };
   remember(roots[0]);
+  for (const source of ctx.sources) {
+    const canonical = source.canonicalPath;
+    if (!canonical || roots.some(root => within(root.canonical, canonical))) continue;
+    const root = roots.find(root => within(root.path, source.path));
+    if (root && !mappings.has(canonical)) mappings.set(canonical, root.replacement + '/' + slash(path.relative(root.path, source.path)));
+  }
   const candidates = new Set(ctx.sources.map(source => source.path));
   const collect = (value: unknown): void => {
     if (typeof value === 'string') {

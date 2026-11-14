@@ -2,13 +2,13 @@ import path from 'node:path';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { Ajv } from 'ajv';
 import type { AdapterMetadata, Context, Source, Status } from '../core/types.js';
-import { readUserTree } from '../core/discovery.js';
-import { bytes, finding, locate, plainObject } from '../core/utils.js';
+import { readConfigurationTree } from '../core/discovery.js';
+import { bytes, finding, locate, plainObject, within } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, effectiveValue, finish, flatten, hooks, mcp, settings, skills, truncated } from './common.js';
 
 export const codexMetadata: AdapterMetadata = {
-  id: 'codex', name: 'OpenAI Codex CLI', maturity: 'verified', ruleVersion: '0.167.2', verifiedOn: '2026-11-14',
-  evidence: ['https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/core/src/agents_md.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/codex-home/src/instructions/mod.rs', 'https://developers.openai.com/codex/config-basic', 'https://developers.openai.com/codex/config-advanced#profiles', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/config/src/loader/mod.rs', 'https://developers.openai.com/codex/skills', 'https://learn.chatgpt.com/docs/hooks', 'https://learn.chatgpt.com/docs/app-server'],
+  id: 'codex', name: 'OpenAI Codex CLI', maturity: 'verified', ruleVersion: '0.167.2', verifiedOn: '2026-11-15',
+  evidence: ['https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/core/src/agents_md.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/codex-home/src/instructions/mod.rs', 'https://developers.openai.com/codex/config-basic', 'https://developers.openai.com/codex/config-advanced#profiles', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/config/src/loader/mod.rs', 'https://developers.openai.com/codex/skills', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/host.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/discovery.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/host_merge.rs', 'https://learn.chatgpt.com/docs/hooks', 'https://learn.chatgpt.com/docs/app-server'],
   limitations: ['Static single-directory session with explicit profile files. Other CLI overrides and managed/cloud requirements are not inferred.', 'Scalar/MCP precedence, configured hook values and winning files have real-client configuration API tests. Profiles, instruction bodies and line numbers use source/schema fixtures.', 'Global instructions are separate from the project byte budget in 0.167.2; project empty overrides shadow the ordinary file.', 'Hook definition trust is reported as conditional. Bundled/plugin components and starlark exec-policy evaluation are not inspected.'],
 };
 let validator: ReturnType<Ajv['compile']> | undefined;
@@ -16,11 +16,35 @@ function inlineHooks(value: unknown): unknown {
   return plainObject(value) ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'state')) : value;
 }
 async function discover(ctx: Context): Promise<Source[]> {
+  const roots: { directory: string; scope: Source['scope']; followLinks: boolean }[] = [];
   if (ctx.options.user !== false) {
     for (const n of ['config.toml', 'AGENTS.override.md', 'AGENTS.md', 'hooks.json']) await ctx.read(path.join(ctx.codexHome, n), 'codex', n.endsWith('.toml') ? 'settings' : n === 'hooks.json' ? 'hooks' : 'instructions', 'user');
     if (ctx.options.codexProfile) await ctx.read(path.join(ctx.codexHome, `${ctx.options.codexProfile}.config.toml`), 'codex', 'settings', 'user');
-    await readUserTree(ctx, path.join(ctx.home, '.agents/skills'), 'codex', 'skill', 'SKILL.md');
-    await readUserTree(ctx, path.join(ctx.codexHome, 'skills'), 'codex', 'skill', 'SKILL.md');
+    roots.push(
+      { directory: path.join(ctx.home, '.agents/skills'), scope: 'user', followLinks: true },
+      { directory: path.join(ctx.codexHome, 'skills'), scope: 'user', followLinks: true },
+      { directory: path.join(ctx.codexHome, 'skills/.system'), scope: 'user', followLinks: false },
+    );
+  }
+  roots.push(...ctx.dirs.map(directory => ({ directory: path.join(directory, '.agents/skills'), scope: 'directory' as const, followLinks: true })));
+  ctx.codexSkillPaths = new Set();
+  const incompleteRoots = ctx.codexSkillIncompleteRoots = new Set<string>();
+  for (const root of roots) {
+    const result = await readConfigurationTree(ctx, root.directory, 'codex', 'skill', 'SKILL.md', {
+      scope: root.scope,
+      allowExternal: root.followLinks,
+      acceptFile: entry => entry.isFile() && entry.name === 'SKILL.md',
+      enterDirectory: entry => !entry.name.startsWith('.') && (root.followLinks || !entry.isSymbolicLink()),
+      maxDepth: 6,
+      maxDirectories: 2000,
+      maxEntries: root.scope === 'user' ? 20_000 : Math.min(20_000, ctx.discovery?.repositoryEntryLimit ?? 50_000),
+      fileLimit: root.scope === 'user' ? undefined : Infinity,
+    });
+    for (const source of result.sources) ctx.codexSkillPaths.add(source.path);
+    if (!result.complete) {
+      incompleteRoots.add(root.directory);
+      ctx.discovery!.complete = false;
+    }
   }
   if (ctx.options.system && process.platform !== 'win32') { await ctx.read('/etc/codex/config.toml', 'codex', 'settings', 'system'); await ctx.read('/etc/codex/hooks.json', 'codex', 'hooks', 'system'); }
   return ctx.sources.filter(s => s.owners.includes('codex'));
@@ -150,7 +174,13 @@ export const codex = adapter(codexMetadata, discover, async ctx => {
     }
   }
   const roots = [...ctx.dirs.map(d => path.join(d, '.agents/skills')), ...(ctx.options.user !== false ? [path.join(ctx.home, '.agents/skills'), path.join(ctx.codexHome, 'skills')] : [])];
-  await skills(e, ctx, roots, 'coexist');
+  const incompleteRoots = [...(ctx.codexSkillIncompleteRoots ?? [])];
+  for (const source of ctx.sources) {
+    if (source.kind === 'skill' && source.owners.includes('codex') && !ctx.codexSkillPaths?.has(source.path) && incompleteRoots.some(root => within(root, source.path))) {
+      decision(e, source, 'conditional', 'Codex Skill loading is unverified because discovery for this root reached a limit or an access error.');
+    }
+  }
+  await skills(e, ctx, roots, 'coexist', [], ctx.codexSkillPaths);
   e.notes.push(`Project trust: ${trust}. Project instruction byte limit: ${max}. Global instructions do not consume this budget.`, 'Markdown instructions are accumulated; Sightline does not infer which natural-language statement the model will obey.', 'Codex 0.167.2 source, rather than older documentation summaries, determines empty override and untrusted-project behavior.');
   if (rootIndex < 0) e.notes.push('No configured project-root marker found inside the inspection boundary; Codex checks only the session directory.');
   e.instructionBytes = bytes(e.instructions); return finish(e, ctx);
