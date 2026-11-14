@@ -873,10 +873,25 @@
     $('scan-status').classList.toggle('partial', succeeded && incomplete);
     $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', label));
   }
+  function renderRefreshSummary() {
+    const findings = groupFindings();
+    const errors = findings.filter(finding => finding.severity === 'error').length;
+    const warnings = findings.filter(finding => finding.severity === 'warn').length;
+    const counts = `${errors} error${errors === 1 ? '' : 's'} and ${warnings} warning${warnings === 1 ? '' : 's'}`;
+    const incomplete = report.discovery?.complete === false;
+    let message = 'Refresh complete. No errors or warnings found.';
+    if (errors || warnings) message = `Refresh complete. ${counts}.`;
+    if (incomplete) message = `Discovery incomplete. ${counts} in inspected sources.`;
+    const content = [node('span', message)];
+    if (incomplete) content.push(button('Review scan scope', () => $('scope-dialog').showModal(), 'text-button'));
+    else if (errors || warnings) content.push(button('Review findings', () => $('review-findings').click(), 'text-button'));
+    $('refresh-summary').replaceChildren(...content);
+  }
   async function refresh(target = short(report.target), fromHistory = false) {
     if (!live) return;
     const request = ++state.request;
     scanController?.abort(); scanController = new AbortController();
+    $('refresh-summary').replaceChildren();
     $('error').hidden = true; $('inspect').disabled = true; $('refresh').disabled = true;
     $('scan-status').classList.remove('failed', 'partial'); $('scan-status').classList.add('scanning');
     $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', 'Inspecting…'));
@@ -889,12 +904,13 @@
       if (request !== state.request) return;
       report = data.report;
       exportDocument = data.html;
+      renderRefreshSummary();
       readLocation();
       if (fromHistory) clearExcludingSourceSearch();
       const address = new URL(location.href);
       address.searchParams.set('target', short(report.target)); address.searchParams.set('trust', $('trust').value); address.searchParams.set('profile', report.inputs?.codexProfile ?? '');
       history.replaceState(null, '', address);
-      render(); toast('Configuration updated');
+      render();
       succeeded = true;
     } catch (error) {
       if (error.name !== 'AbortError' && request === state.request) { $('error').textContent = error.message; $('error').hidden = false; }

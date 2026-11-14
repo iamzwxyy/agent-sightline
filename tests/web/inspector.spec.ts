@@ -15,6 +15,48 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('refresh outcomes show current errors and warnings above source inspection on desktop and phone', async ({ page }) => {
+  const w = await workspace({ 'CLAUDE.md': 'Project instructions.' });
+  const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await writeFile(path.join(w.repo, '.mcp.json'), '{');
+      await mkdir(path.join(w.repo, '.claude'), { recursive: true });
+      await writeFile(path.join(w.repo, '.claude/settings.json'), '{"mcpServers":{}}');
+      await page.setViewportSize(viewport);
+      await page.goto(server.url + '#view=effective&client=claude&source=CLAUDE.md&line=1');
+      await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+      const summary = page.locator('#refresh-summary');
+      await expect(summary).toContainText('Refresh complete. 1 error and 1 warning.');
+      await expect(summary).toBeInViewport({ ratio: 1 });
+      await expect(page.locator('.code-line.highlight')).toBeInViewport({ ratio: 1 });
+      await page.screenshot({ path: test.info().outputPath(`refresh-outcomes-${viewport.width}.png`) });
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+      await summary.getByRole('button', { name: 'Review findings', exact: true }).focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#findings')).toBeVisible();
+      await expect(page.locator('#severity')).toHaveValue('actionable');
+      await expect(page.locator('#findings-list .finding')).toHaveCount(2);
+      await writeFile(path.join(w.repo, '.mcp.json'), '{"mcpServers":{}}');
+      await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+      await expect(summary).toContainText('Refresh complete. 0 errors and 1 warning.');
+      await writeFile(path.join(w.repo, '.claude/settings.json'), '{}');
+      await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+      await expect(summary).toHaveText('Refresh complete. No errors or warnings found.');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      const pending = page.waitForEvent('download');
+      await page.getByRole('button', { name: /Export report/ }).click();
+      const file = test.info().outputPath(`refresh-outcome-${viewport.width}.html`);
+      await (await pending).saveAs(file);
+      await page.context().setOffline(true);
+      await page.goto(pathToFileURL(file).href);
+      await expect(page.locator('#refresh-summary')).toBeEmpty();
+      await expect(page.locator('#findings-list .finding')).toHaveCount(0);
+      await page.context().setOffline(false);
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('mixed Windows path separators preserve alias decisions through export and offline re-export', async ({ page }) => {
   const w = await workspace({ '.agents/skills/shared/SKILL.md': '---\nname: shared-links\ndescription: Windows path fixture.\n---\nInvoke this body explicitly.\n' });
   try {
@@ -2233,6 +2275,8 @@ test('export preserves the inspected configuration through disk edits and an in-
     await page.getByRole('button', { name: 'Inspect Claude Code instructions', exact: true }).click();
     await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
     await expect(page.locator('#effective-document')).toContainText('Instructions before editing.');
+    await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+    await expect(page.locator('#refresh-summary')).toHaveText('Refresh complete. No errors or warnings found.');
     await writeFile(path.join(w.repo, 'CLAUDE.md'), 'Instructions after editing.');
     await page.route('**/api/scan?**', async route => {
       const response = await route.fetch();
@@ -2243,6 +2287,7 @@ test('export preserves the inspected configuration through disk edits and an in-
     await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
     await responseReady.promise;
     await expect(page.locator('#scan-status')).toHaveText('Inspecting…');
+    await expect(page.locator('#refresh-summary')).toBeEmpty();
     exportedReports.push(await exportCurrentReport());
     releaseResponse.resolve();
     await expect(page.locator('#scan-status')).toHaveText('Scan complete');
@@ -2251,6 +2296,7 @@ test('export preserves the inspected configuration through disk edits and an in-
     await page.locator('#target').fill('../outside');
     await page.locator('#inspect').click();
     await expect(page.locator('#scan-status')).toHaveText('Scan failed');
+    await expect(page.locator('#refresh-summary')).toBeEmpty();
     exportedReports.push(await exportCurrentReport());
     const reports = exportedReports.map(html => JSON.parse(html.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]));
     expect(reports.map(report => report.clients[0].instructions)).toEqual(['Instructions before editing.', 'Instructions after editing.', 'Instructions after editing.']);
@@ -2292,7 +2338,11 @@ test('incomplete discovery remains visible through refresh and a portable export
     await page.locator('#inspect').click();
     await expect(page.locator('#footer-target')).toHaveText('src/a.ts');
     await expect(page.locator('#scan-status')).toHaveText('Discovery incomplete');
-    await page.locator('#scope-button').click();
+    await expect(page.locator('#refresh-summary')).toContainText('Discovery incomplete.');
+    await expect(page.locator('#refresh-summary')).toContainText('in inspected sources.');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('#refresh-summary')).toBeInViewport({ ratio: 1 });
+    await page.locator('#refresh-summary').getByRole('button', { name: 'Review scan scope', exact: true }).click();
     await expect(page.locator('#scope-dialog')).toContainText('budget of 0');
     await page.keyboard.press('Escape');
     const pending = page.waitForEvent('download');
@@ -2300,6 +2350,7 @@ test('incomplete discovery remains visible through refresh and a portable export
     const filename = test.info().outputPath('partial-report.html');
     await (await pending).saveAs(filename);
     await page.goto(pathToFileURL(filename).href);
+    await expect(page.locator('#refresh-summary')).toBeEmpty();
     await expect(page.locator('#scan-status')).toHaveText('Discovery incomplete');
     await expect(page.getByRole('heading', { name: 'Configuration discovery is incomplete.', exact: true })).toBeVisible();
   } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.26 — 2026-11-15
+
+* Show refreshed error and warning counts across inspector views, including phone layouts.
+* Link incomplete-discovery outcomes to scan scope and actionable outcomes to filtered findings.
+* Retain source-line visibility as the feedback header appears. Clear the feedback while a new scan is pending or after a failed refresh.
+* Verify live error correction, unchanged refreshes, partial discovery, keyboard navigation and portable snapshots.
+
 ## 0.3.25 — 2026-11-15
 
 * Discover Codex Skill metadata through directory links in documented user and project roots. Match regular SKILL.md files, hidden-directory rules and the pinned client’s six-level discovery depth.

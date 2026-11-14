@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.26
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-15.
+
+* A browser journey failed before implementation because Refresh scan had no persistent current error/warning summary in source inspection. The fixed header now displays grouped actionable counts and opens the filtered findings view.
+* The correction journey fixes a JSON error and a misplaced MCP declaration independently, verifying one error/one warning, zero errors/one warning and the clear result. Desktop and phone checks retain a visible source line and support keyboard activation of Review findings. Automated WCAG AA checks passed.
+* Incomplete discovery displays counts for inspected sources and opens scan scope from a phone-sized layout. Pending and failed refreshes clear the previous feedback while preserving the captured report for export. Portable reports retain their inspection location and findings.
+* The 421-case core suite completed with 419 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. All 79 Chromium browser cases passed. The production dependency audit reported zero vulnerabilities.
+* All 42 historical published archive hashes matched their release manifest before final packaging.
+
 ## v0.3.25
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-15.

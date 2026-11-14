@@ -50,6 +50,7 @@
         <form id="profile-form" hidden><label for="codex-profile">Codex profile</label><input disabled data-startup-disabled id="codex-profile" placeholder="Default" spellcheck="false" autocomplete="off" pattern="[A-Za-z0-9_-]*" aria-describedby="profile-help"><button disabled data-startup-disabled type="submit" class="button button-small">Apply</button><span id="profile-help" class="sr-only">Enter the name of a user profile file, without .config.toml. Leave empty to use the base configuration.</span></form>
         <span id="snapshot-label" hidden>Report snapshot</span>
       </div>
+      <div id="refresh-summary" role="status" aria-atomic="true"></div>
       <p id="error" class="error-banner" role="alert" hidden></p>
       </div>
       <main id="main-content" tabindex="-1">

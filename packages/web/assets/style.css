@@ -108,6 +108,12 @@ h3 { font-size: 14px; font-weight: 600; }
 #scan-status.failed .connection { background: var(--red); }
 #scan-status.partial { color: var(--amber); }
 #scan-status.partial .connection { background: var(--amber); }
+#refresh-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; font-size: 12px; color: #4b5246; background: var(--surface); }
+#refresh-summary:not(:empty) { padding: 9px 35px; border-bottom: 1px solid var(--line); }
+#refresh-summary > span { flex: 1 1 220px; }
+#refresh-summary .text-button { flex-shrink: 0; }
+@media (max-width: 1000px) { #refresh-summary:not(:empty) { padding-inline: 24px; } }
+@media (max-width: 760px) { #refresh-summary:not(:empty) { padding-inline: 16px; } }
 kbd { border: 1px solid #dfe2d8; border-radius: 3px; background: #f9faf7; padding: 1px 4px; font: 11px var(--sans); color: #626b59; white-space: nowrap; }
 .trust-control { display: flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 12px; color: #626b59; }
 select { background: white; border: 1px solid #dfe2d9; border-radius: 4px; font-size: 12px; color: #5f6b54; padding: 5px 22px 5px 8px; max-width: 100%; }
