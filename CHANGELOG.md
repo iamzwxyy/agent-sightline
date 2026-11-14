@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.15 — 2026-11-14
+
+* Keep navigation, export, local inspection controls and scan errors in a persistent header while reading long sources.
+* Measure the header as controls wrap and errors appear. Source jumps reserve its current height so the selected line stays below the controls.
+* Keep the source filename visible and retain source and explanation panels alongside long code on wide desktop layouts. Long paths use a bounded filename bar with their complete text available on hover and in source details.
+* Allow the sidebar to scroll on short screens. Coarse-pointer navigation and inspection controls have larger touch targets, with 16-pixel target/profile inputs.
+* Open newly selected views at their heading and filters. Browser Back/Forward retains the previous reading position and source-line selection.
+* Clear the filename, status and parsed settings after the final source is removed and the scan is refreshed.
+* Verify long-source navigation, target selection, failed-scan feedback and sidebar access at phone, narrow-phone and landscape sizes.
+
 ## 0.3.14 — 2026-11-14
 
 * Bring the highlighted source line into view when following findings, settings, extension definitions or comparison origins. Long configuration files now open at the requested line.

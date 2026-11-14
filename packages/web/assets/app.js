@@ -26,6 +26,10 @@
   let targetItems = [];
   let targetIndex = -1;
   const $ = id => document.getElementById(id);
+  function updateHeaderHeights() {
+    document.documentElement.style.setProperty('--workspace-header-height', `${$('workspace-header').getBoundingClientRect().height}px`);
+    document.documentElement.style.setProperty('--source-header-height', `${document.querySelector('.file-tab').getBoundingClientRect().height}px`);
+  }
   const node = (tag, text, className) => {
     const element = document.createElement(tag);
     if (text !== undefined) element.textContent = text;
@@ -149,6 +153,7 @@
     return [...groups.values()];
   }
   function navigate(view, client, source, line = null) {
+    const viewChanged = state.view !== view;
     if (client) state.client = client;
     if (source) { state.source = source; state.instructionView = 'sources'; state.highlightLine = line; }
     state.view = view;
@@ -170,6 +175,7 @@
     if (view === 'compare') renderCompare();
     if (view === 'extensions') renderExtensions();
     if (view === 'findings') renderFindings();
+    if (viewChanged) window.scrollTo(0, 0);
   }
   function renderNavigation() {
     for (const [view, label] of Object.entries(viewLabels)) {
@@ -330,6 +336,11 @@
     renderSourceList();
     if (selected) renderSource(selected);
     else {
+      $('source-title').textContent = 'Select a source';
+      $('source-title').removeAttribute('title');
+      $('source-status').replaceChildren();
+      $('settings').replaceChildren();
+      $('settings').parentElement.hidden = true;
       $('instructions').replaceChildren(empty('No configuration discovered', 'Create an instruction file in this client’s supported location, then refresh the scan.'));
       $('why').replaceChildren(node('p', client.metadata.limitations.join(' ')));
     }
@@ -389,6 +400,7 @@
   function renderSource(source) {
     const client = selectedClient();
     $('source-title').textContent = short(source.path);
+    $('source-title').title = short(source.path);
     $('source-status').replaceChildren(badge(source.status));
     const preview = sourceText(source);
     const content = [];
@@ -455,6 +467,7 @@
       why.push(list);
     }
     $('why').replaceChildren(...why);
+    updateHeaderHeights();
     const highlighted = code.querySelector('.code-line.highlight');
     if (highlighted) window.requestAnimationFrame(() => {
       // History traversal restores its scroll position before the next frame.
@@ -714,6 +727,7 @@
     $('target').value = short(report.target);
     $('codex-profile').value = report.inputs?.codexProfile ?? '';
     $('profile-form').hidden = !live || !report.clients.some(client => client.client === 'codex') || report.assumptions.includes('User configuration: excluded.');
+    updateHeaderHeights();
     $('footer-target').textContent = short(report.target);
     const groups = groupFindings();
     $('finding-count').textContent = String(groups.length);
@@ -871,5 +885,8 @@
     control.removeAttribute('data-startup-disabled');
   });
   renderScanStatus();
+  const headerObserver = new window.ResizeObserver(updateHeaderHeights);
+  headerObserver.observe($('workspace-header'));
+  headerObserver.observe(document.querySelector('.file-tab'));
   render();
 })();

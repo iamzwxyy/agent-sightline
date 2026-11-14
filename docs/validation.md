@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.15
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* A v0.3.14 phone reproduction left the menu and target input more than 8,100 pixels above the viewport after following line 352. The persistent workspace header and source filename bar retain the controls and selected source while reading long files.
+* A long-list regression reproduced view navigation landing below the heading and filters. Newly selected views start at their heading. Browser Back/Forward retains the source line and reading position.
+* The 413-case core suite completed with 411 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* All 63 Chromium browser cases passed. Live and portable long-file journeys verify visible source context, unoccluded highlighted lines, desktop source/details panels, bounded long-path captions, reload and browser history.
+* Physical-coordinate touch checks cover 390×844, 320×568 and 844×390 viewports, larger controls, target suggestions, invalid-target feedback, correction, scrollable short-screen navigation and horizontal containment. Removing the final source clears the filename, status and parsed settings.
+* The local macOS Firefox launcher failed with “Could not find profile folder” before test execution. The Linux verification workflow includes the complete Firefox suite.
+
 ## v0.3.14
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.

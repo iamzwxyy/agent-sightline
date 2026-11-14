@@ -22,11 +22,15 @@ test('source jumps reveal long-file lines and retain them through reload and his
     '      { "hooks": [{ "type": "command", "command": "missing-line-jump-first" }] },',
     ...Array(100).fill(''),
     '      { "hooks": [{ "type": "command", "command": "missing-line-jump-second" }] }',
-    '    ]', '  }', '}',
+    '    ]', '  },',
+    '  "permissions": {"deny": ' + JSON.stringify(Array.from({ length: 100 }, (_, index) => `Read(src/folder-${index}/**)`)) + '}',
+    '}',
   ];
   const firstLine = lines.findIndex(line => line.includes('missing-line-jump-first')) + 1;
   const secondLine = lines.findIndex(line => line.includes('missing-line-jump-second')) + 1;
-  const w = await workspace({ '.claude/settings.json': lines.join('\n'), 'CLAUDE.md': Array(500).fill('Project instruction.').join('\n') });
+  const longName = 'long-source-context-'.repeat(8) + '.md';
+  const longPath = '.claude/rules/nested-source-context/' + longName;
+  const w = await workspace({ '.claude/settings.json': lines.join('\n'), 'CLAUDE.md': Array(500).fill('Project instruction.').join('\n'), [longPath]: 'Nested rule instruction.' });
   const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
   try {
     await page.goto(server.url);
@@ -46,7 +50,22 @@ test('source jumps reveal long-file lines and retain them through reload and his
         const highlighted = page.locator('.code-line.highlight');
         await expect(highlighted).toContainText('missing-line-jump-first');
         await expect(highlighted).toBeInViewport({ ratio: 1 });
+        await expect(page.locator('#workspace-header')).toBeInViewport({ ratio: 1 });
+        await expect(page.locator('.file-tab')).toBeInViewport({ ratio: 1 });
+        if (viewport.width === 1440) {
+          await expect(page.locator('.source-panel')).toBeInViewport({ ratio: 1 });
+          await expect(page.locator('.why-panel')).toBeInViewport({ ratio: 1 });
+        }
+        const header = await page.locator('.file-tab').boundingBox();
+        const line = await highlighted.boundingBox();
+        expect(line!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
         expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('line')).toBe(String(firstLine));
+        if (viewport.width === 390) await page.getByRole('button', { name: 'Toggle navigation' }).click();
+        await page.locator('#extensions-tab').click();
+        await expect(page.getByRole('heading', { name: 'Extensions', exact: true })).toBeInViewport({ ratio: 1 });
+        await page.goBack();
+        await expect(highlighted.locator('.line-number')).toHaveText(String(firstLine));
+        await expect(highlighted).toBeInViewport({ ratio: 1 });
         await page.reload();
         await expect(highlighted.locator('.line-number')).toHaveText(String(firstLine));
         await expect(highlighted).toBeInViewport({ ratio: 1 });
@@ -71,6 +90,11 @@ test('source jumps reveal long-file lines and retain them through reload and his
         await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
         await expect(highlighted).toHaveCount(0);
         expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).has('line')).toBe(false);
+        await page.locator('#sources .source').filter({ hasText: longName }).click();
+        await expect(page.locator('#source-title')).toHaveText(longPath);
+        await expect(page.locator('#source-title')).toHaveAttribute('title', longPath);
+        await expect(page.locator('.file-tab')).toBeInViewport({ ratio: 1 });
+        expect((await page.locator('.file-tab').boundingBox())!.height).toBeLessThanOrEqual(64);
       }
     }
   } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
@@ -101,6 +125,13 @@ test('source line links survive refresh and discard unavailable sources and inva
     await page.goto(server.url + '#view=effective&client=claude&source=missing.md&line=2');
     await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
     await expect(highlighted).toHaveCount(0);
+    await rm(path.join(w.repo, 'CLAUDE.md'));
+    await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+    await expect(page.locator('#scan-status')).toContainText('Scan complete');
+    await expect(page.locator('#source-title')).toHaveText('Select a source');
+    await expect(page.locator('#source-status')).toBeEmpty();
+    await expect(page.locator('.source-information')).toBeHidden();
+    await expect(page.locator('#instructions')).toContainText('No configuration discovered');
   } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 
@@ -1430,6 +1461,63 @@ test('file picker supports touch selection without page overflow', async ({ brow
     await expect(phone.locator('#target-picker')).toBeHidden();
     await expect(phone.locator('#scan-status')).toHaveText('Scan complete');
   } finally { await phone.close(); await server.close(); }
+});
+
+test('touch controls remain reachable after long-source jumps and short-screen navigation can scroll', async ({ browser, browserName }) => {
+  test.skip(browserName === 'firefox', 'Mobile context emulation is available in Chromium and WebKit.');
+  const w = await workspace({
+    'AGENTS.md': 'Project instruction.',
+    '.claude/settings.json': '{\n' + '\n'.repeat(350) + '"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"missing-persistent-header-hook"}]}]}\n}',
+    'src/selected.ts': '',
+  });
+  const server = await serve({ ...w, clients: ['codex', 'claude'], trust: 'trusted' });
+  const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  try {
+    for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }, { width: 844, height: 390 }]) {
+      await phone.setViewportSize(viewport);
+      await phone.goto(server.url + '#view=findings');
+      await phone.locator('#findings-list .finding').filter({ hasText: 'Hook command was not found or is not executable.' }).tap();
+      await phone.getByRole('button', { name: /Inspect source/ }).tap();
+      const highlighted = phone.locator('.code-line.highlight');
+      await expect(highlighted).toBeInViewport({ ratio: 1 });
+      await expect(phone.locator('#workspace-header')).toBeInViewport({ ratio: 1 });
+      await expect(phone.locator('.file-tab')).toBeInViewport({ ratio: 1 });
+      await expect(phone.locator('#target')).toBeInViewport({ ratio: 1 });
+      const header = await phone.locator('.file-tab').boundingBox();
+      const line = await highlighted.boundingBox();
+      expect(line!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
+      for (const control of ['#export', '#target', '#inspect', '#trust', '#codex-profile', '#copy-source']) {
+        const bounds = await phone.locator(control).boundingBox();
+        expect(bounds!.height).toBeGreaterThanOrEqual(44);
+      }
+      await phone.locator('#target').fill('../outside');
+      await phone.locator('#inspect').tap();
+      await expect(phone.locator('#error')).toBeInViewport({ ratio: 1 });
+      await expect(phone.locator('#error')).toContainText('Cannot inspect target');
+      await phone.locator('#target').fill('selected');
+      const choice = phone.getByRole('option').filter({ hasText: 'src/selected.ts' });
+      await expect(choice).toBeInViewport({ ratio: 1 });
+      const targetBounds = await choice.boundingBox();
+      await phone.touchscreen.tap(targetBounds!.x + targetBounds!.width / 2, targetBounds!.y + targetBounds!.height / 2);
+      await expect(phone.locator('#footer-target')).toHaveText('src/selected.ts');
+      await expect(phone.locator('#error')).toBeHidden();
+      if (viewport.width <= 760) {
+        const menu = phone.getByRole('button', { name: 'Toggle navigation' });
+        await expect(menu).toBeInViewport({ ratio: 1 });
+        const bounds = await menu.boundingBox();
+        expect(bounds!.width).toBeGreaterThanOrEqual(44);
+        await phone.touchscreen.tap(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
+        await expect(phone.locator('.sidebar')).toBeInViewport({ ratio: 1 });
+      }
+      expect(await phone.locator('.sidebar').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await phone.locator('#scope-button').scrollIntoViewIfNeeded();
+      await expect(phone.locator('#scope-button')).toBeInViewport({ ratio: 1 });
+      await phone.locator('#scope-button').tap();
+      await expect(phone.locator('#scope-dialog')).toBeVisible();
+      await phone.getByRole('button', { name: 'Close scan details', exact: true }).tap();
+      expect(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+  } finally { await phone.close(); await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 
 test('mobile navigation, filters and extension details stay usable without page overflow', async ({ page }) => {
