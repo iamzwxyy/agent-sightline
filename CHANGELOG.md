@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.16 — 2026-11-14
+
+* Select individual loading decisions when the same physical file appears more than once. Each row displays its own status, byte contribution, reason and captured import origin.
+* Retain the selected occurrence through reload, browser history, local refresh and portable reports. File-only links select the first decision, and invalid occurrence selectors recover to that decision.
+* Show import origins in the source list, including phone layouts. Follow a captured parent to its declaring import line from the explanation panel.
+* Keep keyboard focus on the selected source after activation so arrow-key and Enter navigation can continue.
+* Verify repeated-import branches, removed references, cross-client navigation and effective-text contribution links in live and offline inspections.
+
 ## 0.3.15 — 2026-11-14
 
 * Keep navigation, export, local inspection controls and scan errors in a persistent header while reading long sources.

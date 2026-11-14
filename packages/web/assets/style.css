@@ -173,7 +173,7 @@ button.stat:hover { background: #fafbf8; }
 .source.selected { background: #ecf1e6; border-left-color: #788d65; }
 .source-order { font: 11px var(--mono); color: #626b59; margin-top: 2px; text-align: center; }
 .source-name { display: block; font: 12px var(--mono); color: #5f6b54; overflow-wrap: anywhere; line-height: 1.7; }
-.source-dir { display: block; color: #626b59; font-size: 10px; overflow-wrap: anywhere; margin-top: 2px; }
+.source-dir, .source-import { display: block; color: #626b59; font-size: 10px; overflow-wrap: anywhere; margin-top: 2px; }
 .source .source-dot { width: 5px; height: 5px; border-radius: 50%; background: #9caf85; margin-top: 6px; }
 .source .source-dot.truncated, .source .source-dot.conditional { background: #c5a062; }
 .source .source-dot.invalid { background: #c68a79; }
@@ -201,6 +201,7 @@ button.stat:hover { background: #fafbf8; }
 .inspector-caption { font-size: 12px; color: #626b59; padding-bottom: 18px; }
 .why-panel h3 { margin: 13px 0 8px; color: #5f6b54; font-size: 12px; overflow-wrap: anywhere; }
 .why-panel p { font-size: 12px; line-height: 1.8; color: #626b59; margin: 10px 0; }
+.why-panel .source-link { display: block; max-width: 100%; margin: 10px 0; padding: 0; text-align: left; font: 11px/1.8 var(--mono); color: var(--green); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
 .path { font: 11px/1.8 var(--mono); color: #626b59; overflow-wrap: anywhere; }
 .detail-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 21px 0; padding: 17px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .detail-meta dt { font-size: 10px; color: #626b59; margin-bottom: 4px; }

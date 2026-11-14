@@ -10,6 +10,7 @@
     view: 'overview',
     client: report.clients.find(client => client.detected)?.client ?? report.clients[0]?.client,
     source: null,
+    sourceOccurrence: 1,
     sourceFilter: 'relevant',
     instructionView: 'sources',
     extensionKind: 'all',
@@ -152,10 +153,15 @@
     }
     return [...groups.values()];
   }
-  function navigate(view, client, source, line = null) {
+  function navigate(view, client, source, line = null, occurrence = 1) {
     const viewChanged = state.view !== view;
     if (client) state.client = client;
-    if (source) { state.source = source; state.instructionView = 'sources'; state.highlightLine = line; }
+    if (source) {
+      state.source = source;
+      state.sourceOccurrence = occurrence;
+      state.instructionView = 'sources';
+      state.highlightLine = line;
+    }
     state.view = view;
     document.body.classList.remove('nav-open');
     $('navigation-scrim').hidden = true;
@@ -164,6 +170,7 @@
     if (view === 'effective') {
       hash.set('client', state.client);
       if (state.source) hash.set('source', short(state.source));
+      if (state.source && state.sourceOccurrence > 1) hash.set('occurrence', String(state.sourceOccurrence));
       if (state.source && state.highlightLine !== null) hash.set('line', String(state.highlightLine));
       if (state.instructionView === 'document') hash.set('text', 'effective');
     }
@@ -312,10 +319,16 @@
     }, 'button button-small')));
     $('filter-summary').textContent = `${visible.length} of ${groups.length} findings shown`;
   }
-  function decisions() {
-    const client = selectedClient();
+  function sourceEntries(client = selectedClient()) {
     if (!client) return [];
-    return [...client.decisions].sort((left, right) => (left.order ?? 99999) - (right.order ?? 99999));
+    const occurrences = new Map();
+    return [...client.decisions]
+      .sort((left, right) => (left.order ?? Infinity) - (right.order ?? Infinity))
+      .map(source => {
+        const occurrence = (occurrences.get(source.path) ?? 0) + 1;
+        occurrences.set(source.path, occurrence);
+        return { source, occurrence };
+      });
   }
   function renderInstructions() {
     const client = selectedClient();
@@ -328,10 +341,15 @@
     $('instruction-explorer').hidden = state.instructionView !== 'sources';
     $('effective-document').hidden = state.instructionView !== 'document';
     if (state.instructionView === 'document') renderEffectiveDocument(client);
-    const sources = decisions();
-    const selected = sources.find(source => source.path === state.source) ?? sources.find(source => ['active', 'truncated'].includes(source.status) && ['instructions', 'rules'].includes(source.kind)) ?? sources[0];
-    if (selected?.path !== state.source) state.highlightLine = null;
+    const entries = sourceEntries(client);
+    const selection = entries.find(({ source, occurrence }) => source.path === state.source && occurrence === state.sourceOccurrence)
+      ?? entries.find(({ source }) => source.path === state.source)
+      ?? entries.find(({ source }) => ['active', 'truncated'].includes(source.status) && ['instructions', 'rules'].includes(source.kind))
+      ?? entries[0];
+    const selected = selection?.source;
+    if (selected?.path !== state.source || selection?.occurrence !== state.sourceOccurrence) state.highlightLine = null;
     state.source = selected?.path ?? null;
+    state.sourceOccurrence = selection?.occurrence ?? 1;
     $('copy-source').disabled = !selected;
     renderSourceList();
     if (selected) renderSource(selected);
@@ -348,10 +366,10 @@
   }
   function renderEffectiveDocument(client) {
     const origins = node('div', undefined, 'effective-origins');
-    client.decisions.filter(source => ['active', 'truncated'].includes(source.status) && source.content && ['instructions', 'rules'].includes(source.kind)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).forEach(source => {
+    sourceEntries(client).filter(({ source }) => ['active', 'truncated'].includes(source.status) && source.content && ['instructions', 'rules'].includes(source.kind)).forEach(({ source, occurrence }) => {
       origins.append(button(`${source.order} · ${short(source.path)}`, () => {
         state.instructionView = 'sources'; state.sourceFilter = 'all';
-        navigate('effective', client.client, source.path);
+        navigate('effective', client.client, source.path, null, occurrence);
       }, 'source-origin'));
     });
     const content = node('article', undefined, 'effective-document');
@@ -363,28 +381,34 @@
     $('effective-document').replaceChildren(content);
   }
   function renderSourceList() {
+    const restoreFocus = document.activeElement.classList.contains('source');
     const query = $('source-search').value.toLowerCase();
-    const sources = decisions().filter(source => (state.sourceFilter === 'all' || source.status !== 'ignored' || source.path === state.source) && short(source.path).toLowerCase().includes(query));
+    const sources = sourceEntries().filter(({ source }) => (state.sourceFilter === 'all' || source.status !== 'ignored' || source.path === state.source) && short(source.path).toLowerCase().includes(query));
     $('source-count').textContent = String(sources.length);
     document.querySelectorAll('[data-source-filter]').forEach(element => element.setAttribute('aria-pressed', String(element.dataset.sourceFilter === state.sourceFilter)));
     let previousGroup;
     const elements = [];
-    for (const source of sources) {
+    for (const { source, occurrence } of sources) {
       const group = source.order !== null ? 'Load order' : 'Not in the active chain';
       if (group !== previousGroup) { elements.push(node('div', group, 'source-group-label')); previousGroup = group; }
       const element = button('', () => {
-        state.source = source.path;
-        state.highlightLine = null;
-        navigate('effective', state.client, source.path);
-      }, `source ${source.path === state.source ? 'selected' : ''}`);
-      element.setAttribute('aria-label', `${basename(source.path)}, ${statusNames[source.status]}, ${short(source.path)}`);
+        navigate('effective', state.client, source.path, null, occurrence);
+      }, `source ${source.path === state.source && occurrence === state.sourceOccurrence ? 'selected' : ''}`);
+      const importedFrom = source.importedFrom ? `Imported from ${short(source.importedFrom.path)}:${source.importedFrom.line}` : '';
+      const labels = [basename(source.path), statusNames[source.status], short(source.path)];
+      if (importedFrom) labels.push(importedFrom);
+      if (occurrence > 1) labels.push(`occurrence ${occurrence}`);
+      element.setAttribute('aria-label', labels.join(', '));
       element.title = `${short(source.path)} — ${source.reason}`;
       const text = node('span');
-      text.append(node('span', basename(source.path), 'source-name'), node('span', short(source.path).replace(/\/[^/]+$/, '') || 'Repository root', 'source-dir'));
+      const directory = short(source.path).split('/').slice(0, -1).join('/') || 'Repository root';
+      text.append(node('span', basename(source.path), 'source-name'), node('span', directory, 'source-dir'));
+      if (importedFrom) text.append(node('span', importedFrom, 'source-import'));
       element.append(node('span', source.order === null ? '—' : String(source.order).padStart(2, '0'), 'source-order'), text, node('span', undefined, `source-dot ${source.status}`));
       elements.push(element);
     }
     $('sources').replaceChildren(...elements);
+    if (restoreFocus) $('sources').querySelector('.source.selected')?.focus({ preventScroll: true });
     if (!sources.length) $('sources').append(empty('No matching sources', 'Clear the filter to see the full source list.'));
   }
   function sourceText(source) {
@@ -458,7 +482,11 @@
       const pair = node('div'); pair.append(node('dt', label), node('dd', String(value))); metadata.append(pair);
     }
     why.push(metadata);
-    if (source.importedFrom) why.push(node('p', `Imported from ${short(source.importedFrom.path)}:${source.importedFrom.line}`, 'path'));
+    if (source.importedFrom) {
+      const label = `Imported from ${short(source.importedFrom.path)}:${source.importedFrom.line}`;
+      const owner = sourceClient(source.importedFrom, client.client);
+      why.push(owner ? button(label, () => inspectSourceLocation(source.importedFrom, owner), 'source-link') : node('p', label, 'path'));
+    }
     why.push(button('Copy source path', () => copy(source.path), 'text-button'));
     const related = groupFindings().filter(finding => finding.location.path === source.path && (!finding.clients.length || finding.clients.includes(state.client)));
     if (related.length) {
@@ -851,6 +879,8 @@
     state.instructionView = hash.get('text') === 'effective' ? 'document' : 'sources';
     const sourcePath = hash.get('source');
     state.source = sourcePath ? report.sources.find(source => short(source.path) === sourcePath)?.path ?? null : null;
+    const occurrence = Number(hash.get('occurrence'));
+    state.sourceOccurrence = Number.isSafeInteger(occurrence) && occurrence > 0 ? occurrence : 1;
     const line = Number(hash.get('line'));
     state.highlightLine = state.source && Number.isSafeInteger(line) && line > 0 ? line : null;
   }

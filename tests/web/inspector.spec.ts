@@ -15,6 +15,135 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('repeated source decisions keep their own status, import origin and browser location live and offline', async ({ page }) => {
+  const w = await workspace({
+    'AGENTS.md': 'Codex instruction.',
+    'CLAUDE.md': '# Root\n@branch-a.md\n@branch-b.md\n@branch-c.md\n',
+    'branch-a.md': '# A\n@shared.md\n',
+    'branch-b.md': '# B\n\n@shared.md\n',
+    'branch-c.md': '# C\n\n\n@shared.md\n',
+    'shared.md': '# Shared policy\nKeep this instruction once.\n',
+  });
+  const server = await serve({ ...w, user: false, clients: ['claude', 'codex'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('repeated-source-decisions.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.goto(url + '#view=effective&client=claude');
+      await page.getByRole('button', { name: 'All discovered', exact: true }).click();
+      const rows = page.locator('#sources .source').filter({ has: page.locator('.source-name', { hasText: 'shared.md' }) });
+      await expect(rows).toHaveCount(3);
+      await rows.nth(1).click();
+      await expect(page.locator('#sources .source.selected')).toHaveCount(1);
+      await expect(rows.nth(1)).toHaveClass(/selected/);
+      await expect(rows.nth(1)).toBeFocused();
+      await expect(page.locator('#source-status')).toHaveText('Not loaded');
+      await expect(page.locator('#why .detail-meta > div').filter({ has: page.getByText('Loaded size', { exact: true }) }).locator('dd')).toHaveText('0 bytes');
+      await expect(page.locator('#why')).toContainText('Already loaded through the same canonical source path.');
+      await expect(page.locator('#why')).toContainText('Imported from branch-b.md:3');
+      expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
+      await page.reload();
+      await expect(rows.nth(1)).toHaveClass(/selected/);
+      await expect(page.locator('#source-status')).toHaveText('Not loaded');
+      await page.locator('#why').getByRole('button', { name: 'Imported from branch-b.md:3', exact: true }).click();
+      await expect(page.locator('#source-title')).toHaveText('branch-b.md');
+      await expect(page.locator('.code-line.highlight .line-number')).toHaveText('3');
+      await expect(page.locator('.code-line.highlight')).toContainText('@shared.md');
+      await page.goBack();
+      await expect(rows.nth(1)).toHaveClass(/selected/);
+      await expect(page.locator('#why')).toContainText('Imported from branch-b.md:3');
+      await rows.nth(2).click();
+      await expect(page.locator('#sources .source.selected')).toHaveCount(1);
+      await expect(page.locator('#why')).toContainText('Imported from branch-c.md:4');
+      expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('3');
+      await page.goBack();
+      await expect(rows.nth(1)).toHaveClass(/selected/);
+      await rows.nth(1).focus();
+      await page.keyboard.press('ArrowDown');
+      await expect(rows.nth(2)).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(rows.nth(2)).toHaveClass(/selected/);
+      await expect(rows.nth(2)).toBeFocused();
+      await page.goBack();
+      await expect(rows.nth(1)).toHaveClass(/selected/);
+      await page.getByRole('button', { name: 'Inspect Codex instructions', exact: true }).click();
+      await expect(page.locator('#source-title')).toHaveText('AGENTS.md');
+      await page.getByRole('button', { name: 'Inspect Claude Code instructions', exact: true }).click();
+      await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
+      await page.goBack();
+      await page.goBack();
+      await expect(rows.nth(1)).toHaveClass(/selected/);
+      if (url === server.url) {
+        await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+        await expect(page.locator('#scan-status')).toContainText('Scan complete');
+        await expect(rows.nth(1)).toHaveClass(/selected/);
+        await writeFile(path.join(w.repo, 'branch-b.md'), '# B\n');
+        await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+        await expect(page.locator('#scan-status')).toContainText('Scan complete');
+        await expect(rows).toHaveCount(2);
+        await expect(rows.nth(1)).toHaveClass(/selected/);
+        await expect(page.locator('#why')).toContainText('Imported from branch-c.md:4');
+      }
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(url + '#view=effective&client=claude&source=shared.md&occurrence=2');
+      await expect(page.locator('#source-status')).toHaveText('Not loaded');
+      await expect(rows.nth(1).locator('.source-import')).toBeVisible();
+      await expect(rows.nth(1).locator('.source-import')).toHaveText(url === server.url ? 'Imported from branch-c.md:4' : 'Imported from branch-b.md:3');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('legacy source links and effective-text origins select the intended contribution', async ({ page }) => {
+  const w = await workspace({ 'CLAUDE.md': 'First contribution.\nSecond line.\n' });
+  try {
+    const report = await scan({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+    const client = report.clients[0];
+    const original = client.decisions.find(source => source.status === 'active' && source.kind === 'instructions')!;
+    const second = {
+      ...original,
+      order: 2,
+      status: 'truncated' as const,
+      content: 'First co',
+      loadedBytes: 8,
+      estimatedTokens: 2,
+      reason: 'Legacy report truncated contribution.',
+      importedFrom: { path: path.join(w.repo, 'unavailable-parent.md'), line: 1, column: 1 },
+    };
+    client.decisions.push(second);
+    client.instructions += '\n\n' + second.content;
+    client.instructionBytes = Buffer.byteLength(client.instructions);
+    client.estimatedTokens = Math.ceil(client.instructionBytes / 4);
+    delete report.instructionDiff;
+    const file = test.info().outputPath('legacy-source-contributions.html');
+    await writeFile(file, html(report));
+    const url = pathToFileURL(file).href;
+    await page.goto(url + '#view=effective&client=claude&source=CLAUDE.md&occurrence=2');
+    await expect(page.locator('#source-status')).toHaveText('Truncated');
+    await expect(page.locator('#why .detail-meta > div').filter({ has: page.getByText('Loaded size', { exact: true }) }).locator('dd')).toHaveText('8 bytes');
+    await expect(page.locator('#why')).toContainText('Legacy report truncated contribution.');
+    await expect(page.locator('#why')).toContainText('Imported from unavailable-parent.md:1');
+    await expect(page.locator('#why').getByRole('button', { name: 'Imported from unavailable-parent.md:1', exact: true })).toHaveCount(0);
+    await expect(page.locator('#sources .source.selected')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+    await page.locator('#effective-document').getByRole('button', { name: '2 · CLAUDE.md', exact: true }).click();
+    await expect(page.locator('#source-status')).toHaveText('Truncated');
+    expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
+    await page.reload();
+    await expect(page.locator('#source-status')).toHaveText('Truncated');
+    for (const occurrence of ['', '&occurrence=0', '&occurrence=-1', '&occurrence=2.5', '&occurrence=unknown', '&occurrence=9007199254740992', '&occurrence=999']) {
+      await page.goto(url + '#view=effective&client=claude&source=CLAUDE.md' + occurrence);
+      await expect(page.locator('#source-status')).toHaveText('Loaded');
+      await expect(page.locator('#sources .source.selected')).toHaveCount(1);
+    }
+  } finally { await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('source jumps reveal long-file lines and retain them through reload and history live and offline', async ({ page }) => {
   const lines = [
     '{', '  "hooks": {', '    "UserPromptSubmit": [',
