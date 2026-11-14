@@ -197,6 +197,7 @@
       const element = button('', () => {
         state.source = null;
         state.highlightLine = null;
+        $('source-search').value = '';
         navigate('effective', client.client);
       }, `client ${client.client === state.client && state.view === 'effective' ? 'selected' : ''}`);
       element.append(avatar(client.client), node('span', names[client.client]));
@@ -251,7 +252,11 @@
     const stats = [
       { label: 'Errors', value: errors.length, note: 'Configuration needs a fix', className: 'error', action: () => { $('severity').value = 'error'; navigate('findings'); } },
       { label: 'Warnings', value: warnings.length, note: 'Behavior worth checking', className: 'warn', action: () => { $('severity').value = 'warn'; navigate('findings'); } },
-      { label: 'Sources discovered', value: report.sources.length, note: 'Across project and user scope', action: () => { state.sourceFilter = 'all'; navigate('effective'); } },
+      { label: 'Sources discovered', value: report.sources.length, note: 'Across project and user scope', action: () => {
+        state.sourceFilter = 'all';
+        $('source-search').value = '';
+        navigate('effective');
+      } },
       { label: 'Clients configured', value: detected.length, note: 'With versioned loading rules', action: () => navigate('compare') },
     ];
     $('stats').replaceChildren(...stats.map(stat => {
@@ -263,7 +268,11 @@
     if (!actionable.length && incomplete) $('priority-findings').append(empty('Review discovery limits', 'The displayed findings may be filtered. Open scan scope for the inspection budgets.', button('Review scan scope', () => $('scope-dialog').showModal(), 'button')));
     if (!actionable.length && !incomplete) $('priority-findings').append(empty(noConfiguration ? 'No configuration to diagnose yet' : 'No errors or warnings found', noConfiguration ? 'Codex reads AGENTS.md, Claude Code reads CLAUDE.md, and Copilot reads .github/copilot-instructions.md. Refresh after adding your configuration.' : 'You can still inspect information notices and source loading decisions.'));
     $('client-overview').replaceChildren(...detected.map(client => {
-      const element = button('', () => { state.source = null; navigate('effective', client.client); }, 'client-card');
+      const element = button('', () => {
+        state.source = null;
+        $('source-search').value = '';
+        navigate('effective', client.client);
+      }, 'client-card');
       const heading = node('div', undefined, 'client-card-heading');
       heading.append(avatar(client.client), node('h3', names[client.client]), node('span', '↗', 'row-arrow'));
       const loaded = client.decisions.filter(source => ['active', 'truncated'].includes(source.status) && ['rules', 'instructions'].includes(source.kind));
@@ -367,10 +376,7 @@
   function renderEffectiveDocument(client) {
     const origins = node('div', undefined, 'effective-origins');
     sourceEntries(client).filter(({ source }) => ['active', 'truncated'].includes(source.status) && source.content && ['instructions', 'rules'].includes(source.kind)).forEach(({ source, occurrence }) => {
-      origins.append(button(`${source.order} · ${short(source.path)}`, () => {
-        state.instructionView = 'sources'; state.sourceFilter = 'all';
-        navigate('effective', client.client, source.path, null, occurrence);
-      }, 'source-origin'));
+      origins.append(button(`${source.order} · ${short(source.path)}`, () => inspectSourceLocation({ path: source.path }, client.client, occurrence), 'source-origin'));
     });
     const content = node('article', undefined, 'effective-document');
     const conditional = client.decisions.filter(source => source.status === 'conditional' && ['instructions', 'rules'].includes(source.kind));
@@ -543,11 +549,13 @@
       ?? clients.find(client => client.decisions.some(source => source.path === location.path && source.status !== 'ignored'))?.client
       ?? clients[0]?.client;
   }
-  function inspectSourceLocation(location, preferred) {
+  function inspectSourceLocation(location, preferred, occurrence = 1) {
     const client = sourceClient(location, preferred);
     if (!client) return;
-    $('detail-dialog').close(); state.sourceFilter = 'all'; $('source-search').value = '';
-    navigate('effective', client, location.path, location.line);
+    $('detail-dialog').close();
+    state.sourceFilter = 'all';
+    $('source-search').value = '';
+    navigate('effective', client, location.path, location.line ?? null, occurrence);
   }
   function renderSettings() {
     const selected = $('setting-client').value;
@@ -643,7 +651,12 @@
       panel.append(heading, node('p', `${client.instructionBytes.toLocaleString()} bytes · ${loaded.length} ${loaded.length === 1 ? 'source' : 'sources'} loaded${conditional ? ` · ${conditional} conditional` : ''}`, 'comparison-document-meta'));
       if (client.instructions) { const text = node('pre', client.instructions, 'comparison-document-text'); text.tabIndex = 0; text.setAttribute('aria-label', `${names[client.client]} effective instructions`); panel.append(text); }
       else panel.append(node('p', 'No proven active instruction text for this target.', 'comparison-document-text subtle'));
-      panel.append(button('Trace this instruction chain →', () => { state.source = null; state.instructionView = 'sources'; navigate('effective', client.client); }, 'text-button'));
+      panel.append(button('Trace this instruction chain →', () => {
+        state.source = null;
+        state.instructionView = 'sources';
+        $('source-search').value = '';
+        navigate('effective', client.client);
+      }, 'text-button'));
       return panel;
     }));
     const sources = report.sources.filter(source => ['instructions', 'rules'].includes(source.kind));
@@ -656,10 +669,10 @@
       const decisions = clients.map(client => client.decisions.find(decision => decision.sourceId === source.id));
       if ($('differences-only').checked && new Set(decisions.map(decision => JSON.stringify([decision?.status ?? 'ignored', decision?.loadedBytes ?? 0, decision?.content ?? '']))).size <= 1) continue;
       const row = node('tr'); const label = node('td');
-      label.append(button(basename(source.path), () => { state.sourceFilter = 'all'; navigate('effective', clients[0].client, source.path); }, 'source-link'), node('span', short(source.path), 'source-path')); row.append(label);
+      label.append(button(basename(source.path), () => inspectSourceLocation({ path: source.path }, clients[0].client), 'source-link'), node('span', short(source.path), 'source-path')); row.append(label);
       decisions.forEach((decision, index) => {
         const cell = node('td');
-        const action = button('', () => { state.sourceFilter = 'all'; navigate('effective', clients[index].client, source.path); }, 'source-link');
+        const action = button('', () => inspectSourceLocation({ path: source.path }, clients[index].client), 'source-link');
         action.append(badge(decision?.status ?? 'ignored')); action.title = decision?.reason ?? 'This client does not load this source.'; cell.append(action); row.append(cell);
       });
       body.append(row); count++;
@@ -904,6 +917,10 @@
   window.addEventListener('popstate', () => {
     if (location.hash === '#main-content') return;
     readLocation();
+    const sourceQuery = $('source-search').value.toLowerCase();
+    if (state.view === 'effective' && (!state.source || !short(state.source).toLowerCase().includes(sourceQuery))) {
+      $('source-search').value = '';
+    }
     if (live) {
       const params = new URLSearchParams(location.search);
       const target = params.get('target') ?? initialTarget;

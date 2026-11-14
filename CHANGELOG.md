@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.18 — 2026-11-14
+
+* Open effective-text origins and instruction coverage links through the existing source-inspection path. Stale source searches clear and each destination appears in the source list.
+* Retain exact loading occurrences when following effective-text origins, including separate contributions in earlier reports.
+* Start client inspections and the discovered-source overview with a clear source search. This applies to sidebar clients, overview cards and comparison instruction chains.
+* Clear a source search that excludes the destination when using browser Back/Forward. Matching searches remain available, and source-row selection and local refresh retain search text.
+* Verify filtered navigation, loaded and ignored coverage states, repeated imports and client entry points in live and offline reports at desktop and phone sizes.
+
 ## 0.3.17 — 2026-11-14
 
 * Reveal the selected source within long lists after deep links, source jumps, reload, browser history and local refresh.

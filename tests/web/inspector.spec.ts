@@ -15,6 +15,141 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('effective-text source jumps and history reveal destinations hidden by a source search live and offline', async ({ page }) => {
+  const w = await workspace({
+    'AGENTS.md': 'Codex instructions.\n',
+    'CLAUDE.md': 'Claude instructions.\n@shared.md\n@repeat.md\n',
+    'repeat.md': '@shared.md\n',
+    'shared.md': 'Shared instructions.\n',
+  });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('source-search-navigation.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto('about:blank');
+        await page.goto(url + '#view=effective&client=claude');
+        await page.locator('#source-search').fill('CLAUDE.md');
+        await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+        await page.locator('#effective-document .source-origin').filter({ hasText: 'shared.md' }).click();
+        await expect(page.locator('#source-title')).toHaveText('shared.md');
+        await expect(page.locator('#source-search')).toHaveValue('');
+        await expect(page.locator('#sources .source[aria-pressed="true"]')).toHaveCount(1);
+        await page.locator('#source-search').fill('shared.md');
+        await page.locator('#sources .source').filter({ hasText: 'Imported from repeat.md:1' }).click();
+        await expect(page.locator('#source-status')).toHaveText('Not loaded');
+        await expect(page.locator('#source-search')).toHaveValue('shared.md');
+        await page.locator('#source-search').fill('CLAUDE.md');
+        await page.locator('#sources .source').click();
+        await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
+        await expect(page.locator('#source-search')).toHaveValue('CLAUDE.md');
+        await page.goBack();
+        await expect(page.locator('#source-title')).toHaveText('shared.md');
+        await expect(page.locator('#source-status')).toHaveText('Not loaded');
+        await expect(page.locator('#source-search')).toHaveValue('');
+        await expect(page.locator('#sources .source[aria-pressed="true"]')).toHaveCount(1);
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
+        await page.goForward();
+        await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
+        await page.locator('#source-search').fill('.md');
+        await page.locator('#sources .source').filter({ hasText: 'Imported from repeat.md:1' }).click();
+        await page.goBack();
+        await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
+        await expect(page.locator('#source-search')).toHaveValue('.md');
+        await page.goForward();
+        await expect(page.locator('#source-status')).toHaveText('Not loaded');
+        await expect(page.locator('#source-search')).toHaveValue('.md');
+        await page.locator('#source-search').fill('unmatched-source');
+        await expect(page.locator('#sources')).toContainText('No matching sources');
+        if (url === server.url) {
+          await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+          await expect(page.locator('#scan-status')).toContainText('Scan complete');
+          await expect(page.locator('#source-search')).toHaveValue('unmatched-source');
+        }
+        await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+        await page.locator('#effective-document .source-origin').filter({ hasText: 'shared.md' }).click();
+        await expect(page.locator('#source-search')).toHaveValue('');
+        await expect(page.locator('#source-title')).toHaveText('shared.md');
+        await expect(page.locator('#sources .source[aria-pressed="true"]')).toHaveCount(1);
+        await page.reload();
+        await expect(page.locator('#sources .source[aria-pressed="true"]')).toHaveCount(1);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('comparison origins and client entry points clear stale source searches live and offline', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'Codex instructions.\n', 'CLAUDE.md': 'Claude instructions.\n' });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  const openNavigation = async () => {
+    const toggle = page.getByRole('button', { name: 'Toggle navigation', exact: true });
+    if (await toggle.isVisible()) await toggle.click();
+  };
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('client-source-navigation.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto('about:blank');
+        await page.goto(url + '#view=effective&client=claude');
+        await page.locator('#source-search').fill('CLAUDE.md');
+        await openNavigation();
+        await page.locator('#compare-tab').click();
+        const row = page.locator('#comparison-matrix tbody tr').filter({ hasText: 'AGENTS.md' });
+        await row.getByRole('button', { name: 'AGENTS.md', exact: true }).click();
+        await expect(page.locator('#source-title')).toHaveText('AGENTS.md');
+        await expect(page.locator('#source-search')).toHaveValue('');
+        await expect(page.locator('#sources .source[aria-pressed="true"]')).toHaveCount(1);
+        await page.locator('#source-search').fill('CLAUDE.md');
+        await openNavigation();
+        await page.locator('#compare-tab').click();
+        await row.locator('td').nth(2).getByRole('button').click();
+        await expect(page.locator('#effective-title')).toHaveText('Claude Code’s instructions');
+        await expect(page.locator('#source-title')).toHaveText('AGENTS.md');
+        await expect(page.locator('#source-status')).toHaveText('Not loaded');
+        await expect(page.locator('#source-search')).toHaveValue('');
+        await expect(page.locator('#sources .source[aria-pressed="true"]')).toHaveCount(1);
+        await page.locator('#source-search').fill('unmatched-source');
+        await openNavigation();
+        await page.locator('#compare-tab').click();
+        await page.locator('#comparison-text .comparison-document').first().getByRole('button', { name: /Trace this instruction chain/ }).click();
+        await expect(page.locator('#source-search')).toHaveValue('');
+        await expect(page.locator('#source-title')).toHaveText('AGENTS.md');
+        await page.locator('#source-search').fill('unmatched-source');
+        await openNavigation();
+        await page.getByRole('button', { name: 'Inspect Claude Code instructions', exact: true }).click();
+        await expect(page.locator('#source-search')).toHaveValue('');
+        await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
+        await page.locator('#source-search').fill('unmatched-source');
+        await openNavigation();
+        await page.locator('#overview-tab').click();
+        await page.locator('#client-overview .client-card').filter({ hasText: 'Claude Code' }).click();
+        await expect(page.locator('#source-search')).toHaveValue('');
+        await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
+        await expect(page.locator('#sources .source[aria-pressed="true"]')).toHaveCount(1);
+        await page.locator('#source-search').fill('unmatched-source');
+        await openNavigation();
+        await page.locator('#overview-tab').click();
+        await page.getByRole('button', { name: /Sources discovered/ }).click();
+        await expect(page.locator('#source-search')).toHaveValue('');
+        await expect(page.locator('#source-count')).toHaveText('2');
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('source selection stays inside its list through deep links, history and refresh live and offline', async ({ page }) => {
   const filenames = Array.from({ length: 45 }, (_, index) => `sources/item-${String(index).padStart(2, '0')}.md`);
   const last = filenames.at(-1)!;
@@ -217,8 +352,10 @@ test('legacy source links and effective-text origins select the intended contrib
     await expect(page.locator('#why')).toContainText('Imported from unavailable-parent.md:1');
     await expect(page.locator('#why').getByRole('button', { name: 'Imported from unavailable-parent.md:1', exact: true })).toHaveCount(0);
     await expect(page.locator('#sources .source.selected')).toHaveCount(1);
+    await page.locator('#source-search').fill('unmatched-source');
     await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
     await page.locator('#effective-document').getByRole('button', { name: '2 · CLAUDE.md', exact: true }).click();
+    await expect(page.locator('#source-search')).toHaveValue('');
     await expect(page.locator('#source-status')).toHaveText('Truncated');
     expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
     await page.reload();

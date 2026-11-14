@@ -7,18 +7,18 @@ One file. Several agents. Different instructions. Sightline shows every discover
 Open a terminal in your project folder and run one command to inspect your repository in the browser.
 
 ```sh
-npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.17/agent-sightline-0.3.17.tgz ui
+npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.18/agent-sightline-0.3.18.tgz ui
 ```
 
 For repeated use, install the CLI. The bundled demo provides a sample workspace with intentional configuration problems.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.17/agent-sightline-0.3.17.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.18/agent-sightline-0.3.18.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.17.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.18.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -60,7 +60,7 @@ The browser UI has client/source navigation, effective content, provenance expla
 
 The workspace opens with grouped errors and warnings. Select a finding to read its cause and suggested resolution, then jump to the source line. The source explorer shows the original redacted file with line numbers and the byte cutoff. Find target files by name, path or fuzzy query with ⌘K / Ctrl+K. Use arrow keys and Enter to select a result, or inspect a typed path. Filter sources with `/` and inspect client coverage in the comparison matrix. Trust assumptions can be changed from the top bar. Target and trust changes cancel superseded scans and pending configuration reads.
 
-Read effective text shows the exact accumulated instructions with clickable source origins. Compare clients finds shared paragraphs across different source files, with filters for shared content and different recipients. Each occurrence links to the owning client and source lines. The full instruction text also appears side by side. Settings lets you search resolved values, inspect the selected definition and follow replaced layers. Source jumps bring the selected line into view, and source links retain that line through reload and browser Back/Forward in live and portable reports. Refresh scan retains the selected line in the local inspector. Repeated source rows retain their individual loading decisions and captured import origins. Open an import origin to inspect its declaring line. The selected occurrence survives reload and browser history in live and portable reports. Navigation, export and local inspection controls stay visible while reading long sources. The source filename stays in view. Long source lists reveal the selected row while keeping desktop search and filters accessible. Wide desktop layouts keep source and explanation panels beside the code. Newly selected views open at their heading and filters. The target and trust choice survive reloads, and browser Back returns through your inspection history. A repository with no configuration opens with a working sample-workspace entry point.
+Read effective text shows the exact accumulated instructions with clickable source origins. Compare clients finds shared paragraphs across different source files, with filters for shared content and different recipients. Each occurrence links to the owning client and source lines. The full instruction text also appears side by side. Settings lets you search resolved values, inspect the selected definition and follow replaced layers. Source jumps bring the selected line into view, and source links retain that line through reload and browser Back/Forward in live and portable reports. Refresh scan retains the selected line in the local inspector. Repeated source rows retain their individual loading decisions and captured import origins. Open an import origin to inspect its declaring line. The selected occurrence survives reload and browser history in live and portable reports. Navigation, export and local inspection controls stay visible while reading long sources. The source filename stays in view. Long source lists reveal the selected row while keeping desktop search and filters accessible. Source origins and client entry points clear stale searches. Browser history clears a search that excludes its destination. Wide desktop layouts keep source and explanation panels beside the code. Newly selected views open at their heading and filters. The target and trust choice survive reloads, and browser Back returns through your inspection history. A repository with no configuration opens with a working sample-workspace entry point.
 
 MCP extension details link each configured field to its contributing file and line. A Codex server can inherit its command from user settings and its arguments from a project layer. Findings and terminal explanations retain those separate origins.
 
@@ -109,7 +109,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.3.17.tgz
+npm install -g ./agent-sightline-0.3.18.tgz
 agent-sightline demo
 ```
 

@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.18
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* Two browser regressions failed against v0.3.17. Effective-text origins and instruction coverage links opened the requested source while a retained search excluded its selected row from the list.
+* The existing source-inspection path now handles those origins and preserves a requested loading occurrence. Sidebar clients, overview client cards, comparison instruction chains and the discovered-source overview start with a clear source search.
+* The 413-case core suite completed with 411 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* All 68 Chromium browser cases passed. Added live/offline journeys cover desktop and phone layouts, active and ignored coverage states, repeated-import selection, source-row filtering, reload and browser history. Back/Forward clears an excluding search and retains a matching query. Local refresh retains search text, including a query with no matching sources.
+* A legacy renderer fixture retains the second truncated contribution and its eight-byte count after following an effective-text origin from an empty search result.
+* All 36 historical published archive hashes matched their release manifest before packaging.
+
 ## v0.3.17
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
