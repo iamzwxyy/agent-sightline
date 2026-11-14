@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.14 — 2026-11-14
+
+* Bring the highlighted source line into view when following findings, settings, extension definitions or comparison origins. Long configuration files now open at the requested line.
+* Include one-based line numbers in source links. Restore the same line after reload, refresh and browser Back/Forward in the local inspector and portable reports.
+* Clear line selection when opening a different source, and handle unavailable sources and invalid line numbers without highlighting an unrelated location.
+* Put one-command repository inspection first on the website, guide and README, with larger mobile copy targets and expandable global-install instructions.
+
 ## 0.3.13 — 2026-11-14
 
 * Resolve copied Windows environment keys case-insensitively for executable lookup, MCP references and missing-variable checks. PATH/PATHEXT selection follows Node subprocess key ordering, correcting false command-missing findings when the inherited environment uses Path.

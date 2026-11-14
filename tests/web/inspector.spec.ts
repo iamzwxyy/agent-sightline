@@ -15,6 +15,95 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('source jumps reveal long-file lines and retain them through reload and history live and offline', async ({ page }) => {
+  const lines = [
+    '{', '  "hooks": {', '    "UserPromptSubmit": [',
+    ...Array(350).fill(''),
+    '      { "hooks": [{ "type": "command", "command": "missing-line-jump-first" }] },',
+    ...Array(100).fill(''),
+    '      { "hooks": [{ "type": "command", "command": "missing-line-jump-second" }] }',
+    '    ]', '  }', '}',
+  ];
+  const firstLine = lines.findIndex(line => line.includes('missing-line-jump-first')) + 1;
+  const secondLine = lines.findIndex(line => line.includes('missing-line-jump-second')) + 1;
+  const w = await workspace({ '.claude/settings.json': lines.join('\n'), 'CLAUDE.md': Array(500).fill('Project instruction.').join('\n') });
+  const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('long-source-lines.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto(url + '#view=findings');
+        const findings = page.locator('#findings-list .finding').filter({ hasText: 'Hook command was not found or is not executable.' });
+        await expect(findings).toHaveCount(2);
+        await findings.first().click();
+        await page.getByRole('button', { name: /Inspect source/ }).click();
+        const highlighted = page.locator('.code-line.highlight');
+        await expect(highlighted).toContainText('missing-line-jump-first');
+        await expect(highlighted).toBeInViewport({ ratio: 1 });
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('line')).toBe(String(firstLine));
+        await page.reload();
+        await expect(highlighted.locator('.line-number')).toHaveText(String(firstLine));
+        await expect(highlighted).toBeInViewport({ ratio: 1 });
+        if (viewport.width === 390) await page.getByRole('button', { name: 'Toggle navigation' }).click();
+        await page.locator('#findings-tab').click();
+        await findings.last().click();
+        await page.getByRole('button', { name: /Inspect source/ }).click();
+        await expect(highlighted).toContainText('missing-line-jump-second');
+        await expect(highlighted).toBeInViewport({ ratio: 1 });
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('line')).toBe(String(secondLine));
+        await page.goBack();
+        await expect(page.locator('#findings')).toBeVisible();
+        await page.goBack();
+        await expect(highlighted.locator('.line-number')).toHaveText(String(firstLine));
+        await expect(highlighted).toBeInViewport({ ratio: 1 });
+        await page.goForward();
+        await page.goForward();
+        await expect(highlighted.locator('.line-number')).toHaveText(String(secondLine));
+        await expect(highlighted).toBeInViewport({ ratio: 1 });
+        await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+        await page.locator('#effective-document').getByRole('button', { name: /CLAUDE.md/ }).click();
+        await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
+        await expect(highlighted).toHaveCount(0);
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).has('line')).toBe(false);
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('source line links survive refresh and discard unavailable sources and invalid line numbers', async ({ page }) => {
+  const w = await workspace({ 'CLAUDE.md': 'First line.\nSecond line.\nThird line.', '.claude/settings.json': '{\n"model":"fixture-model"\n}' });
+  const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  try {
+    const route = '#view=effective&client=claude&source=.claude%2Fsettings.json&line=2';
+    await page.goto(server.url + route);
+    const highlighted = page.locator('.code-line.highlight');
+    await expect(highlighted).toContainText('fixture-model');
+    await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+    await expect(page.locator('#scan-status')).toContainText('Scan complete');
+    await expect(highlighted).toContainText('fixture-model');
+    await expect(highlighted).toBeInViewport({ ratio: 1 });
+    await rm(path.join(w.repo, '.claude/settings.json'));
+    await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+    await expect(page.locator('#scan-status')).toContainText('Scan complete');
+    await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
+    await expect(highlighted).toHaveCount(0);
+    for (const line of ['0', '-1', '2.5', 'unknown', '9007199254740992', '99999999']) {
+      await page.goto(server.url + '#view=effective&client=claude&source=CLAUDE.md&line=' + line);
+      await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
+      await expect(highlighted).toHaveCount(0);
+    }
+    await page.goto(server.url + '#view=effective&client=claude&source=missing.md&line=2');
+    await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
+    await expect(highlighted).toHaveCount(0);
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('saved trust aliases and malformed-state correction update live and portable workspace states', async ({ page }) => {
   const w = await trustWorkspace();
   const stateFile = path.join(w.home, '.copilot/config.json');
@@ -492,6 +581,7 @@ test('Copilot excluded skill directories retain their explanation, fallback and 
       await page.getByRole('button', { name: /Inspect source/ }).click();
       await expect(page.locator('#source-title')).toHaveText('.github/skills/shared/SKILL.md');
       await expect(page.locator('.code-line.highlight')).toContainText('name: shared');
+      expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('line')).toBe('2');
       await page.locator('#configuration-tab').click();
       await page.getByLabel('Search settings').fill('ignoredSkillsLocations');
       await page.locator('#setting-list tbody tr').getByRole('button', { name: 'ignoredSkillsLocations', exact: true }).click();

@@ -53,6 +53,8 @@ Structured previews redact decoded values at their parser ranges, covering escap
 
 The browser's Export report action saves the most recent successful inspection. Configuration edits appear after Refresh scan. Exports during an in-flight or failed refresh keep the last displayed report, including its target, trust and selected Codex profile.
 
+Source links in the inspector include a one-based line number. Following a finding, setting, extension or comparison origin scrolls that line into view. Reload and browser history restore the line in local and portable reports. Refresh scan retains the selected line in the local inspector. Opening a different source clears the previous line selection.
+
 Use rule IDs for CI integrations; prose is not a compatibility API. JSON keeps absolute paths for diagnosis. HTML replaces captured repository paths with `<repo>`, home paths with `~` and external agent configuration roots with `<codex-home>`, `<claude-home>` or `<copilot-home>`. Filesystem-verified aliases from absolute structured values and `--option=path` arguments share those replacements. Unknown paths in prose or shell snippets can remain.
 
 

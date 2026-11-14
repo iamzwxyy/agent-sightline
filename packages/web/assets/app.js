@@ -148,9 +148,9 @@
     }
     return [...groups.values()];
   }
-  function navigate(view, client, source) {
+  function navigate(view, client, source, line = null) {
     if (client) state.client = client;
-    if (source) { state.source = source; state.instructionView = 'sources'; }
+    if (source) { state.source = source; state.instructionView = 'sources'; state.highlightLine = line; }
     state.view = view;
     document.body.classList.remove('nav-open');
     $('navigation-scrim').hidden = true;
@@ -159,6 +159,7 @@
     if (view === 'effective') {
       hash.set('client', state.client);
       if (state.source) hash.set('source', short(state.source));
+      if (state.source && state.highlightLine !== null) hash.set('line', String(state.highlightLine));
       if (state.instructionView === 'document') hash.set('text', 'effective');
     }
     const nextHash = '#' + hash.toString();
@@ -323,6 +324,7 @@
     if (state.instructionView === 'document') renderEffectiveDocument(client);
     const sources = decisions();
     const selected = sources.find(source => source.path === state.source) ?? sources.find(source => ['active', 'truncated'].includes(source.status) && ['instructions', 'rules'].includes(source.kind)) ?? sources[0];
+    if (selected?.path !== state.source) state.highlightLine = null;
     state.source = selected?.path ?? null;
     $('copy-source').disabled = !selected;
     renderSourceList();
@@ -453,6 +455,13 @@
       why.push(list);
     }
     $('why').replaceChildren(...why);
+    const highlighted = code.querySelector('.code-line.highlight');
+    if (highlighted) window.requestAnimationFrame(() => {
+      // History traversal restores its scroll position before the next frame.
+      if (highlighted.isConnected && state.view === 'effective' && state.instructionView === 'sources') {
+        highlighted.scrollIntoView({ block: 'center', inline: 'nearest' });
+      }
+    });
   }
   function showSetting(setting, client) {
     $('detail-category').textContent = `${names[client]} / setting`;
@@ -480,8 +489,8 @@
   function inspectSourceLocation(location, preferred) {
     const client = sourceClient(location, preferred);
     if (!client) return;
-    $('detail-dialog').close(); state.sourceFilter = 'all'; $('source-search').value = ''; state.highlightLine = location.line;
-    navigate('effective', client, location.path);
+    $('detail-dialog').close(); state.sourceFilter = 'all'; $('source-search').value = '';
+    navigate('effective', client, location.path, location.line);
   }
   function renderSettings() {
     const selected = $('setting-client').value;
@@ -663,7 +672,7 @@
       content.append(origins);
     }
     const actions = node('div', undefined, 'dialog-actions');
-    actions.append(button('Inspect source →', () => { $('detail-dialog').close(); state.sourceFilter = 'all'; state.highlightLine = extension.location.line; navigate('effective', client, extension.location.path); }, 'button button-primary'), button('Copy definition', () => copy(JSON.stringify(extension.config, null, 2))));
+    actions.append(button('Inspect source →', () => inspectSourceLocation(extension.location, client), 'button button-primary'), button('Copy definition', () => copy(JSON.stringify(extension.config, null, 2))));
     content.append(actions); $('detail-body').replaceChildren(content); if (!$('detail-dialog').open) $('detail-dialog').showModal();
   }
   function renderExtensions() {
@@ -750,8 +759,7 @@
       if (request !== state.request) return;
       report = data.report;
       exportDocument = data.html;
-      if (!report.sources.some(source => source.path === state.source)) state.source = null;
-      state.highlightLine = null;
+      readLocation();
       const address = new URL(location.href);
       address.searchParams.set('target', short(report.target)); address.searchParams.set('trust', $('trust').value); address.searchParams.set('profile', report.inputs?.codexProfile ?? '');
       history.replaceState(null, '', address);
@@ -829,6 +837,8 @@
     state.instructionView = hash.get('text') === 'effective' ? 'document' : 'sources';
     const sourcePath = hash.get('source');
     state.source = sourcePath ? report.sources.find(source => short(source.path) === sourcePath)?.path ?? null : null;
+    const line = Number(hash.get('line'));
+    state.highlightLine = state.source && Number.isSafeInteger(line) && line > 0 ? line : null;
   }
   readLocation();
   window.addEventListener('popstate', () => {

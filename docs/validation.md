@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.14
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* A v0.3.13 inspector reproduction highlighted line 352 below the viewport and lost the selection on reload. The new source jump centers the requested line after rendering and native history scroll restoration.
+* The 413-case core suite completed with 411 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* All 62 Chromium browser cases passed. Long-file journeys cover two distinct hook locations, live and portable reports, desktop and phone layouts, reload, Back/Forward and opening another source from effective text.
+* Direct line links survive Refresh scan. Deleted or unavailable sources, nonpositive and fractional values, nonnumeric strings, unsafe integers and absent line numbers produce no unrelated highlight. Existing skill-definition and controlling-setting links retain their original lines.
+* The local macOS Firefox launcher failed with “Could not find profile folder” before test execution. The Linux verification workflow includes the complete Firefox suite.
+
 ## v0.3.13
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
