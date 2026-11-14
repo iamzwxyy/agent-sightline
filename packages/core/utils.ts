@@ -9,6 +9,10 @@ export const slash = (s: string): string => s.replace(/\\/g, '/');
 export const cmp = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 export const bytes = (s: string): number => Buffer.byteLength(s, 'utf8');
 export const hash = (s: string): string => createHash('sha256').update(s).digest('hex').slice(0, 16);
+/** Rust str::trim uses Unicode White_Space and retains a byte-order mark. */
+export function trimRustWhitespace(text: string): string {
+  return text.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '');
+}
 export function stripComments(body: string, preserveOffsets = false): string {
   let fence = false;
   return body.split(/(^\s*```.*$|^\s*~~~.*$)/m).map(part => {

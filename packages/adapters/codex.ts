@@ -3,13 +3,13 @@ import { lstat, readFile, realpath } from 'node:fs/promises';
 import { Ajv } from 'ajv';
 import type { AdapterMetadata, Context, Source, Status } from '../core/types.js';
 import { readConfigurationTree } from '../core/discovery.js';
-import { bytes, finding, locate, plainObject, within } from '../core/utils.js';
+import { bytes, finding, locate, plainObject, trimRustWhitespace, within } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, effectiveValue, finish, flatten, hooks, mcp, settings, skills, truncated } from './common.js';
 
 export const codexMetadata: AdapterMetadata = {
   id: 'codex', name: 'OpenAI Codex CLI', maturity: 'verified', ruleVersion: '0.167.2', verifiedOn: '2026-11-15',
-  evidence: ['https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/core/src/agents_md.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/codex-home/src/instructions/mod.rs', 'https://developers.openai.com/codex/config-basic', 'https://developers.openai.com/codex/config-advanced#profiles', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/config/src/loader/mod.rs', 'https://developers.openai.com/codex/skills', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/host.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/discovery.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/host_merge.rs', 'https://learn.chatgpt.com/docs/hooks', 'https://learn.chatgpt.com/docs/app-server'],
-  limitations: ['Static single-directory session with explicit profile files. Other CLI overrides and managed/cloud requirements are not inferred.', 'Scalar/MCP precedence, configured hook values and winning files have real-client configuration API tests. Profiles, instruction bodies and line numbers use source/schema fixtures.', 'Global instructions are separate from the project byte budget in 0.167.2; project empty overrides shadow the ordinary file.', 'Hook definition trust is reported as conditional. Bundled/plugin components and starlark exec-policy evaluation are not inspected.'],
+  evidence: ['https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/core/src/agents_md.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/codex-home/src/instructions/mod.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/core/src/context/user_instructions.rs', 'https://developers.openai.com/codex/config-basic', 'https://developers.openai.com/codex/config-advanced#profiles', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/config/src/loader/mod.rs', 'https://developers.openai.com/codex/skills', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/host.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/discovery.rs', 'https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/ext/skills/src/loader/host_merge.rs', 'https://learn.chatgpt.com/docs/hooks', 'https://learn.chatgpt.com/docs/app-server'],
+  limitations: ['Static single-directory session with explicit profile files. Other CLI overrides and managed/cloud requirements are not inferred.', 'Scalar/MCP precedence, configured hook values and winning files have native configuration API comparisons. AGENTS.md instruction bodies and selected profile budgets/fallbacks have scripted native-request comparisons. Other profile fields and source line numbers retain source/schema fixture coverage.', 'Global instructions are separate from the project byte budget in 0.167.2; project empty overrides shadow the ordinary file.', 'Hook definition trust is reported as conditional. Bundled/plugin components and starlark exec-policy evaluation are not inspected.'],
 };
 let validator: ReturnType<Ajv['compile']> | undefined;
 function inlineHooks(value: unknown): unknown {
@@ -139,14 +139,14 @@ export const codex = adapter(codexMetadata, discover, async ctx => {
   }
   if (ctx.options.user !== false) {
     const globals = ['AGENTS.override.md', 'AGENTS.md'].map(n => ctx.sources.find(s => s.path === path.join(ctx.codexHome, n))).filter((x): x is Source => !!x);
-    const chosen = globals.find(s => s.text.trim());
-    for (const s of globals) if (s === chosen) addInstruction(e, s, 'First non-empty global instruction file; separate from project byte budget.', s.text.trim()); else decision(e, s, 'shadowed', 'A non-empty global override wins, or this global source is empty.');
+    const chosen = globals.find(s => trimRustWhitespace(s.text));
+    for (const s of globals) if (s === chosen) addInstruction(e, s, 'First non-empty global instruction file; separate from project byte budget.', trimRustWhitespace(s.text)); else decision(e, s, 'shadowed', 'A non-empty global override wins, or this global source is empty.');
   }
   if (ctx.options.codexProfile) e.notes.push(`Selected Codex profile: ${ctx.options.codexProfile}. User defaults load first, the selected profile follows, then applicable project layers.`);
   const max = effectiveValue(e, 'project_doc_max_bytes', 32768);
   let projectSeen = false;
   const addProject: typeof addInstruction = (eff, s, why, text = s.text, st = 'active') => {
-    if (text.trim() && !projectSeen) { if (eff.instructions) eff.instructions += '\n\n--- project-doc ---'; projectSeen = true; }
+    if (trimRustWhitespace(text) && !projectSeen) { if (eff.instructions) eff.instructions += '\n\n--- project-doc ---'; projectSeen = true; }
     addInstruction(eff, s, why, text, st);
   };
   let remaining = typeof max === 'number' && max >= 0 ? max : 32768;
@@ -169,8 +169,8 @@ export const codex = adapter(codexMetadata, discover, async ctx => {
         // Rust String::from_utf8_lossy preserves a replacement character at a split code point.
         const text = Buffer.from(s.text).subarray(0, remaining).toString('utf8');
         addProject(e, s, 'Read prefix at the remaining project byte budget.', text, 'truncated'); e.decisions.at(-1)!.loadedBytes = remaining;
-        if (text.trim()) remaining = 0;
-      } else { addProject(e, s, 'Selected project instruction in root-to-session order.', s.text); if (s.text.trim()) remaining -= s.bytes; }
+        if (trimRustWhitespace(text)) remaining = 0;
+      } else { addProject(e, s, 'Selected project instruction in root-to-session order.', s.text); if (trimRustWhitespace(s.text)) remaining -= s.bytes; }
     }
   }
   const roots = [...ctx.dirs.map(d => path.join(d, '.agents/skills')), ...(ctx.options.user !== false ? [path.join(ctx.home, '.agents/skills'), path.join(ctx.codexHome, 'skills')] : [])];

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import type { Adapter, AdapterMetadata, Context, Decision, Effective, Extension, Location, Source, Status } from '../core/types.js';
-import { bytes, cmp, executable, finding, locate, plainObject, prefix, slash, splitGlobs, stripComments, within } from '../core/utils.js';
+import { bytes, cmp, executable, finding, locate, plainObject, prefix, slash, splitGlobs, stripComments, trimRustWhitespace, within } from '../core/utils.js';
 export { stripComments } from '../core/utils.js';
 import { hookCommandField, validateExtensions, validateMcpConfiguration, probeMcp } from '../core/extensions.js';
 
@@ -22,7 +22,8 @@ export function decision(e: Effective, s: Source, status: Status, reason: string
 }
 export function addInstruction(e: Effective, s: Source, reason: string, content = s.body, status: Status = 'active'): void {
   decision(e, s, status, reason, content);
-  if (!s.invalid && content.trim() && (status === 'active' || status === 'truncated')) {
+  const meaningful = e.client === 'codex' ? trimRustWhitespace(content) : content.trim();
+  if (!s.invalid && meaningful && (status === 'active' || status === 'truncated')) {
     e.instructions += (e.instructions ? '\n\n' : '') + content;
     e.instructionBytes = bytes(e.instructions); e.estimatedTokens = Math.ceil(e.instructionBytes / 4);
   }

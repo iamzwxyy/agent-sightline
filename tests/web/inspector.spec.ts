@@ -15,6 +15,39 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('Codex Unicode instruction selection survives copying, refresh and portable export', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': '\uFEFF', 'src/AGENTS.md': 'UNLOADED_NESTED', 'src/a.ts': '' }, {
+    '.codex/config.toml': 'project_doc_max_bytes=3\n',
+    '.codex/AGENTS.md': 'ORDINARY_GLOBAL',
+    '.codex/AGENTS.override.md': '\uFEFF',
+  });
+  const server = await serve({ ...w, clients: ['codex'], trust: 'trusted', target: 'src/a.ts' });
+  const expected = '\uFEFF\n\n--- project-doc ---\n\n\uFEFF';
+  try {
+    await page.goto(server.url + '#view=effective&client=codex&text=effective');
+    const text = page.locator('#effective-document .effective-text');
+    expect(await text.textContent()).toBe(expected);
+    const report = JSON.parse(await page.locator('#report-data').textContent() ?? 'null');
+    expect(report.clients[0].instructionBytes).toBe(Buffer.byteLength(expected));
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text: string) => { (window as any).copiedInstructions = text; } }, configurable: true }));
+    await page.getByRole('button', { name: 'Copy effective text', exact: true }).click();
+    expect(await page.evaluate(() => (window as any).copiedInstructions)).toBe(expected);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('codex-unicode-instructions.html');
+    await (await pending).saveAs(file);
+    await page.context().setOffline(true);
+    await page.goto(pathToFileURL(file).href);
+    expect(await text.textContent()).toBe(expected);
+    await page.context().setOffline(false);
+    await page.goto(server.url + '#view=effective&client=codex&text=effective');
+    await writeFile(path.join(w.home, '.codex/AGENTS.override.md'), '\u0085');
+    await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+    expect(await text.textContent()).toBe('ORDINARY_GLOBAL\n\n--- project-doc ---\n\n\uFEFF');
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('refresh outcomes show current errors and warnings above source inspection on desktop and phone', async ({ page }) => {
   const w = await workspace({ 'CLAUDE.md': 'Project instructions.' });
   const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });

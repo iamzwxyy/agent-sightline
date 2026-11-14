@@ -1,5 +1,17 @@
 # Release validation
 
+## v0.3.27
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-15.
+
+* Twenty-one isolated native Codex 0.167.2 turns send their instructions to a loopback scripted Responses API. Each case checks the fixed assistant completion, one captured request, the exact AGENTS.md fragment and its decoded UTF-8 byte count against the public scan result.
+* The cases cover global trimming, CRLF, root/nested overrides, fallback selection, directory candidates, literal imports, empty fragments, zero/cumulative budgets, split UTF-8, whitespace-only prefixes, explicit trust, root markers and selected profile budgets/fallback filenames. Existing native configuration and Skill inventory comparisons also passed.
+* Five additional Unicode cases failed before the correction. JavaScript trim discarded BOM content and retained U+0085 NEXT LINE, which changed global override selection and project budget consumption. Sightline's Codex adapter now uses the native Unicode White_Space classification for these operations. Empty-source notices describe client-specific loading effects.
+* Browser checks retain BOM instructions and byte counts through effective-text inspection, clipboard copying, refresh and portable export. Replacing the global override with U+0085 restores the ordinary global file.
+* The 443-case core suite completed with 441 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. All 80 Chromium browser cases passed. The production dependency audit reported zero vulnerabilities.
+* A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,162 ms. Fixture creation warmed the filesystem cache.
+* All 43 historical published archive hashes matched their release manifest before final packaging.
+
 ## v0.3.26
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-15.

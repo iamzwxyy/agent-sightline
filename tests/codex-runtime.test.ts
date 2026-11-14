@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import readline from 'node:readline';
 import { scan } from '../packages/core/index.js';
@@ -22,6 +24,19 @@ function isolatedEnvironment(home: string): NodeJS.ProcessEnv {
     APPDATA: path.join(home, 'AppData/Roaming'), LOCALAPPDATA: path.join(home, 'AppData/Local'),
     XDG_CONFIG_HOME: path.join(home, '.config'), GIT_CONFIG_NOSYSTEM: '1',
   };
+}
+
+async function stopRuntime(child: ChildProcess): Promise<void> {
+  if (!child.pid) return;
+  if (process.platform === 'win32') {
+    const killer = spawn(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32/taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+    await new Promise<void>(resolve => {
+      killer.once('close', () => resolve());
+      killer.once('error', () => { child.kill('SIGKILL'); resolve(); });
+    });
+  } else {
+    try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+  }
 }
 
 async function readRuntime(cwd: string, env: NodeJS.ProcessEnv, method: 'config/read' | 'skills/list' = 'config/read'): Promise<any> {
@@ -65,20 +80,38 @@ async function readRuntime(cwd: string, env: NodeJS.ProcessEnv, method: 'config/
   } finally {
     // Stop the owned tree while its app-server wrapper is still running.
     // This also stops background plugin clones before fixture cleanup.
-    if (!finished && child.pid) {
-      if (process.platform === 'win32') {
-        const killer = spawn(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32/taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
-        await new Promise<void>(resolve => {
-          killer.once('close', () => resolve());
-          killer.once('error', () => { child.kill('SIGKILL'); resolve(); });
-        });
-      } else {
-        try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
-      }
-    }
+    if (!finished) await stopRuntime(child);
     child.stdin.end();
     await closed;
     lines.close();
+  }
+}
+
+async function runInstructionTurn(cwd: string, env: NodeJS.ProcessEnv, profile?: string): Promise<void> {
+  const args = [runtime, 'exec', '--ephemeral', '--skip-git-repo-check', '--json', '-C', cwd];
+  if (profile) args.push('--profile', profile);
+  args.push('Return the fixture completion text.');
+  const child = spawn(process.execPath, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true });
+  child.stdin.end();
+  child.stderr.on('data', () => { /* Client logs stay private. */ });
+  let output = '';
+  child.stdout.on('data', chunk => { output += String(chunk); });
+  let finished = false;
+  const closed = new Promise<number | null>(resolve => child.once('close', code => { finished = true; resolve(code); }));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const failure = new Promise<never>((_resolve, reject) => {
+      child.once('error', reject);
+      timer = setTimeout(() => reject(new Error('Codex timed out during the scripted instruction turn.')), 20000);
+    });
+    assert.equal(await Promise.race([closed, failure]), 0, 'Codex did not complete the scripted instruction turn.');
+    const events = output.trim().split('\n').map(line => JSON.parse(line));
+    assert.ok(events.some(event => event.type === 'turn.completed'));
+    assert.ok(events.some(event => event.type === 'item.completed' && event.item.type === 'agent_message' && event.item.text === 'Fixture complete.'));
+  } finally {
+    clearTimeout(timer);
+    if (!finished) await stopRuntime(child);
+    await closed;
   }
 }
 
@@ -370,5 +403,221 @@ test('Codex native skill inventory follows directory links, canonical aliases an
     assert.ok(!JSON.stringify(report).includes('UNRELATED_LINKED_PRIVATE_INSTRUCTIONS'));
     assert.ok(!JSON.stringify(report.sources).includes('canonicalPath'));
     assert.ok(!report.findings.some(finding => finding.ruleId === 'skill.name-conflict' && finding.message.includes('sightline-native-link-compat')));
+  });
+});
+
+test('Codex native instruction requests match inheritance, selection and byte budgets', { timeout: 180000 }, async t => {
+  const separator = '\n\n--- project-doc ---\n\n';
+  const fixtures: {
+    name: string;
+    files: Record<string, string>;
+    userFiles?: Record<string, string>;
+    config?: string;
+    cwd?: string;
+    profile?: string;
+    trust?: 'untrusted';
+    directories?: string[];
+    expected: string;
+  }[] = [
+    {
+      name: 'global trimming and root-to-session newline preservation',
+      files: { 'AGENTS.md': 'ROOT\r\n', 'src/AGENTS.md': 'NESTED\n' },
+      userFiles: { '.codex/AGENTS.md': '  \nGLOBAL\n  ' },
+      expected: 'GLOBAL' + separator + 'ROOT\r\n\n\nNESTED\n',
+    },
+    {
+      name: 'nonempty overrides at root and session directories',
+      files: { 'AGENTS.md': 'SHADOWED_ROOT', 'AGENTS.override.md': 'ROOT_OVERRIDE', 'src/AGENTS.md': 'SHADOWED_NESTED', 'src/AGENTS.override.md': 'NESTED_OVERRIDE' },
+      expected: 'GLOBAL' + separator + 'ROOT_OVERRIDE\n\nNESTED_OVERRIDE',
+    },
+    {
+      name: 'empty project override shadows ordinary instructions and empty global override falls back',
+      files: { 'AGENTS.md': 'SHADOWED_ROOT', 'AGENTS.override.md': '', 'src/AGENTS.md': 'NESTED' },
+      userFiles: { '.codex/AGENTS.override.md': '\n \t' },
+      expected: 'GLOBAL' + separator + 'NESTED',
+    },
+    {
+      name: 'fallback order and invalid parent paths',
+      files: { '../outside.md': 'OUTSIDE_FALLBACK', 'NOTES.md': 'FIRST_FALLBACK', 'MORE.md': 'SHADOWED_FALLBACK', 'src/MORE.md': 'NESTED_FALLBACK' },
+      config: 'project_doc_fallback_filenames=["../outside.md","NOTES.md","MORE.md"]\n',
+      expected: 'GLOBAL' + separator + 'FIRST_FALLBACK\n\nNESTED_FALLBACK',
+    },
+    {
+      name: 'an override directory leaves the ordinary regular file eligible',
+      files: { 'AGENTS.md': 'ROOT', 'src/AGENTS.md': 'NESTED' },
+      directories: ['AGENTS.override.md'],
+      expected: 'GLOBAL' + separator + 'ROOT\n\nNESTED',
+    },
+    {
+      name: 'Markdown import spelling remains literal',
+      files: { 'AGENTS.md': '@policy.md\n', 'policy.md': 'UNLOADED_IMPORT', 'src/AGENTS.md': 'NESTED' },
+      expected: 'GLOBAL' + separator + '@policy.md\n\n\nNESTED',
+    },
+    {
+      name: 'zero project budget retains global instructions',
+      files: { 'AGENTS.md': 'ROOT', 'src/AGENTS.md': 'NESTED' },
+      config: 'project_doc_max_bytes=0\n',
+      expected: 'GLOBAL',
+    },
+    {
+      name: 'a split UTF-8 code point retains the native replacement character',
+      files: { 'AGENTS.md': 'A中TAIL', 'src/AGENTS.md': 'NESTED' },
+      config: 'project_doc_max_bytes=3\n',
+      expected: 'GLOBAL' + separator + 'A�',
+    },
+    {
+      name: 'a whitespace-only truncated prefix leaves the remaining budget available',
+      files: { 'AGENTS.md': ' '.repeat(20), 'src/AGENTS.md': 'NESTED' },
+      config: 'project_doc_max_bytes=3\n',
+      expected: 'GLOBAL' + separator + 'NES',
+    },
+    {
+      name: 'joining separators leave the raw project byte budget unchanged',
+      files: { 'AGENTS.md': 'ROOT', 'src/AGENTS.md': 'CHILD' },
+      config: 'project_doc_max_bytes=6\n',
+      expected: 'GLOBAL' + separator + 'ROOT\n\nCH',
+    },
+    {
+      name: 'explicitly untrusted projects retain global instructions',
+      files: { 'AGENTS.md': 'UNTRUSTED_ROOT', 'src/AGENTS.md': 'UNTRUSTED_NESTED' },
+      trust: 'untrusted',
+      expected: 'GLOBAL',
+    },
+    {
+      name: 'empty global content and zero project budget omit the instruction fragment',
+      files: { 'AGENTS.md': 'ROOT', 'src/AGENTS.md': 'NESTED' },
+      userFiles: { '.codex/AGENTS.md': '' },
+      config: 'project_doc_max_bytes=0\n',
+      expected: '',
+    },
+    {
+      name: 'disabled project markers select the session directory',
+      files: { 'AGENTS.md': 'UNSELECTED_ROOT', 'src/AGENTS.md': 'NESTED' },
+      config: 'project_root_markers=[]\n',
+      expected: 'GLOBAL' + separator + 'NESTED',
+    },
+    {
+      name: 'custom project markers select their ancestor chain',
+      files: { 'AGENTS.md': 'UNSELECTED_ROOT', 'src/project.marker': '', 'src/AGENTS.md': 'SELECTED_ROOT', 'src/deep/AGENTS.md': 'DEEP' },
+      cwd: 'src/deep',
+      config: 'project_root_markers=["project.marker"]\n',
+      expected: 'GLOBAL' + separator + 'SELECTED_ROOT\n\nDEEP',
+    },
+    {
+      name: 'a selected profile file replaces the project byte budget',
+      files: { 'AGENTS.md': 'ROOT', 'src/AGENTS.md': 'NESTED' },
+      config: 'project_doc_max_bytes=0\n',
+      userFiles: { '.codex/review.config.toml': 'project_doc_max_bytes=3\n' },
+      profile: 'review',
+      expected: 'GLOBAL' + separator + 'ROO',
+    },
+    {
+      name: 'a selected profile file replaces fallback filenames',
+      files: { 'NOTES.md': 'UNSELECTED_BASE', 'MORE.md': 'PROFILE_FALLBACK' },
+      config: 'project_doc_fallback_filenames=["NOTES.md"]\n',
+      userFiles: { '.codex/review.config.toml': 'project_doc_fallback_filenames=["MORE.md"]\n' },
+      profile: 'review',
+      expected: 'GLOBAL' + separator + 'PROFILE_FALLBACK',
+    },
+    {
+      name: 'a global byte-order mark remains in the instruction body',
+      files: { 'AGENTS.md': 'ROOT' },
+      userFiles: { '.codex/AGENTS.md': '\uFEFFGLOBAL\n' },
+      expected: '\uFEFFGLOBAL' + separator + 'ROOT',
+    },
+    {
+      name: 'a byte-order-mark-only global override shadows ordinary instructions',
+      files: { 'AGENTS.md': 'ROOT' },
+      userFiles: { '.codex/AGENTS.override.md': '\uFEFF' },
+      expected: '\uFEFF' + separator + 'ROOT',
+    },
+    {
+      name: 'a next-line-only global override falls back to ordinary instructions',
+      files: { 'AGENTS.md': 'ROOT' },
+      userFiles: { '.codex/AGENTS.override.md': '\u0085' },
+      expected: 'GLOBAL' + separator + 'ROOT',
+    },
+    {
+      name: 'a project byte-order mark consumes its raw byte budget',
+      files: { 'AGENTS.md': '\uFEFF', 'src/AGENTS.md': 'NESTED' },
+      config: 'project_doc_max_bytes=3\n',
+      expected: 'GLOBAL' + separator + '\uFEFF',
+    },
+    {
+      name: 'a next-line-only project file leaves its budget available',
+      files: { 'AGENTS.md': '\u0085', 'src/AGENTS.md': 'NESTED' },
+      config: 'project_doc_max_bytes=2\n',
+      expected: 'GLOBAL' + separator + 'NE',
+    },
+  ];
+  let requests: any[] = [];
+  const server = createServer(async (request, response) => {
+    if (request.method !== 'POST' || request.url !== '/v1/responses') { response.writeHead(404); response.end(); return; }
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    requests.push(JSON.parse(body));
+    response.setHeader('Content-Type', 'text/event-stream');
+    const events = [
+      { type: 'response.created', response: { id: 'sightline-instruction-fixture' } },
+      { type: 'response.output_item.done', item: { type: 'message', role: 'assistant', id: 'fixture-message', content: [{ type: 'output_text', text: 'Fixture complete.' }] } },
+      { type: 'response.completed', response: { id: 'sightline-instruction-fixture', usage: { input_tokens: 0, input_tokens_details: null, output_tokens: 0, output_tokens_details: null, total_tokens: 0 } } },
+    ];
+    for (const event of events) response.write('event: ' + event.type + '\ndata: ' + JSON.stringify(event) + '\n\n');
+    response.end();
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    const closed = new Promise<void>(resolve => server.close(() => resolve()));
+    server.closeAllConnections();
+    await closed;
+  });
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
+  for (const fixture of fixtures) await t.test(fixture.name, async scenario => {
+    const cwd = fixture.cwd ?? 'src';
+    const w = await workspace({ [cwd + '/example.ts']: '', ...fixture.files }, { '.codex/AGENTS.md': 'GLOBAL', ...fixture.userFiles });
+    scenario.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+    const repo = await realpath(w.repo);
+    const home = await realpath(w.home);
+    const env = isolatedEnvironment(home);
+    for (const directory of fixture.directories ?? []) await mkdir(path.join(repo, directory), { recursive: true });
+    execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', repo], { env, stdio: 'pipe' });
+    const trust = [...new Set([repo, path.join(repo, 'src'), path.join(repo, cwd)])]
+      .map(directory => `[projects.${JSON.stringify(directory)}]\ntrust_level=${JSON.stringify(fixture.trust ?? 'trusted')}\n`).join('\n');
+    const config = `model="sightline-fixture"
+model_provider="sightline_fixture"
+approval_policy="never"
+sandbox_mode="read-only"
+web_search="disabled"
+${fixture.config ?? ''}
+[analytics]
+enabled=false
+[model_providers.sightline_fixture]
+name="Sightline fixture"
+base_url=${JSON.stringify(baseUrl)}
+wire_api="responses"
+supports_websockets=false
+requires_openai_auth=false
+request_max_retries=0
+stream_max_retries=0
+${trust}`;
+    await writeFile(path.join(home, '.codex/config.toml'), config);
+    requests = [];
+    await runInstructionTurn(path.join(repo, cwd), env, fixture.profile);
+    assert.equal(requests.length, 1);
+    const fragments = requests[0].input.flatMap((item: any) => item.content ?? [])
+      .filter((content: any) => content.type === 'input_text' && content.text.startsWith('# AGENTS.md instructions'));
+    assert.equal(fragments.length, fixture.expected ? 1 : 0);
+    let nativeInstructions = '';
+    if (fragments.length) {
+      const text = fragments[0].text;
+      const marker = '\n<INSTRUCTIONS>\n';
+      assert.ok(text.includes(marker));
+      assert.ok(text.endsWith('\n</INSTRUCTIONS>'));
+      nativeInstructions = text.slice(text.indexOf(marker) + marker.length, -'\n</INSTRUCTIONS>'.length);
+    }
+    assert.equal(nativeInstructions, fixture.expected, 'The native fixture produced unexpected instructions.');
+    const report = await scan({ repo, home, env, target: cwd + '/example.ts', clients: ['codex'], codexProfile: fixture.profile });
+    assert.equal(report.clients[0].instructions, nativeInstructions);
+    assert.equal(report.clients[0].instructionBytes, Buffer.byteLength(nativeInstructions));
   });
 });

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.27 — 2026-11-15
+
+* Match Codex 0.167.2 Unicode whitespace handling when selecting global instructions and spending project byte budgets.
+* Preserve byte-order marks and handle U+0085 NEXT LINE consistently with the native client.
+* Compare exact global/project instruction bodies and byte counts with twenty-one isolated native Codex 0.167.2 requests.
+* Verify override and fallback selection, literal Markdown imports, newline preservation, empty fragments, whitespace budgets and split UTF-8.
+* Exercise explicit untrusted projects, custom/disabled root markers and selected profile budget/fallback replacements.
+* Publish the verified instruction coverage in adapter scope details, documentation and the website.
+
 ## 0.3.26 — 2026-11-15
 
 * Show refreshed error and warning counts across inspector views, including phone layouts.
