@@ -15,6 +15,113 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('exported reports open at the inspected line and retain changed locations through offline re-export', async ({ page }) => {
+  const settings = ['{', '"hooks":{"UserPromptSubmit":[', ...Array(180).fill(''), '{"hooks":[{"type":"command","command":"missing-shared-report-hook"}]}', ']}}'].join('\n');
+  const w = await workspace({
+    'AGENTS.md': 'Codex instructions.',
+    'CLAUDE.md': '@one.md\n@two.md\n',
+    'one.md': '# One\n@shared.md\n',
+    'two.md': '# Two\n\n@shared.md\n',
+    'shared.md': 'Shared instructions.',
+    '.claude/settings.json': settings,
+  });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const exportReport = async (filename: string) => {
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath(filename);
+    await (await downloading).saveAs(file);
+    return pathToFileURL(file).href;
+  };
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await page.context().setOffline(false);
+      await page.goto(server.url + '#view=findings');
+      await page.locator('#findings-list .finding').filter({ hasText: 'Hook command was not found or is not executable.' }).click();
+      await page.getByRole('button', { name: /Inspect source/ }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('missing-shared-report-hook');
+      const initialLine = new URLSearchParams(new URL(page.url()).hash.slice(1)).get('line');
+      const first = await exportReport(`inspected-line-${viewport.width}.html`);
+      await page.context().setOffline(true);
+      await page.goto(first);
+      await expect(page.locator('#effective')).toBeVisible();
+      await expect(page.locator('#effective-title')).toHaveText('Claude Code’s instructions');
+      await expect(page.locator('#source-title')).toHaveText('.claude/settings.json');
+      await expect(page.locator('.code-line.highlight')).toContainText('missing-shared-report-hook');
+      await expect(page.locator('.code-line.highlight')).toBeInViewport({ ratio: 1 });
+      expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('line')).toBe(initialLine);
+      await page.reload();
+      await expect(page.locator('.code-line.highlight')).toBeInViewport({ ratio: 1 });
+      await page.getByRole('button', { name: 'All discovered', exact: true }).click();
+      await page.locator('#sources .source').filter({ hasText: 'Imported from two.md:3' }).click();
+      await expect(page.locator('#source-status')).toHaveText('Not loaded');
+      const second = await exportReport(`reexported-occurrence-${viewport.width}.html`);
+      await page.goto(second);
+      await expect(page.locator('#source-title')).toHaveText('shared.md');
+      await expect(page.locator('#source-status')).toHaveText('Not loaded');
+      await expect(page.locator('#why')).toContainText('Imported from two.md:3');
+      expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
+      await expect(page.locator('meta[name="sightline-view"]')).toHaveCount(1);
+      await page.goto(second + '#view=effective&client=codex&source=AGENTS.md');
+      await expect(page.locator('#effective-title')).toHaveText('Codex’s instructions');
+      await expect(page.locator('#source-title')).toHaveText('AGENTS.md');
+      const third = await exportReport(`reexported-client-${viewport.width}.html`);
+      await page.goto(third);
+      await expect(page.locator('#effective-title')).toHaveText('Codex’s instructions');
+      await expect(page.locator('#source-title')).toHaveText('AGENTS.md');
+      await expect(page.locator('meta[name="sightline-view"]')).toHaveCount(1);
+      await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+      const fourth = await exportReport(`reexported-effective-text-${viewport.width}.html`);
+      await page.goto(fourth);
+      await expect(page.locator('#effective-document')).toBeVisible();
+      await expect(page.locator('#effective-document')).toContainText('Codex instructions.');
+      await page.goto(fourth + '#view=overview');
+      await expect(page.locator('#overview')).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('exported locations use portable user paths and reopen each selected view', async ({ page }) => {
+  const w = await workspace({ 'CLAUDE.md': 'Project instructions.' }, { '.claude/CLAUDE.md': 'Personal instructions.' });
+  const server = await serve({ ...w, clients: ['claude'], trust: 'trusted' });
+  const exportReport = async (filename: string) => {
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath(filename);
+    await (await downloading).saveAs(file);
+    return pathToFileURL(file).href;
+  };
+  try {
+    await page.goto(server.url);
+    const personalPath = await page.locator('#report-data').evaluate(element => (JSON.parse(element.textContent!) as Report).sources.find(source => source.scope === 'user' && source.kind === 'instructions')!.path);
+    const hash = new URLSearchParams({ view: 'effective', client: 'claude', source: personalPath.replaceAll('\\', '/') });
+    await page.goto(server.url + '#' + hash);
+    await expect(page.locator('#source-title')).toContainText('.claude/CLAUDE.md');
+    const file = await exportReport('portable-personal-location.html');
+    await page.context().setOffline(true);
+    await page.goto(file);
+    await expect(page.locator('#source-title')).toHaveText('~/.claude/CLAUDE.md');
+    await expect(page.locator('#instructions')).toContainText('Personal instructions.');
+    expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('source')).toBe('~/.claude/CLAUDE.md');
+    const metadata = await page.locator('meta[name="sightline-view"]').getAttribute('content');
+    expect(new URLSearchParams(metadata!.slice(1)).get('source')).toBe('~/.claude/CLAUDE.md');
+    for (const view of ['configuration', 'compare', 'extensions', 'findings', 'overview']) {
+      await page.locator(`#${view}-tab`).click();
+      const next = await exportReport(`portable-view-${view}.html`);
+      await page.goto(next);
+      await expect(page.locator(`#${view}`)).toBeVisible();
+      await expect(page.locator(`#${view}-tab`)).toHaveAttribute('aria-current', 'page');
+      const exported = await readFile(new URL(next), 'utf8');
+      for (const value of [w.repo, await realpath(w.repo), w.home, await realpath(w.home)]) expect(exported).not.toContain(JSON.stringify(value).slice(1, -1));
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('source search matches paths and captured import origins and retains matching history queries live and offline', async ({ page }) => {
   const w = await workspace({
     'CLAUDE.md': '# Root\n@alpha.md\n@beta.md\n',
@@ -2041,7 +2148,21 @@ test('export preserves the inspected configuration through disk edits and an in-
       expect(html).not.toContain(w.home);
       expect(html).toContain('data-live="false"');
     }
+    await page.context().setOffline(true);
+    for (const [index, content] of exportedReports.entries()) {
+      const file = test.info().outputPath(`exported-scan-location-${index}.html`);
+      await writeFile(file, content);
+      await page.goto(pathToFileURL(file).href);
+      await expect(page.locator('#effective-document')).toBeVisible();
+      await expect(page.locator('#effective-document')).toContainText(index === 0 ? 'Instructions before editing.' : 'Instructions after editing.');
+      await expect(page.locator('#target')).toHaveValue('.');
+      const destination = new URLSearchParams(new URL(page.url()).hash.slice(1));
+      expect(destination.get('client')).toBe('claude');
+      expect(destination.get('source')).toBe('CLAUDE.md');
+      expect(destination.get('text')).toBe('effective');
+    }
   } finally {
+    await page.context().setOffline(false);
     releaseResponse.resolve();
     await page.unrouteAll({ behavior: 'wait' });
     await server.close();

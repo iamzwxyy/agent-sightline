@@ -37,7 +37,7 @@
     if (className) element.className = className;
     return element;
   };
-  const short = value => value.startsWith(report.repository) ? value.slice(report.repository.length).replace(/^[/\\]/, '').replace(/\\/g, '/') || '.' : value.replace(/\\/g, '/');
+  const short = (value, repository = report.repository) => value.startsWith(repository) ? value.slice(repository.length).replace(/^[/\\]/, '').replace(/\\/g, '/') || '.' : value.replace(/\\/g, '/');
   const initialTarget = short(report.target);
   const basename = value => value.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'Workspace';
   const selectedClient = () => report.clients.find(client => client.client === state.client) ?? report.clients[0];
@@ -170,6 +170,17 @@
       if (restoreFocus) $('mobile-menu').focus({ preventScroll: true });
     }
   }
+  function inspectionHash(sourcePath = state.source && short(state.source)) {
+    const hash = new URLSearchParams({ view: state.view });
+    if (state.view === 'effective') {
+      hash.set('client', state.client);
+      if (sourcePath) hash.set('source', sourcePath);
+      if (sourcePath && state.sourceOccurrence > 1) hash.set('occurrence', String(state.sourceOccurrence));
+      if (sourcePath && state.highlightLine !== null) hash.set('line', String(state.highlightLine));
+      if (state.instructionView === 'document') hash.set('text', 'effective');
+    }
+    return '#' + hash.toString();
+  }
   function navigate(view, client, source, line = null, occurrence = 1) {
     const viewChanged = state.view !== view;
     const navigationWasOpen = document.body.classList.contains('nav-open');
@@ -182,15 +193,7 @@
     }
     state.view = view;
     setNavigationOpen(false, false);
-    const hash = new URLSearchParams({ view });
-    if (view === 'effective') {
-      hash.set('client', state.client);
-      if (state.source) hash.set('source', short(state.source));
-      if (state.source && state.sourceOccurrence > 1) hash.set('occurrence', String(state.sourceOccurrence));
-      if (state.source && state.highlightLine !== null) hash.set('line', String(state.highlightLine));
-      if (state.instructionView === 'document') hash.set('text', 'effective');
-    }
-    const nextHash = '#' + hash.toString();
+    const nextHash = inspectionHash();
     if (location.hash !== nextHash) history.pushState(null, '', nextHash);
     renderNavigation();
     if (view === 'effective') renderInstructions();
@@ -962,7 +965,17 @@
   $('trust').onchange = () => void refresh();
   $('profile-form').onsubmit = event => { event.preventDefault(); void refresh(); };
   $('export').onclick = () => {
-    const url = URL.createObjectURL(new Blob([exportDocument], { type: 'text/html' }));
+    const snapshot = new window.DOMParser().parseFromString(exportDocument, 'text/html');
+    const captured = JSON.parse(snapshot.getElementById('report-data').textContent);
+    const client = selectedClient();
+    const sourceIndex = client?.decisions.findIndex(source => source.path === state.source) ?? -1;
+    const source = captured.clients.find(candidate => candidate.client === client?.client)?.decisions[sourceIndex];
+    const destination = snapshot.querySelector('meta[name="sightline-view"]') ?? snapshot.createElement('meta');
+    destination.name = 'sightline-view';
+    destination.content = inspectionHash(source ? short(source.path, captured.repository) : null);
+    snapshot.head.append(destination);
+    const content = '<!doctype html>\n' + snapshot.documentElement.outerHTML;
+    const url = URL.createObjectURL(new Blob([content], { type: 'text/html' }));
     const anchor = node('a'); anchor.href = url; anchor.download = 'sightline-report.html'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   document.addEventListener('keydown', event => {
@@ -1010,6 +1023,8 @@
     const line = Number(hash.get('line'));
     state.highlightLine = state.source && Number.isSafeInteger(line) && line > 0 ? line : null;
   }
+  const snapshotLocation = document.querySelector('meta[name="sightline-view"]')?.content;
+  if (!live && !location.hash && snapshotLocation?.startsWith('#')) history.replaceState(null, '', snapshotLocation);
   readLocation();
   window.addEventListener('pageshow', event => {
     // Scroll restoration during document loading can overwrite the initial source jump.

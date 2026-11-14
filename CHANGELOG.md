@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.22 — 2026-11-14
+
+* Open exported HTML reports at the selected view and source location, including the client, repeated import occurrence, highlighted line and effective-text mode.
+* Derive saved source locations from the portable capture so personal and external configuration paths retain their existing replacements.
+* Update the saved location when re-exporting an offline report. Explicit browser links select their requested destination when opening a snapshot.
+* Preserve the displayed inspection through pending and failed refreshes, with source locations paired to the same captured report.
+* Verify desktop and phone exports, linked-line reload, offline re-export, user-path replacement and each inspector view.
+
 ## 0.3.21 — 2026-11-14
 
 * Search captured source paths and import origins together. Space-separated terms all match, with case, surrounding whitespace and Windows slash spellings normalized.

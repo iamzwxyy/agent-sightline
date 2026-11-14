@@ -1,5 +1,17 @@
 # Release validation
 
+## v0.3.22
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* Two regression journeys failed against v0.3.21. An exported source inspection reopened at Overview, and a selected personal instruction source lost its opening location.
+* Exported HTML stores its initial view and source location using the existing fragment format. Tests verify clients, repeated import occurrences, linked lines, effective-text mode and all inspector views. Explicit fragments select their requested destination.
+* Offline re-export replaces the captured opening location after source and client changes. Desktop and phone journeys open the file without a fragment, verify the marked line in the viewport and reload it.
+* Saved user source locations use the portable capture’s path replacements. Exports during pending and failed refreshes reopen the displayed successful report in its effective-text view.
+* The 413-case core suite completed with 411 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* All 76 Chromium browser cases passed, including source search, portable path handling, snapshot export, mobile navigation, linked-line history, website motion and automated WCAG AA checks.
+* All 40 historical published archive hashes matched their release manifest before packaging.
+
 ## v0.3.21
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
