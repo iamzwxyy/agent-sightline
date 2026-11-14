@@ -145,13 +145,15 @@ h2 { font-size: clamp(35px, 4vw, 51px); font-weight: 450; line-height: 1.18; let
 .install-card { padding: 30px; border: 1px solid #d5e0e7; border-radius: 9px; background: #f9fbfc; box-shadow: 0 6px 20px #7a995a04; }
 .install-card-title { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 25px; }
 .install-card-title strong { font-size: 18px; font-weight: 500; letter-spacing: -.4px; color: #586b78; }
-.install-card-title span { color: #586b78; font-size: 11px; }
 .download-button { width: 100%; justify-content: space-between; }
 .install-card > p { font-size: 12px; color: #586b78; margin: 22px 0 10px; }
 .command-line { border: 1px solid #d5e0e7; background: #edf3f7; border-radius: 4px; padding: 10px 11px; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .command-line code { font: 11px/1.8 var(--mono); color: #586b78; overflow-wrap: anywhere; }
-.command-line button { border: 0; background: none; color: #586b78; font-size: 16px; padding: 0; }
+.command-line button { border: 0; background: none; color: #586b78; font-size: 16px; padding: 0; min-width: 44px; min-height: 44px; flex-shrink: 0; display: grid; place-items: center; }
 .command-line button:hover { color: var(--positive); }
+.install-options { margin: 20px 0; border-top: 1px solid var(--line); }
+.install-options summary { padding: 16px 0; color: var(--accent); font-size: 13px; cursor: pointer; }
+.install-options p { font-size: 12px; color: #586b78; line-height: 1.8; margin-top: 14px; }
 .install-card > .text-link { font-size: 12px; margin-top: 14px; }
 .install-note { font-size: 11px; color: #586b78; display: block; margin-top: 18px; }
 .faq-section { display: grid; grid-template-columns: 1fr 1.2fr; gap: 100px; padding-top: 40px; }

@@ -4,6 +4,14 @@
 
 One file. Several agents. Different instructions. Sightline shows every discovered source, why it applies, what is shadowed or truncated, and the effective configuration—with source lines you can inspect.
 
+Open a terminal in your project folder and run one command to inspect your repository in the browser.
+
+```sh
+npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.13/agent-sightline-0.3.13.tgz ui
+```
+
+For repeated use, install the CLI. The bundled demo provides a sample workspace with intentional configuration problems.
+
 ```sh
 npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.13/agent-sightline-0.3.13.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn

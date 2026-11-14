@@ -28,6 +28,8 @@ test('project-hosted website loads assets, demo, guide and the exact released pa
     await page.route('**/demo-report.json', async route => { await dataGate.promise; await route.continue(); });
     await page.goto(server.url + prefix);
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', publicUrl);
+    const command = 'npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.1.2/agent-sightline-0.1.2.tgz ui';
+    await expect(page.getByRole('button', { name: 'Copy one-command inspection', exact: true })).toHaveAttribute('data-copy', command);
     const socialHash = createHash('sha256').update(await readFile('website/public/social.png')).digest('hex');
     const socialPath = 'social.png?v=' + socialHash.slice(0, 12);
     await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', publicUrl + socialPath);
@@ -51,6 +53,7 @@ test('project-hosted website loads assets, demo, guide and the exact released pa
     await page.getByRole('link', { name: /Installation guide/ }).click();
     await expect(page).toHaveURL(server.url + prefix + 'guide.html#install');
     await expect(page.getByRole('heading', { name: 'Inspect a Codex profile' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Copy one-command inspection', exact: true })).toHaveAttribute('data-copy', command);
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', publicUrl + 'guide.html');
     await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', publicUrl + 'guide.html');
     await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', publicUrl + socialPath);

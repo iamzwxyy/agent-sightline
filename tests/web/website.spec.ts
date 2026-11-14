@@ -4,6 +4,39 @@ import { VERSION } from '../../packages/core/version.js';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
+test('homepage and guide copy the published one-command repository inspection', async ({ page }) => {
+  const server = await serveStatic('website/dist');
+  const command = `npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v${VERSION}/agent-sightline-${VERSION}.tgz ui`;
+  try {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', { value: {
+        writeText: async (text: string) => { document.documentElement.dataset.copiedCommand = text; },
+      } });
+    });
+    for (const route of ['/', '/guide.html#install']) {
+      await page.goto(server.url + route);
+      const copy = page.getByRole('button', { name: 'Copy one-command inspection', exact: true });
+      await expect(copy).toHaveAttribute('data-copy', command);
+      await expect(copy.locator('..').locator('code')).toHaveText(command);
+      await copy.click();
+      await expect(page.locator('html')).toHaveAttribute('data-copied-command', command);
+      await expect(page.getByRole('status')).toHaveText('Copied to clipboard');
+      await page.setViewportSize({ width: 390, height: 844 });
+      await copy.scrollIntoViewIfNeeded();
+      const bounds = await copy.boundingBox();
+      expect(bounds?.width).toBeGreaterThanOrEqual(44);
+      expect(bounds?.height).toBeGreaterThanOrEqual(44);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+    await page.goto(server.url + '/#download');
+    const install = page.getByRole('button', { name: 'Copy install command', exact: true });
+    await expect(install).toBeHidden();
+    await page.getByText('Install the CLI for repeated use', { exact: true }).click();
+    await expect(install).toBeVisible();
+    await expect(install).toHaveAttribute('data-copy', command.replace('npx --yes', 'npm install -g').replace(/ ui$/, ''));
+  } finally { await server.close(); }
+});
+
 test('opening motion follows client selection and supports pause and reduced motion', async ({ page }) => {
   const server = await serveStatic('website/dist');
   try {
@@ -201,6 +234,10 @@ test('opening and primary navigation remain complete with JavaScript disabled', 
     expect(await page.locator('.hero-poster').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
     await expect(page.locator('#motion-toggle')).toBeHidden();
     await page.getByRole('link', { name: 'Get Sightline', exact: true }).first().click();
+    await expect(page.locator('.install-card > .command-line code')).toBeInViewport();
+    await page.getByText('Install the CLI for repeated use', { exact: true }).click();
+    await expect(page.locator('.install-options')).toHaveAttribute('open', '');
+    await page.getByRole('link', { name: /Download CLI package/ }).scrollIntoViewIfNeeded();
     await expect(page.getByRole('link', { name: /Download CLI package/ })).toBeInViewport();
     await page.getByRole('link', { name: /Installation guide/ }).click();
     await expect(page.getByRole('heading', { name: 'Install Sightline', exact: true })).toBeVisible();
