@@ -11,6 +11,8 @@ Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
 * The 413-case core suite completed with 411 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
 * All 76 Chromium browser cases passed, including source search, portable path handling, snapshot export, mobile navigation, linked-line history, website motion and automated WCAG AA checks.
 * All 40 historical published archive hashes matched their release manifest before packaging.
+* The exact packed CLI passed complete staging journeys after empty-cache offline installation. Live and portable inspections exported their selected source line at desktop and phone sizes. Re-exported files retained the newly selected ignored import occurrence, and explicit fragments opened Overview. Exported-line screenshots received visual review.
+* Windows, macOS and Linux release verification passed. Linux Firefox completed with 73 passes and three browser-gated skips for touch emulation and WebGL context-loss checks. Anonymous download of the published archive matched its recorded SHA-256. [Release verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43612588854)
 
 ## v0.3.21
 
