@@ -4,8 +4,13 @@
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 
-* Twenty-nine isolated Claude Code 2.1.322 scenarios captured thirty-three loopback Messages API requests. The comparisons check instruction order, source-file lists and empty native permission-denial lists. Scripted Read paths retain the native launch namespace.
-* Main-only and linked-only approval fixtures compare linked-worktree project selection with the pinned client. Windows approval keys use logical paths with forward slashes, and POSIX keys use canonical paths. Git metadata is inspected only when an external import needs approval. A focused regression retains conditional approval and one warning when metadata is unreadable.
+* Thirty-one isolated Claude Code 2.1.322 scenarios captured thirty-five loopback Messages API requests. The comparisons check instruction order, source-file lists and empty native permission-denial lists. Scripted Read paths retain the native launch namespace.
+* Main-only and linked-only approval fixtures compare linked-worktree project selection through logical and canonical launches with the pinned client. Windows approval keys use logical paths with forward slashes, and POSIX keys use canonical paths. Git metadata is inspected only when an external import needs approval. A focused regression retains conditional approval and one warning when metadata is unreadable.
+
+* The 477-case core suite completed with 475 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. All 81 Chromium browser cases passed. Production dependency audit reported zero vulnerabilities.
+* An installed-package worktree export reproduced a main-checkout path embedded in an approval key. The correction preserves file/line provenance and passes the native worktree export assertions. A fresh offline installation passed pending, approved and rejected states through JSON, terminal output, desktop/phone inspection, refresh, clipboard copying and offline HTML snapshots.
+* A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,269 ms. Fixture creation warmed the filesystem cache.
+* Windows diagnostic comparisons exposed native denial of DOS short-path Reads and worktree identity differences between short-path and canonical launches. Read fixtures now launch in canonical directories. Dedicated short-path project/worktree cases retain native state selection checks. [Windows comparison](https://github.com/iamzwxyy/agent-sightline/actions/runs/43654342013)
 
 ## v0.3.28 candidate
 

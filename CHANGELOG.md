@@ -5,11 +5,11 @@
 * Match Claude Code instruction order across personal rules, shared project files, per-directory rules, local files and AGENTS modes.
 * Expand imports in rules files and load matching path-scoped rule bodies after startup instructions. Empty path lists load unconditionally.
 * Keep scoped-rule imports in startup discovery, including imports from unmatched rules and imports with their own path metadata.
-* Read saved external-import approval from the native Git project state or the session directory for non-Git folders. Match Windows logical paths with forward slashes and linked worktrees’ shared main-project entry. Pending approval stays conditional, and saved rejection skips the import.
+* Read saved external-import approval from the native Git project state or the session directory for non-Git folders. Match Windows logical paths with forward slashes, canonical linked worktrees’ shared main-project entry and Windows short-path launches’ own entry. Pending approval stays conditional, and saved rejection skips the import.
 * Preserve the distinct project/server trust and external-import approval controls through refresh, copying and portable reports.
 * Clarify conditional byte counts and loading positions in the inspector and portable reports.
-* Verify ordered instruction markers and canonical source files with twenty-nine isolated native Claude Code 2.1.322 scenarios.
-
+* Verify ordered instruction markers and canonical source files with thirty-one isolated native Claude Code 2.1.322 scenarios.
+* Preserve file/line approval provenance while concealing the main checkout path embedded in private state keys in exported worktree reports.
 * Keep external-import approval conditional when required Git metadata cannot be inspected, with a targeted diagnostic.
 
 v0.3.28 remained an unpublished candidate after Windows verification exposed native path-namespace differences.

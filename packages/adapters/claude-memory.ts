@@ -13,7 +13,8 @@ interface Contribution {
 
 async function projectStateRoot(ctx: Context): Promise<string> {
   const discovered = await findRepositoryRoot(ctx.directory, ctx.options.signal);
-  const root = process.platform === 'win32' ? discovered : await realpath(discovered);
+  const canonical = await realpath(discovered);
+  const root = process.platform === 'win32' ? discovered : canonical;
   const project = process.platform === 'win32' ? slash(root) : root;
   const marker = path.join(root, '.git');
   const markerInfo = await stat(marker).catch(error => {
@@ -42,7 +43,9 @@ async function projectStateRoot(ctx: Context): Promise<string> {
   const shared = common.replace(/[\r\n]+$/, '');
   if (!shared) throw new Error('Empty shared Git directory pointer.');
   const main = path.dirname(path.resolve(directory, shared));
-  return process.platform === 'win32' ? project : realpath(main);
+  // Native Windows worktree detection retains the launch entry through short-path aliases.
+  if (process.platform === 'win32' && root.toLowerCase() !== canonical.toLowerCase()) return project;
+  return process.platform === 'win32' ? slash(main) : realpath(main);
 }
 
 export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: string, state?: Source): Promise<void> {
@@ -172,5 +175,5 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
     addInstruction(e, source, conditional ? 'On-demand rule exceeds the 200K-context per-file character limit; exact truncation depends on model/context size.' : contribution.reason + ' Its paths frontmatter matches the opened target file after startup instructions load.', stripComments(source.body), conditional ? 'conditional' : contribution.status);
     if (contribution.importedFrom) e.decisions.at(-1)!.importedFrom = contribution.importedFrom;
   }
-  e.notes.push(`Project instruction mode: ${mode}. AGENTS.md fallback: ${useAgents ? 'enabled' : 'disabled'}.`, 'User rules precede project instructions. Unconditional rules load before local instruction files at each directory level. Matching path-scoped rules follow startup instructions.', 'Project external-import approval uses the native project identity in ~/.claude.json. Linked worktrees share the main project entry. Windows project keys retain the logical path with forward slashes. Pending approval stays conditional, and saved rejection skips the import.', 'Ancestors outside --repo, session source switches, accounts, plugins and managed cloud policies are outside this static report.');
+  e.notes.push(`Project instruction mode: ${mode}. AGENTS.md fallback: ${useAgents ? 'enabled' : 'disabled'}.`, 'User rules precede project instructions. Unconditional rules load before local instruction files at each directory level. Matching path-scoped rules follow startup instructions.', 'Project external-import approval uses the native project identity in ~/.claude.json. Linked worktrees share the main project entry, except Windows launch aliases that differ from the canonical path retain their own entry. Windows project keys use forward slashes. Pending approval stays conditional, and saved rejection skips the import.', 'Ancestors outside --repo, session source switches, accounts, plugins and managed cloud policies are outside this static report.');
 }
