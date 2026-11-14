@@ -11,9 +11,10 @@
 <body data-live="{{LIVE}}">
   <a class="skip-link" href="#main-content">Skip to workspace</a>
   <div class="app-layout">
-    <button disabled data-startup-disabled id="navigation-scrim" aria-label="Close navigation" hidden></button>
+    <div id="navigation-scrim" hidden></div>
     <aside class="sidebar" aria-label="Workspace navigation">
       <a class="brand" href="#overview" aria-label="Sightline overview"><span class="brand-mark" aria-hidden="true"></span><span>Sightline</span><span class="version" id="tool-version"></span></a>
+      <button disabled data-startup-disabled id="close-navigation" class="icon-button" type="button" aria-label="Close navigation">×</button>
       <div class="project-switcher"><span class="project-icon" aria-hidden="true">/</span><div><strong id="project-name"></strong><span id="project-caption">Local workspace</span></div><span class="connection" title="Local, read-only"></span></div>
       <nav id="main-navigation" class="main-navigation">
         <button disabled data-startup-disabled data-view="overview" id="overview-tab"><span class="nav-symbol" aria-hidden="true">◫</span>Overview<span id="overview-count" class="nav-count"></span></button>
@@ -69,7 +70,7 @@
           <div id="effective-document" hidden></div>
           <div id="instruction-explorer" class="inspector-layout">
             <aside class="source-panel"><div class="source-panel-heading"><h2>Sources</h2><span id="source-count" class="subtle"></span></div><label class="source-search"><span aria-hidden="true">⌕</span><input disabled data-startup-disabled id="source-search" aria-label="Search sources" placeholder="Filter sources…" type="search"></label><div class="source-filter"><button disabled data-startup-disabled data-source-filter="relevant" aria-pressed="true">In scope</button><button disabled data-startup-disabled data-source-filter="all" aria-pressed="false">All discovered</button></div><div id="sources" role="navigation" aria-label="Configuration sources"></div></aside>
-            <article class="source-content"><div class="file-tab"><span class="file-symbol" aria-hidden="true">▤</span><strong id="source-title">Select a source</strong><span id="source-status"></span><button disabled data-startup-disabled id="copy-source" class="icon-button" aria-label="Copy source content" title="Copy source content">⧉</button></div><div id="instructions"></div><div class="source-information"><h2>Effective settings from this source</h2><div id="settings"></div></div></article>
+            <article class="source-content"><div class="file-tab"><span class="file-symbol" aria-hidden="true">▤</span><h2 id="source-title" tabindex="-1" aria-describedby="source-status">Select a source</h2><span id="source-status"></span><button disabled data-startup-disabled id="copy-source" class="icon-button" aria-label="Copy source content" title="Copy source content">⧉</button></div><div id="instructions"></div><div class="source-information"><h2>Effective settings from this source</h2><div id="settings"></div></div></article>
             <aside class="why-panel"><div class="inspector-caption">Source details</div><div id="why"></div></aside>
           </div>
         </section>
@@ -103,7 +104,7 @@
   </div>
   <dialog id="detail-dialog" aria-labelledby="detail-title"><div class="dialog-topline"><span id="detail-category">Finding details</span><button disabled data-startup-disabled class="icon-button" data-close-dialog aria-label="Close details">×</button></div><div id="detail-body"></div></dialog>
   <dialog id="scope-dialog" aria-labelledby="scope-title"><div class="dialog-topline"><span>About this scan</span><button disabled data-startup-disabled class="icon-button" data-close-dialog aria-label="Close scan details">×</button></div><div class="dialog-content"><h2 id="scope-title">Scan scope & rule versions</h2><ul id="assumptions" class="scope-list"></ul><div id="adapter-details"></div></div></dialog>
-  <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-topline"><span>Workspace shortcuts</span><button disabled data-startup-disabled class="icon-button" data-close-dialog aria-label="Close shortcuts">×</button></div><div class="dialog-content"><h2 id="help-title">Keep your hands on the keyboard.</h2><dl class="shortcut-list"><div><dt>Choose a target</dt><dd><kbd>⌘ / Ctrl</kbd> <kbd>K</kbd></dd></div><div><dt>Search sources</dt><dd><kbd>/</kbd></dd></div><div><dt>Move between sources</dt><dd><kbd>↑</kbd> <kbd>↓</kbd></dd></div><div><dt>Close a dialog</dt><dd><kbd>Esc</kbd></dd></div><div><dt>Show shortcuts</dt><dd><kbd>?</kbd></dd></div></dl></div></dialog>
+  <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-topline"><span>Workspace shortcuts</span><button disabled data-startup-disabled class="icon-button" data-close-dialog aria-label="Close shortcuts">×</button></div><div class="dialog-content"><h2 id="help-title">Keep your hands on the keyboard.</h2><dl class="shortcut-list"><div><dt>Choose a target</dt><dd><kbd>⌘ / Ctrl</kbd> <kbd>K</kbd></dd></div><div><dt>Search sources</dt><dd><kbd>/</kbd></dd></div><div><dt>Move between sources</dt><dd><kbd>↑</kbd> <kbd>↓</kbd></dd></div><div><dt>First or last source</dt><dd><kbd>Home</kbd> <kbd>End</kbd></dd></div><div><dt>Close a dialog</dt><dd><kbd>Esc</kbd></dd></div><div><dt>Show shortcuts</dt><dd><kbd>?</kbd></dd></div></dl></div></dialog>
   <div id="toast" role="status" hidden></div>
   <script type="application/json" id="report-data">{{DATA}}</script>
   <script type="application/json" id="export-data">{{EXPORT}}</script>

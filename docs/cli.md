@@ -59,6 +59,8 @@ Repeated decisions for one physical source have separate rows in loading order. 
 
 Effective-text source origins and instruction coverage links clear the source search before opening their destination. Sidebar clients, overview client cards, instruction-chain links and the discovered-source overview also start with a clear source search. Browser Back/Forward clears a search that excludes the restored source. A matching query stays in place. Selecting rows in a filtered list and refreshing a local scan retain search text.
 
+Opening a view focuses its heading. Following a source location focuses the filename heading, which exposes the loading status to assistive technology. Shift+Tab returns to the source list. The list has one Tab entry for the selected source or the first filtered result. Arrow keys move focus, Home/End reach the first/last row, and Enter selects it. Mobile navigation contains keyboard focus while open, provides an explicit close button and returns focus to the toggle on Escape. Scan scope and keyboard help close the menu before opening. The local target-search shortcut also closes the menu before focusing the file picker. Responsive layout changes restore a visible navigation focus.
+
 Use rule IDs for CI integrations; prose is not a compatibility API. JSON keeps absolute paths for diagnosis. HTML replaces captured repository paths with `<repo>`, home paths with `~` and external agent configuration roots with `<codex-home>`, `<claude-home>` or `<copilot-home>`. Filesystem-verified aliases from absolute structured values and `--option=path` arguments share those replacements. Unknown paths in prose or shell snippets can remain.
 
 

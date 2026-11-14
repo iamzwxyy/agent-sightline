@@ -15,6 +15,167 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('keyboard source inspection focuses its named heading and returns to the selected source live and offline', async ({ page }) => {
+  const settings = ['{', '"hooks":{"UserPromptSubmit":[', ...Array(130).fill(''), '{"hooks":[{"type":"command","command":"missing-keyboard-hook"}]}', ']}}'].join('\n');
+  const w = await workspace({ 'AGENTS.md': 'Codex instructions.', 'CLAUDE.md': 'Claude instructions.', '.claude/settings.json': settings });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('keyboard-source-focus.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto('about:blank');
+        await page.goto(url + '#view=findings');
+        const finding = page.locator('#findings-list .finding').filter({ hasText: 'Hook command was not found or is not executable.' });
+        await finding.focus();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('#detail-dialog')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(finding).toBeFocused();
+        await page.keyboard.press('Enter');
+        await page.getByRole('button', { name: /Inspect source/ }).focus();
+        await page.keyboard.press('Enter');
+        const title = page.getByRole('heading', { name: '.claude/settings.json', level: 2, exact: true });
+        await expect(title).toBeFocused();
+        await expect(title).toHaveAccessibleDescription('Loaded');
+        await expect(title).toBeInViewport({ ratio: 1 });
+        await expect(page.locator('.code-line.highlight')).toContainText('missing-keyboard-hook');
+        await expect(page.locator('.code-line.highlight')).toBeInViewport({ ratio: 1 });
+        await page.keyboard.press('Shift+Tab');
+        await expect(page.locator('#sources .source.selected')).toBeFocused();
+        await expect(page.locator('#sources .source.selected')).toBeInViewport({ ratio: 1 });
+        await expect(page.locator('#sources .source[tabindex="0"]')).toHaveCount(1);
+        await page.keyboard.press('Home');
+        await expect(page.locator('#sources .source').first()).toBeFocused();
+        await page.keyboard.press('End');
+        await expect(page.locator('#sources .source').last()).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('#sources .source.selected')).toBeFocused();
+        await page.keyboard.press('Tab');
+        await expect(page.locator('#copy-source')).toBeFocused();
+        await page.keyboard.press('Shift+Tab');
+        await expect(page.locator('#sources .source.selected')).toBeFocused();
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('source lists have one keyboard entry and retain a filtered entry when selection is excluded', async ({ page }) => {
+  const w = await workspace({ 'CLAUDE.md': 'Root instructions.\n@one.md\n@two.md\n', 'one.md': 'First import.', 'two.md': 'Second import.' });
+  const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    await page.locator('#effective-tab').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#effective-title')).toBeFocused();
+    await expect(page.locator('#sources .source[tabindex="0"]')).toHaveCount(1);
+    await page.locator('#sources .source.selected').focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.locator('#sources .source').nth(1)).toBeFocused();
+    await expect(page.locator('#sources .source[tabindex="0"]')).toHaveCount(1);
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#copy-source')).toBeFocused();
+    await page.locator('#source-search').fill('two.md');
+    await expect(page.locator('#sources .source.selected')).toHaveCount(0);
+    await expect(page.locator('#sources .source[tabindex="0"]')).toHaveCount(1);
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#sources .source').first()).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#sources .source.selected')).toBeFocused();
+    await expect(page.locator('#source-title')).toHaveText('two.md');
+    await page.locator('#source-search').fill('unmatched-source');
+    await expect(page.locator('#sources .source')).toHaveCount(0);
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#copy-source')).toBeFocused();
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('mobile navigation contains keyboard focus and closes into its destination and native dialogs live and offline', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'Codex instructions.', 'CLAUDE.md': 'Claude instructions.' });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('keyboard-mobile-navigation.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto('about:blank');
+      await page.goto(url);
+      const menu = page.locator('#mobile-menu');
+      await page.keyboard.press('Tab');
+      await expect(page.locator('.skip-link')).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(menu).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#overview-tab')).toBeFocused();
+      await page.locator('.sidebar .brand').focus();
+      await page.keyboard.press('Shift+Tab');
+      await expect(page.locator('#scope-button')).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(page.locator('.sidebar .brand')).toBeFocused();
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeFocused();
+      await page.keyboard.press('Enter');
+      await page.getByRole('button', { name: 'Close navigation', exact: true }).focus();
+      await page.keyboard.press('Enter');
+      await expect(menu).toBeFocused();
+      await page.keyboard.press('Enter');
+      await page.locator('#configuration-tab').focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#configuration h1')).toBeFocused();
+      await expect(menu).toHaveAttribute('aria-expanded', 'false');
+      await page.keyboard.press('Tab');
+      await expect(page.locator('#setting-search')).toBeFocused();
+      await menu.focus();
+      await page.keyboard.press('Enter');
+      await page.locator('#scope-button').focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#scope-dialog')).toBeVisible();
+      await expect(menu).toHaveAttribute('aria-expanded', 'false');
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeFocused();
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('?');
+      await expect(page.locator('#help-dialog')).toBeVisible();
+      await expect(menu).toHaveAttribute('aria-expanded', 'false');
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeFocused();
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('ControlOrMeta+k');
+      await expect(menu).toHaveAttribute('aria-expanded', 'false');
+      if (url === server.url) {
+        await expect(page.locator('#target')).toBeFocused();
+        await page.keyboard.press('Escape');
+      } else await expect(menu).toBeFocused();
+      await menu.focus();
+      await page.keyboard.press('Enter');
+      await page.getByRole('button', { name: 'Close navigation', exact: true }).focus();
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await expect(page.locator('#configuration-tab')).toBeFocused();
+      await expect(menu).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.locator('#navigation-scrim')).toBeHidden();
+      await page.locator('#target').focus();
+      await expect(page.locator('#target')).toBeFocused();
+      await page.locator('#configuration-tab').focus();
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(menu).toBeFocused();
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('effective-text source jumps and history reveal destinations hidden by a source search live and offline', async ({ page }) => {
   const w = await workspace({
     'AGENTS.md': 'Codex instructions.\n',

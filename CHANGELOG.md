@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.19 — 2026-11-14
+
+* Focus the destination heading when opening a view. Source inspection focuses a semantic filename heading with its loading status available as an accessible description.
+* Give source lists one Tab entry. Shift+Tab from the filename returns to the source list. Arrow keys move through sources, Home/End reach its boundaries, and Enter selects the focused decision.
+* Provide a keyboard entry for filtered results when the selected source is excluded. With no matching sources, Tab continues to source controls.
+* Keep closed mobile navigation outside the keyboard sequence. Open navigation contains focus, marks the workspace inert and provides a close button. Escape returns focus to the menu toggle.
+* Close mobile navigation before opening scan scope, keyboard help or target search. Restore a visible navigation focus when crossing the desktop/mobile breakpoint.
+* Verify keyboard inspection, filtered lists, modal navigation and native dialog focus in live and portable reports, including desktop and phone layouts.
+
 ## 0.3.18 — 2026-11-14
 
 * Open effective-text origins and instruction coverage links through the existing source-inspection path. Stale source searches clear and each destination appears in the source list.

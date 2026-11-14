@@ -153,8 +153,26 @@
     }
     return [...groups.values()];
   }
+  function setNavigationOpen(open, restoreFocus = true) {
+    document.body.classList.toggle('nav-open', open);
+    $('navigation-scrim').hidden = !open;
+    $('mobile-menu').setAttribute('aria-expanded', String(open));
+    document.querySelector('.workspace-shell').inert = open;
+    document.querySelector('.skip-link').inert = open;
+    const sidebar = document.querySelector('.sidebar');
+    if (open) {
+      sidebar.setAttribute('role', 'dialog');
+      sidebar.setAttribute('aria-modal', 'true');
+      sidebar.querySelector('[aria-current="page"]').focus({ preventScroll: true });
+    } else {
+      sidebar.removeAttribute('role');
+      sidebar.removeAttribute('aria-modal');
+      if (restoreFocus) $('mobile-menu').focus({ preventScroll: true });
+    }
+  }
   function navigate(view, client, source, line = null, occurrence = 1) {
     const viewChanged = state.view !== view;
+    const navigationWasOpen = document.body.classList.contains('nav-open');
     if (client) state.client = client;
     if (source) {
       state.source = source;
@@ -163,9 +181,7 @@
       state.highlightLine = line;
     }
     state.view = view;
-    document.body.classList.remove('nav-open');
-    $('navigation-scrim').hidden = true;
-    $('mobile-menu').setAttribute('aria-expanded', 'false');
+    setNavigationOpen(false, false);
     const hash = new URLSearchParams({ view });
     if (view === 'effective') {
       hash.set('client', state.client);
@@ -182,7 +198,12 @@
     if (view === 'compare') renderCompare();
     if (view === 'extensions') renderExtensions();
     if (view === 'findings') renderFindings();
-    if (viewChanged) window.scrollTo(0, 0);
+    if (viewChanged || navigationWasOpen || document.activeElement === document.body) {
+      window.scrollTo(0, 0);
+      const heading = $(view).querySelector('h1');
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
   }
   function renderNavigation() {
     for (const [view, label] of Object.entries(viewLabels)) {
@@ -402,6 +423,7 @@
         navigate('effective', state.client, source.path, null, occurrence);
       }, `source ${isSelected ? 'selected' : ''}`);
       element.setAttribute('aria-pressed', String(isSelected));
+      element.tabIndex = -1;
       const importedFrom = source.importedFrom ? `Imported from ${short(source.importedFrom.path)}:${source.importedFrom.line}` : '';
       const labels = [basename(source.path), statusNames[source.status], short(source.path)];
       if (importedFrom) labels.push(importedFrom);
@@ -417,13 +439,15 @@
     }
     $('sources').replaceChildren(...elements);
     const selected = $('sources').querySelector('.source.selected');
+    const tabStop = selected ?? $('sources').querySelector('.source');
+    if (tabStop) tabStop.tabIndex = 0;
     if (restoreFocus) selected?.focus({ preventScroll: true });
     if (revealSelection) revealSourceSelection();
     if (!sources.length) $('sources').append(empty('No matching sources', 'Clear the filter to see the full source list.'));
   }
   function revealSourceSelection() {
     const list = $('sources');
-    const selected = list.querySelector('.source.selected');
+    const selected = list.querySelector('.source:focus') ?? list.querySelector('.source.selected');
     if (!selected || !list.clientHeight) return;
     const bounds = list.getBoundingClientRect();
     const row = selected.getBoundingClientRect();
@@ -556,6 +580,8 @@
     state.sourceFilter = 'all';
     $('source-search').value = '';
     navigate('effective', client, location.path, location.line ?? null, occurrence);
+    $('source-title').focus({ preventScroll: true });
+    if (!$('instructions').querySelector('.code-line.highlight')) $('source-title').scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
   function renderSettings() {
     const selected = $('setting-client').value;
@@ -853,8 +879,24 @@
   document.querySelectorAll('[data-kind]').forEach(element => { element.onclick = () => { state.extensionKind = element.dataset.kind; renderExtensions(); }; });
   document.querySelectorAll('[data-close-dialog]').forEach(element => { element.onclick = () => element.closest('dialog').close(); });
   document.querySelectorAll('dialog').forEach(dialog => { dialog.onclick = event => { if (event.target === dialog) { const bounds = dialog.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close(); } }; });
-  $('mobile-menu').onclick = () => { const open = document.body.classList.toggle('nav-open'); $('mobile-menu').setAttribute('aria-expanded', String(open)); $('navigation-scrim').hidden = !open; };
-  $('navigation-scrim').onclick = () => { document.body.classList.remove('nav-open'); $('mobile-menu').setAttribute('aria-expanded', 'false'); $('navigation-scrim').hidden = true; $('mobile-menu').focus(); };
+  $('mobile-menu').onclick = () => setNavigationOpen(!document.body.classList.contains('nav-open'));
+  $('navigation-scrim').onclick = () => setNavigationOpen(false);
+  $('close-navigation').onclick = () => setNavigationOpen(false);
+  const mobileLayout = window.matchMedia('(max-width: 760px)');
+  mobileLayout.addEventListener('change', event => {
+    if (event.matches) {
+      if (document.querySelector('.sidebar').contains(document.activeElement) || document.activeElement === document.body) $('mobile-menu').focus({ preventScroll: true });
+    } else if (document.body.classList.contains('nav-open')) {
+      setNavigationOpen(false, false);
+      document.querySelector('.sidebar [aria-current="page"]').focus();
+    }
+  });
+  $('sources').addEventListener('focusin', event => {
+    if (!event.target.classList.contains('source')) return;
+    const previous = $('sources').querySelector('.source[tabindex="0"]');
+    if (previous) previous.tabIndex = -1;
+    event.target.tabIndex = 0;
+  });
   $('source-search').oninput = () => renderSourceList();
   $('finding-search').oninput = renderFindings;
   $('severity').onchange = renderFindings;
@@ -866,7 +908,10 @@
   $('differences-only').onchange = renderCompare;
   $('content-filter').onchange = () => { state.comparisonLimit = 100; renderCompare(); };
   $('review-findings').onclick = () => { $('severity').value = 'actionable'; navigate('findings'); };
-  $('scope-button').onclick = () => $('scope-dialog').showModal();
+  $('scope-button').onclick = () => {
+    if (document.body.classList.contains('nav-open')) setNavigationOpen(false);
+    $('scope-dialog').showModal();
+  };
   $('help-button').onclick = () => $('help-dialog').showModal();
   $('target-form').onsubmit = event => { event.preventDefault(); closeTargetPicker(); void refresh($('target').value.trim() || '.'); };
   $('target').onfocus = () => searchTargetFiles(true);
@@ -891,14 +936,36 @@
     const anchor = node('a'); anchor.href = url; anchor.download = 'sightline-report.html'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && document.body.classList.contains('nav-open')) $('navigation-scrim').click();
+    const navigationOpen = document.body.classList.contains('nav-open');
+    if (event.key === 'Escape' && navigationOpen) setNavigationOpen(false);
+    if (event.key === 'Tab' && navigationOpen) {
+      const items = [...document.querySelectorAll('.sidebar a[href], .sidebar button:not([disabled])')];
+      const first = items[0];
+      const last = items.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
     const editing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); if (live) { if (document.activeElement === $('target')) searchTargetFiles(true); else $('target').focus(); $('target').select(); } else toast('This report is a snapshot. Open the local CLI to inspect another file.'); }
-    if (event.key === '?' && !editing && !document.querySelector('dialog[open]')) $('help-dialog').showModal();
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      if (navigationOpen) setNavigationOpen(false);
+      if (live) {
+        if (document.activeElement === $('target')) searchTargetFiles(true);
+        else $('target').focus();
+        $('target').select();
+      } else toast('This report is a snapshot. Open the local CLI to inspect another file.');
+    }
+    if (event.key === '?' && !editing && !document.querySelector('dialog[open]')) {
+      if (navigationOpen) setNavigationOpen(false);
+      $('help-dialog').showModal();
+    }
     if (event.key === '/' && !editing && !document.querySelector('dialog[open]')) { event.preventDefault(); navigate('effective'); $('source-search').focus(); }
-    if (['ArrowUp', 'ArrowDown'].includes(event.key) && document.activeElement.classList.contains('source')) {
-      event.preventDefault(); const items = [...document.querySelectorAll('.source')]; const index = items.indexOf(document.activeElement);
-      items[Math.max(0, Math.min(items.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))].focus();
+    if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) && document.activeElement.classList.contains('source')) {
+      event.preventDefault();
+      const items = [...document.querySelectorAll('.source')];
+      const index = items.indexOf(document.activeElement);
+      const destinations = { ArrowUp: index - 1, ArrowDown: index + 1, Home: 0, End: items.length - 1 };
+      items[Math.max(0, Math.min(items.length - 1, destinations[event.key]))].focus();
     }
   });
   function readLocation() {

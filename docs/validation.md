@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.19
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* Three keyboard regressions failed against v0.3.18. Source inspection lacked a focused semantic filename heading, view navigation retained the navigation focus, and mobile navigation opened with focus on the obscured toggle.
+* Source inspection now focuses a filename heading with the loading status as its accessible description. Shift+Tab returns to the source list. One source row participates in Tab navigation, including a filtered result when the selected row is excluded. Arrow keys, Home/End and Enter support focus and selection.
+* The 413-case core suite completed with 411 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* All 71 Chromium browser cases passed. Added journeys cover live and portable keyboard inspection on desktop and phone, native dialog dismissal, focused source lines, filtered/empty lists, mobile focus boundaries, the explicit close button, Escape, help, scan scope and target-search shortcuts.
+* Responsive checks restore a visible navigation focus when moving between desktop and phone layouts. Closed mobile navigation leaves the Tab sequence. The expanded navigation passed automated WCAG AA checks. Accessible filename names and status descriptions are asserted directly.
+* Desktop and phone source-focus screenshots and the keyboard-opened mobile menu received visual review. All 37 historical published archive hashes matched their release manifest before packaging.
+
 ## v0.3.18
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
