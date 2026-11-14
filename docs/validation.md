@@ -10,6 +10,7 @@ Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
 * All 71 Chromium browser cases passed. Added journeys cover live and portable keyboard inspection on desktop and phone, native dialog dismissal, focused source lines, filtered/empty lists, mobile focus boundaries, the explicit close button, Escape, help, scan scope and target-search shortcuts.
 * Responsive checks restore a visible navigation focus when moving between desktop and phone layouts. Closed mobile navigation leaves the Tab sequence. The expanded navigation passed automated WCAG AA checks. Accessible filename names and status descriptions are asserted directly.
 * Desktop and phone source-focus screenshots and the keyboard-opened mobile menu received visual review. All 37 historical published archive hashes matched their release manifest before packaging.
+* Windows, macOS and Linux release verification passed. Linux Firefox completed with 68 passes and three browser-gated skips for touch emulation and WebGL context-loss checks. Anonymous download of the published archive matched its recorded SHA-256. [Release verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43599128483)
 
 ## v0.3.18
 
