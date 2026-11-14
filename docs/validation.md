@@ -1,5 +1,17 @@
 # Release validation
 
+## v0.3.21
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* Two regression journeys failed against v0.3.20. Searching a repeated import by its captured parent and line produced no results, and hidden ignored matches had no scope-recovery action.
+* Source search now combines whitespace-separated terms across captured and displayed paths and import origins. Tests cover case, surrounding whitespace, full captured paths, Windows slash spellings and separate decisions for the same physical source.
+* Browser history preserves a matching import-origin query and clears a query excluding the restored occurrence. A target-changing journey edits the import line between scans and confirms matching against the restored report. Earlier reports can search a captured parent absent from the source inventory.
+* Scope exclusions expose Show all discovered and focus the resulting list entry. Clear search returns focus to the input. Result counts update an accessible status. A repository with no captured configuration shows creation guidance.
+* The 413-case core suite completed with 411 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* All 74 Chromium browser cases passed, including live and offline provenance search at desktop and phone sizes, keyboard recovery, existing source navigation, linked-line reload, mobile navigation, website motion and automated WCAG AA checks.
+* All 39 historical published archive hashes matched their release manifest before packaging.
+
 ## v0.3.20
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.

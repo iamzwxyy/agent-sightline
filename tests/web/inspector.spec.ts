@@ -15,6 +15,124 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('source search matches paths and captured import origins and retains matching history queries live and offline', async ({ page }) => {
+  const w = await workspace({
+    'CLAUDE.md': '# Root\n@alpha.md\n@beta.md\n',
+    'alpha.md': '# Alpha\n@policies/shared.md\n',
+    'beta.md': '# Beta\n\n@policies/shared.md\n',
+    'policies/shared.md': 'Shared instructions.',
+    'AGENTS.md': 'Codex instructions.',
+  });
+  const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('source-provenance-search.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto('about:blank');
+        await page.goto(url + '#view=effective&client=claude');
+        await page.getByRole('button', { name: 'All discovered', exact: true }).click();
+        const rows = page.locator('#sources .source');
+        const query = '  SHARED   beta.md:3  ';
+        await page.locator('#source-search').fill(query);
+        await expect(rows).toHaveCount(1);
+        await expect(rows.first()).toContainText('shared.md');
+        await expect(rows.first()).toContainText('Imported from beta.md:3');
+        await rows.first().click();
+        await expect(page.locator('#source-search')).toHaveValue(query);
+        await expect(page.locator('#source-status')).toHaveText('Not loaded');
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
+        if (viewport.width === 390) await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+        await page.locator('#findings-tab').click();
+        await page.goBack();
+        await expect(page.locator('#source-search')).toHaveValue(query);
+        await expect(rows).toHaveCount(1);
+        await expect(rows.first()).toHaveAttribute('aria-pressed', 'true');
+        await page.locator('#source-search').fill('shared alpha.md');
+        await expect(rows).toHaveCount(1);
+        await expect(rows.first()).toContainText('Imported from alpha.md:2');
+        await rows.first().click();
+        await expect(page.locator('#source-status')).toHaveText('Loaded');
+        await page.goBack();
+        await expect(page.locator('#source-status')).toHaveText('Not loaded');
+        await expect(page.locator('#source-search')).toHaveValue('');
+        const absolute = await page.locator('#report-data').evaluate(element => JSON.parse(element.textContent!).sources.find((source: { path: string }) => source.path.endsWith('/policies/shared.md') || source.path.endsWith('\\policies\\shared.md')).path as string);
+        await page.locator('#source-search').fill(absolute);
+        await expect(rows).toHaveCount(2);
+        await page.locator('#source-search').fill(absolute.replaceAll('/', '\\'));
+        await expect(rows).toHaveCount(2);
+        await page.locator('#source-search').fill('Imported from beta.md:3');
+        await expect(rows).toHaveCount(1);
+        await expect(rows.first()).toContainText('shared.md');
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        if (url === server.url && viewport.width === 1440) {
+          await rows.first().click();
+          await page.locator('#findings-tab').click();
+          await writeFile(path.join(w.repo, 'beta.md'), '# Beta\n\n\n@policies/shared.md\n');
+          await page.locator('#target').fill('policies/shared.md');
+          await page.getByRole('button', { name: 'Inspect', exact: true }).click();
+          await expect(page.locator('#scan-status')).toContainText('Scan complete');
+          await expect(page.locator('#target')).toHaveValue('policies/shared.md');
+          await writeFile(path.join(w.repo, 'beta.md'), '# Beta\n\n@policies/shared.md\n');
+          await page.goBack();
+          await expect(page.locator('#target')).toHaveValue('.');
+          await expect(rows).toHaveCount(1);
+          await expect(rows.first()).toContainText('Imported from beta.md:3');
+          await expect(page.locator('#source-search')).toHaveValue('Imported from beta.md:3');
+          await expect(rows.first()).toHaveAttribute('aria-pressed', 'true');
+        }
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('source search explains scope exclusions and recovers from empty matches with keyboard actions live and offline', async ({ page }) => {
+  const w = await workspace({
+    'CLAUDE.md': '# Root\n@alpha.md\n@beta.md\n',
+    'alpha.md': '@shared.md\n',
+    'beta.md': '@shared.md\n',
+    'shared.md': 'Shared instructions.',
+  });
+  const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('source-search-recovery.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.goto('about:blank');
+      await page.goto(url + '#view=effective&client=claude');
+      await page.locator('#source-search').fill('shared beta.md');
+      await expect(page.locator('#sources')).toContainText('Matches outside In scope');
+      await expect(page.locator('#source-search-status')).toContainText('Showing 0 of 5 sources.');
+      await page.getByRole('button', { name: 'Show all discovered', exact: true }).focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('button', { name: 'All discovered', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('#sources .source')).toHaveCount(1);
+      await expect(page.locator('#sources .source')).toBeFocused();
+      await expect(page.locator('#source-search-status')).toContainText('Showing 1 of 5 sources.');
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#source-status')).toHaveText('Not loaded');
+      await page.locator('#source-search').fill('no such configuration');
+      await expect(page.locator('#sources')).toContainText('No matching sources');
+      await expect(page.locator('#source-search-status')).toContainText('Showing 0 of 5 sources.');
+      await page.getByRole('button', { name: 'Clear search', exact: true }).focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#source-search')).toHaveValue('');
+      await expect(page.locator('#source-search')).toBeFocused();
+      await expect(page.locator('#sources .source')).toHaveCount(5);
+      await expect(page.locator('#source-search-status')).toContainText('Showing 5 of 5 sources.');
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('reloading after keyboard source-list traversal keeps the linked source line visible live and offline', async ({ page }) => {
   const imports = Array.from({ length: 45 }, (_, index) => `import-${index}.md`);
   const settings = ['{', '"hooks":{"UserPromptSubmit":[', ...Array(350).fill(''), '{"hooks":[{"type":"command","command":"missing-reload-focus-hook"}]}', ']}}'].join('\n');
@@ -139,7 +257,14 @@ test('source lists have one keyboard entry and retain a filtered entry when sele
     await page.keyboard.press('Tab');
     await page.keyboard.press('Tab');
     await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Clear search', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab');
     await expect(page.locator('#copy-source')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#source-search')).toBeFocused();
+    await expect(page.locator('#source-search')).toHaveValue('');
+    await expect(page.locator('#sources .source')).toHaveCount(3);
   } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 
@@ -251,7 +376,7 @@ test('effective-text source jumps and history reveal destinations hidden by a so
         await expect(page.locator('#source-status')).toHaveText('Not loaded');
         await expect(page.locator('#source-search')).toHaveValue('shared.md');
         await page.locator('#source-search').fill('CLAUDE.md');
-        await page.locator('#sources .source').click();
+        await page.locator('#sources .source').filter({ has: page.getByText('CLAUDE.md', { exact: true }) }).click();
         await expect(page.locator('#source-title')).toHaveText('CLAUDE.md');
         await expect(page.locator('#source-search')).toHaveValue('CLAUDE.md');
         await page.goBack();
@@ -557,6 +682,9 @@ test('legacy source links and effective-text origins select the intended contrib
     await expect(page.locator('#why')).toContainText('Imported from unavailable-parent.md:1');
     await expect(page.locator('#why').getByRole('button', { name: 'Imported from unavailable-parent.md:1', exact: true })).toHaveCount(0);
     await expect(page.locator('#sources .source.selected')).toHaveCount(1);
+    await page.locator('#source-search').fill('claude.md unavailable-parent.md:1');
+    await expect(page.locator('#sources .source')).toHaveCount(1);
+    await expect(page.locator('#sources .source')).toHaveAttribute('aria-pressed', 'true');
     await page.locator('#source-search').fill('unmatched-source');
     await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
     await page.locator('#effective-document').getByRole('button', { name: '2 · CLAUDE.md', exact: true }).click();
@@ -690,6 +818,10 @@ test('source line links survive refresh and discard unavailable sources and inva
     await expect(page.locator('#source-status')).toBeEmpty();
     await expect(page.locator('.source-information')).toBeHidden();
     await expect(page.locator('#instructions')).toContainText('No configuration discovered');
+    await page.locator('#source-search').fill('anything');
+    await expect(page.locator('#sources')).toContainText('No configuration discovered');
+    await expect(page.locator('#source-search-status')).toHaveText('Showing 0 of 0 sources.');
+    await expect(page.getByRole('button', { name: 'Clear search', exact: true })).toHaveCount(0);
   } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.21 — 2026-11-14
+
+* Search captured source paths and import origins together. Space-separated terms all match, with case, surrounding whitespace and Windows slash spellings normalized.
+* Find individual decisions for repeated imports by their declaring path and line, including parent paths retained in earlier portable reports.
+* Explain matches hidden by In scope and provide Show all discovered. Empty searches provide Clear search. Both actions restore keyboard focus to their destination, and accessible result counts follow the visible list.
+* Preserve matching provenance queries through browser history. Target-changing history checks the refreshed report before deciding whether the restored decision matches.
+* Verify live and offline searches at desktop and phone sizes, repeated-import selection, legacy captures, keyboard recovery and empty repositories.
+
 ## 0.3.20 — 2026-11-14
 
 * Restore linked source-line visibility after browser document loading restores its saved scroll position. A public v0.3.19 installation reproduced a marked line below the viewport after keyboard traversal reached Copy source content and the page was reloaded.

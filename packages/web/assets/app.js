@@ -360,6 +360,25 @@
         return { source, occurrence };
       });
   }
+  function selectedSourceEntry(entries = sourceEntries()) {
+    return entries.find(({ source, occurrence }) => source.path === state.source && occurrence === state.sourceOccurrence)
+      ?? entries.find(({ source }) => source.path === state.source)
+      ?? entries.find(({ source }) => ['active', 'truncated'].includes(source.status) && ['instructions', 'rules'].includes(source.kind))
+      ?? entries[0];
+  }
+  const normalizeSourceSearch = value => value.replace(/\\/g, '/').toLowerCase();
+  const sourceSearchTerms = () => normalizeSourceSearch($('source-search').value).trim().split(/\s+/).filter(Boolean);
+  function matchesSourceSearch(source, terms) {
+    const paths = [source.path, short(source.path)];
+    if (source.importedFrom) paths.push(`${source.importedFrom.path}:${source.importedFrom.line}`, `Imported from ${short(source.importedFrom.path)}:${source.importedFrom.line}`);
+    const text = normalizeSourceSearch(paths.join('\n'));
+    return terms.every(term => text.includes(term));
+  }
+  function clearExcludingSourceSearch() {
+    if (state.view !== 'effective') return;
+    const source = selectedSourceEntry()?.source;
+    if (!source || !matchesSourceSearch(source, sourceSearchTerms())) $('source-search').value = '';
+  }
   function renderInstructions() {
     const client = selectedClient();
     if (!client) return;
@@ -372,10 +391,7 @@
     $('effective-document').hidden = state.instructionView !== 'document';
     if (state.instructionView === 'document') renderEffectiveDocument(client);
     const entries = sourceEntries(client);
-    const selection = entries.find(({ source, occurrence }) => source.path === state.source && occurrence === state.sourceOccurrence)
-      ?? entries.find(({ source }) => source.path === state.source)
-      ?? entries.find(({ source }) => ['active', 'truncated'].includes(source.status) && ['instructions', 'rules'].includes(source.kind))
-      ?? entries[0];
+    const selection = selectedSourceEntry(entries);
     const selected = selection?.source;
     if (selected?.path !== state.source || selection?.occurrence !== state.sourceOccurrence) state.highlightLine = null;
     state.source = selected?.path ?? null;
@@ -409,9 +425,12 @@
   }
   function renderSourceList(revealSelection = false) {
     const restoreFocus = document.activeElement.classList.contains('source');
-    const query = $('source-search').value.toLowerCase();
-    const sources = sourceEntries().filter(({ source }) => (state.sourceFilter === 'all' || source.status !== 'ignored' || source.path === state.source) && short(source.path).toLowerCase().includes(query));
+    const terms = sourceSearchTerms();
+    const entries = sourceEntries();
+    const matches = entries.filter(({ source }) => matchesSourceSearch(source, terms));
+    const sources = matches.filter(({ source }) => state.sourceFilter === 'all' || source.status !== 'ignored' || source.path === state.source);
     $('source-count').textContent = String(sources.length);
+    $('source-search-status').textContent = `Showing ${sources.length} of ${entries.length} sources.`;
     document.querySelectorAll('[data-source-filter]').forEach(element => element.setAttribute('aria-pressed', String(element.dataset.sourceFilter === state.sourceFilter)));
     let previousGroup;
     const elements = [];
@@ -443,7 +462,19 @@
     if (tabStop) tabStop.tabIndex = 0;
     if (restoreFocus) selected?.focus({ preventScroll: true });
     if (revealSelection) revealSourceSelection();
-    if (!sources.length) $('sources').append(empty('No matching sources', 'Clear the filter to see the full source list.'));
+    if (!sources.length) {
+      if (!entries.length) $('sources').append(empty('No configuration discovered', 'Create an instruction file in this client’s supported location, then refresh the scan.'));
+      else if (matches.length) $('sources').append(empty('Matches outside In scope', 'Open All discovered to inspect matching loading decisions.', button('Show all discovered', () => {
+        state.sourceFilter = 'all';
+        renderSourceList();
+        $('sources').querySelector('.source[tabindex="0"]').focus();
+      }, 'button button-small')));
+      else $('sources').append(empty('No matching sources', 'Search a source path or its import origin. Separate terms with spaces to match both.', button('Clear search', () => {
+        $('source-search').value = '';
+        renderSourceList();
+        $('source-search').focus();
+      }, 'button button-small')));
+    }
   }
   function revealSourceSelection() {
     const list = $('sources');
@@ -838,7 +869,7 @@
     $('scan-status').classList.toggle('partial', succeeded && incomplete);
     $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', label));
   }
-  async function refresh(target = short(report.target)) {
+  async function refresh(target = short(report.target), fromHistory = false) {
     if (!live) return;
     const request = ++state.request;
     scanController?.abort(); scanController = new AbortController();
@@ -855,6 +886,7 @@
       report = data.report;
       exportDocument = data.html;
       readLocation();
+      if (fromHistory) clearExcludingSourceSearch();
       const address = new URL(location.href);
       address.searchParams.set('target', short(report.target)); address.searchParams.set('trust', $('trust').value); address.searchParams.set('profile', report.inputs?.codexProfile ?? '');
       history.replaceState(null, '', address);
@@ -986,17 +1018,14 @@
   window.addEventListener('popstate', () => {
     if (location.hash === '#main-content') return;
     readLocation();
-    const sourceQuery = $('source-search').value.toLowerCase();
-    if (state.view === 'effective' && (!state.source || !short(state.source).toLowerCase().includes(sourceQuery))) {
-      $('source-search').value = '';
-    }
     if (live) {
       const params = new URLSearchParams(location.search);
       const target = params.get('target') ?? initialTarget;
       const trust = params.get('trust') ?? initialTrust;
       const profile = params.get('profile') ?? initialProfile;
-      if (target !== short(report.target) || trust !== $('trust').value || profile !== (report.inputs?.codexProfile ?? '')) { $('trust').value = trust; $('codex-profile').value = profile; void refresh(target); return; }
+      if (target !== short(report.target) || trust !== $('trust').value || profile !== (report.inputs?.codexProfile ?? '')) { $('trust').value = trust; $('codex-profile').value = profile; void refresh(target, true); return; }
     }
+    clearExcludingSourceSearch();
     render();
   });
   if (state.compareClients.size < 2) report.clients.slice(0, 3).forEach(client => state.compareClients.add(client.client));
