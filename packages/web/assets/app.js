@@ -495,7 +495,7 @@
   function sourceText(source) {
     const preview = report.sources.find(candidate => candidate.id === source.sourceId)?.preview;
     if (preview !== undefined) return { text: preview, firstLine: 1, label: 'Source preview' };
-    if (source.content) return { text: source.content, firstLine: source.line, label: source.status === 'truncated' ? 'Loaded prefix' : 'Loaded instruction content' };
+    if (source.content) return { text: source.content, firstLine: source.line, label: source.status === 'conditional' ? 'Instruction content if loaded' : source.status === 'truncated' ? 'Loaded prefix' : 'Loaded instruction content' };
     const client = selectedClient();
     const settings = client.settings.filter(setting => setting.location.path === source.path);
     const extensions = client.extensions.filter(extension => extension.location.path === source.path);
@@ -559,7 +559,8 @@
     $('settings').parentElement.hidden = !settings.length;
     const why = [badge(source.status), node('h3', basename(source.path)), node('p', short(source.path), 'path'), node('p', source.reason)];
     const metadata = node('dl', undefined, 'detail-meta');
-    for (const [label, value] of [['Scope', source.scope], ['Load position', source.order ?? 'Outside chain'], ['Source size', `${source.bytes} bytes`], ['Loaded size', `${source.loadedBytes} bytes`], ['Token estimate', `~${source.estimatedTokens}`], ['Starts at', `Line ${source.line}`]]) {
+    const conditional = source.status === 'conditional';
+    for (const [label, value] of [['Scope', source.scope], [conditional ? 'Position if loaded' : 'Load position', source.order ?? 'Outside chain'], ['Source size', `${source.bytes} bytes`], [conditional ? 'Size if loaded' : 'Loaded size', `${source.loadedBytes} bytes`], ['Token estimate', `~${source.estimatedTokens}`], ['Starts at', `Line ${source.line}`]]) {
       const pair = node('div'); pair.append(node('dt', label), node('dd', String(value))); metadata.append(pair);
     }
     why.push(metadata);

@@ -7,18 +7,18 @@ One file. Several agents. Different instructions. Sightline shows every discover
 Open a terminal in your project folder and run one command to inspect your repository in the browser.
 
 ```sh
-npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.27/agent-sightline-0.3.27.tgz ui
+npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.28/agent-sightline-0.3.28.tgz ui
 ```
 
 For repeated use, install the CLI. The bundled demo provides a sample workspace with intentional configuration problems.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.27/agent-sightline-0.3.27.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.28/agent-sightline-0.3.28.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.27.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.28.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -71,13 +71,15 @@ The companion website includes an interactive example, a complete installation g
 | Client | Rule target | Status | Focus |
 | --- | --- | --- | --- |
 | OpenAI Codex CLI | 0.167.2 binary/source/schema | Runtime + fixtures | Native-checked instruction bodies, trust, overrides, raw-byte budget, TOML layers, selected profile files, MCP, skill inventory and directory links, hook discovery |
-| Claude Code | 2.1.322 binary + official docs | Native MCP/permissions + fixtures | CLAUDE/AGENTS fallback, imports, path rules, settings, MCP transport/scope, skills, hooks, exact permissions |
+| Claude Code | 2.1.322 binary + official docs | Native instructions/MCP/permissions + fixtures | Instruction order, rule imports, saved external-import approval, CLAUDE/AGENTS modes, path rules, settings, MCP, skills, hooks, exact permissions |
 | GitHub Copilot CLI | 1.0.110 binary + official docs | Native settings/inventory + fixtures | Combined instructions, shared Claude rules/settings, personal aliases and origins, JSONC layers, directional merges, trust, disabled extensions, excluded skill directories, MCP, skills, hooks |
 | Gemini CLI | Docs snapshot 2026-11-12 | Experimental | Local settings and global/ancestor/JIT context files |
 | Cursor | Docs snapshot 2026-11-12 | Experimental | AGENTS.md and .mdc always/glob/manual/intelligent states, local MCP |
 | OpenCode V2 | Docs snapshot 2026-11-12 | Experimental | V2 local configuration and nearest-first AGENTS.md; no V1 fallback assertion |
 
 Codex base/project scalar and MCP values and their winning files are compared with the real 0.167.2 configuration API in twenty-three isolated scenarios. Twenty-one additional isolated native requests compare exact global/project AGENTS.md bodies through a loopback scripted Responses API. They cover override selection, Unicode whitespace and byte-order marks, UTF-8 splits, raw-byte budgets, root markers, trust and selected profile budgets/fallback filenames. Other profile fields and source line numbers retain source/schema fixture coverage. Native skill-inventory comparisons also cover user/project directory links, canonical aliases, disable selectors, hidden directories and depth boundaries. Run `npm run test:codex` to reproduce the configuration, instruction and skill comparisons.
+
+Twenty-six isolated native Claude Code 2.1.322 scenarios compare ordered instruction markers and canonical source-file lists with Sightline. They verify user/project rule order, local files, AGENTS modes, recursive and rules-file imports, path-scoped loading after opening the target, and saved external-import approval. Imports in scoped rules are discovered at startup even when their referring rule stays unmatched. Project imports outside the modeled session directory use their separate saved approval from ~/.claude.json. Missing approval stays conditional, and a saved rejection skips that import. Personal imports keep their documented scope. Rerun earlier Claude inspections to update their loading decisions.
 
 Claude MCP transport parsing, approval boundaries, directory behavior and fallback from invalid higher-priority definitions are compared with the pinned 2.1.322 CLI. The checks use temporary homes and synthetic local MCP servers. Nineteen isolated native permission runs use a loopback scripted Messages API to check actual tool execution and rule precedence with synthetic credentials. Permission entries link to their overriding rule sources. Shared project grants require workspace trust, and local grants retain conditional Git/session checks until trust is explicitly modeled. Other Claude capabilities retain official-document fixtures. Run `npm run test:claude` to reproduce these comparisons.
 
@@ -109,7 +111,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.3.27.tgz
+npm install -g ./agent-sightline-0.3.28.tgz
 agent-sightline demo
 ```
 

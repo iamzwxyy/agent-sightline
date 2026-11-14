@@ -1,6 +1,6 @@
 {
   "name": "agent-sightline",
-  "version": "0.3.27",
+  "version": "0.3.28",
   "description": "See what your coding agent actually sees. Local, read-only configuration diagnostics.",
   "type": "module",
   "license": "MIT",
@@ -46,7 +46,7 @@
     "pretest:web": "npm run build:website",
     "preview": "node scripts/preview.mjs",
     "test:codex": "tsx --test tests/codex-runtime.test.ts",
-    "test:claude": "tsx --test tests/claude-runtime.test.ts",
+    "test:claude": "tsx --test tests/claude-runtime.test.ts tests/claude-memory.test.ts",
     "test:copilot": "tsx --test tests/copilot-runtime.test.ts"
   },
   "dependencies": {

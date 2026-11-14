@@ -1,16 +1,16 @@
 # Claude evidence ledger
 
-Verified 2026-11-14 against Claude Code 2.1.322. MCP, permission precedence and configured hook gates have native CLI comparisons. Instructions, other settings and skill metadata retain official-document fixtures.
+Verified 2026-11-15 against Claude Code 2.1.322. Instruction order and imports have scripted native request comparisons. MCP, permission precedence and configured hook gates also have native CLI comparisons. Other settings and skill metadata retain official-document fixtures.
 
 Sources: [memory/instructions](https://code.claude.com/docs/en/memory), [settings](https://code.claude.com/docs/en/settings), [MCP](https://code.claude.com/docs/en/mcp), [skills](https://code.claude.com/docs/en/skills), [permissions](https://code.claude.com/docs/en/permissions), [hooks](https://code.claude.com/docs/en/hooks).
 
 | Concern | Implemented contract |
 | --- | --- |
-| User | ~/.claude/CLAUDE.md, settings.json, rules/**/*.md, skills/**/SKILL.md; ~/.claude.json MCP scopes only |
-| Project instructions | Ancestor CLAUDE.md, .claude/CLAUDE.md and CLAUDE.local.md, broadest → deepest; local appended per directory |
+| User | ~/.claude/CLAUDE.md, settings.json, rules/**/*.md, skills/**/SKILL.md, ~/.claude.json MCP scopes and selected-project external-import approval |
+| Project instructions | Ancestor CLAUDE.md, .claude/CLAUDE.md and CLAUDE.local.md, broadest → deepest, shared files → unconditional rules → local files → AGENTS per directory |
 | AGENTS fallback | 2.1.277+ default only without ancestor CLAUDE.md/local; explicit user plugin instructionFiles supports both, Claude-only and managed-only |
-| Imports | @path relative to referring file; code spans/fences excluded; escaped spaces; max four hops; external references reported/skipped by privacy boundary |
-| Rules | .claude/rules recursively; paths YAML matches relative to rule base; bare *.md matches descendants; leading / anchors to base |
+| Imports | @path relative to referring file, code spans/fences excluded, escaped spaces, max four hops, imports outside the session directory use saved canonical-project approval, imports outside inspected privacy roots are reported and skipped |
+| Rules | .claude/rules recursively, paths YAML matches relative to rule base, bare *.md matches descendants, leading / anchors to base, empty path lists are unconditional, scoped bodies follow startup instructions while imports expand during discovery |
 | Exclusions | claudeMdExcludes arrays merge and match absolute source paths |
 | Settings | User → shared repository .claude/settings.json → local → optional system managed-settings.json and immediate nonhidden managed-settings.d/*.json, alphabetically; arrays merge, scalar values override |
 | MCP | User ~/.claude.json → repository .mcp.json → current-project local entry in ~/.claude.json → managedMcpServers → managed-mcp.json; whole server replacement; interactive project approval conditional |
@@ -61,3 +61,13 @@ Not resolved: filesystem ancestors outside --repo, session switches, account-syn
 A native MCP check discovers a root-project server alongside malformed settings and MCP files in a sibling project. The public report selects syntax diagnostics from the root target scope. Inspecting the sibling with its own --repo boundary activates its parser findings. [MCP configuration scopes](https://code.claude.com/docs/en/mcp#scope-hierarchy-and-precedence)
 
 A native MCP health check verifies personal enableAllProjectMcpServers while the inspection boundary contains the personal settings directory. The source retains user scope and the approved project server remains active.
+
+## Native instruction requests
+
+Twenty-six isolated scenarios run Claude Code 2.1.322 against a loopback scripted Messages API. Each checks the fixed completion, captured request count, ordered instruction markers and canonical file paths against the public scan. Target-opening scenarios issue a Read call and compare the next request, while checking that path-scoped bodies were absent from the initial request.
+
+The matrix covers personal/project rules, per-directory local files, AGENTS fallback and combined/managed-only modes, recursive imports, rule imports, empty path lists, unmatched scoped parents and imported files with their own path metadata. Scoped-rule imports appear in startup discovery, and matching parent bodies arrive after the target is opened.
+
+Project imports resolving outside the session directory use hasClaudeMdExternalIncludesApproved from the canonical Git project entry in ~/.claude.json. A non-Git session uses its directory entry. Canonical/logical state keys, approval, rejection and absent approval have native comparisons. The enclosing Git project entry supplies approval for sessions launched in its subdirectories. Personal imports use their documented trusted scope, within Sightline’s existing read boundary. Repository-only scans report external-import approval as conditional.
+
+Conditional or rejected imports can later load through an unconditional rule-discovery path. The account-state preview stays withheld, and the captured private-state marker is absent from the public report. Run npm run test:claude to reproduce the instruction and existing MCP/permission comparisons.

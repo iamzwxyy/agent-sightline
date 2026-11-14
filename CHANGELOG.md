@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.28 — 2026-11-15
+
+* Match Claude Code instruction order across personal rules, shared project files, per-directory rules, local files and AGENTS modes.
+* Expand imports in rules files and load matching path-scoped rule bodies after startup instructions. Empty path lists load unconditionally.
+* Keep scoped-rule imports in startup discovery, including imports from unmatched rules and imports with their own path metadata.
+* Read saved external-import approval from the canonical Git project state or the session directory for non-Git folders. Pending approval stays conditional, and saved rejection skips the import.
+* Preserve the distinct project/server trust and external-import approval controls through refresh, copying and portable reports.
+* Clarify conditional byte counts and loading positions in the inspector and portable reports.
+* Verify ordered instruction markers and canonical source files with twenty-six isolated native Claude Code 2.1.322 scenarios.
+
 ## 0.3.27 — 2026-11-15
 
 * Match Codex 0.167.2 Unicode whitespace handling when selecting global instructions and spending project byte budgets.

@@ -48,6 +48,78 @@ test('Codex Unicode instruction selection survives copying, refresh and portable
   } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 
+test('Claude instruction approval and source order survive refresh, copying and portable export', async ({ page }) => {
+  const w = await workspace({
+    'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n',
+    'docs/policy.md': 'IMPORTED_INSTRUCTION\n',
+    '.claude/rules/a.md': 'PROJECT_RULE_INSTRUCTION\n',
+    'src/CLAUDE.local.md': 'LOCAL_INSTRUCTION\n',
+    'src/file.ts': '',
+  }, {
+    '.claude/CLAUDE.md': 'USER_INSTRUCTION\n',
+    '.claude/rules/global.md': 'USER_RULE_INSTRUCTION\n',
+  });
+  const project = await realpath(w.repo);
+  const saveApproval = async (approved?: boolean) => writeFile(path.join(w.home, '.claude.json'), JSON.stringify({
+    projects: { [project]: approved === undefined ? {} : { hasClaudeMdExternalIncludesApproved: approved } },
+    account: { email: 'browser-private-claude-state@example.test' },
+  }));
+  await saveApproval();
+  const server = await serve({ ...w, clients: ['claude'], trust: 'trusted', target: 'src/file.ts' });
+  const location = '#view=effective&client=claude&source=docs/policy.md';
+  try {
+    await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: {
+      writeText: async (text: string) => { (window as any).copiedInstructions = text; },
+    }, configurable: true }));
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await saveApproval();
+      await page.goto(server.url + location);
+      await page.reload();
+      for (const state of ['pending', 'approved', 'rejected']) {
+        if (state !== 'pending') {
+          await saveApproval(state === 'approved');
+          await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+          await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+        }
+        const status = state === 'approved' ? 'Loaded' : state === 'rejected' ? 'Not loaded' : 'Conditional';
+        await expect(page.locator('#source-title')).toHaveText('docs/policy.md');
+        await expect(page.locator('#source-status')).toHaveText(status);
+        await expect(page.locator('#why')).toContainText('Imported from CLAUDE.md:2');
+        const sizeLabel = state === 'pending' ? 'Size if loaded' : 'Loaded size';
+        await expect(page.locator('#why .detail-meta > div').filter({ has: page.getByText(sizeLabel, { exact: true }) }).locator('dd')).toHaveText(state === 'rejected' ? '0 bytes' : '21 bytes');
+        if (state === 'pending') await expect(page.locator('#why')).toContainText('Position if loaded');
+        if (state === 'pending') await expect(page.locator('#why')).toContainText('separate external-import approval');
+        if (state === 'rejected') await expect(page.locator('#why')).toContainText('Saved project state rejects imports');
+        await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+        const text = await page.locator('#effective-document .effective-text').textContent();
+        expect(text?.match(/[A-Z_]+_INSTRUCTION/g)).toEqual([
+          'USER_INSTRUCTION', 'USER_RULE_INSTRUCTION', 'ROOT_INSTRUCTION',
+          ...(state === 'approved' ? ['IMPORTED_INSTRUCTION'] : []), 'PROJECT_RULE_INSTRUCTION', 'LOCAL_INSTRUCTION',
+        ]);
+        await page.getByRole('button', { name: 'Copy effective text', exact: true }).click();
+        expect(await page.evaluate(() => (window as any).copiedInstructions)).toBe(text);
+        const pending = page.waitForEvent('download');
+        await page.getByRole('button', { name: /Export report/ }).click();
+        const file = test.info().outputPath(`claude-instructions-${state}-${viewport.width}.html`);
+        await (await pending).saveAs(file);
+        const exported = await readFile(file, 'utf8');
+        expect(exported).not.toContain('browser-private-claude-state@example.test');
+        expect(exported).not.toContain(JSON.stringify(w.home).slice(1, -1));
+        await page.context().setOffline(true);
+        await page.goto(pathToFileURL(file).href);
+        expect(await page.locator('#effective-document .effective-text').textContent()).toBe(text);
+        await page.getByRole('button', { name: 'Trace sources', exact: true }).click();
+        await expect(page.locator('#source-status')).toHaveText(status);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({ path: test.info().outputPath(`claude-instructions-${state}-${viewport.width}.png`) });
+        await page.context().setOffline(false);
+        await page.goto(server.url + location);
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('refresh outcomes show current errors and warnings above source inspection on desktop and phone', async ({ page }) => {
   const w = await workspace({ 'CLAUDE.md': 'Project instructions.' });
   const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
@@ -888,7 +960,7 @@ test('repeated source decisions keep their own status, import origin and browser
       await expect(rows.nth(1)).toBeFocused();
       await expect(page.locator('#source-status')).toHaveText('Not loaded');
       await expect(page.locator('#why .detail-meta > div').filter({ has: page.getByText('Loaded size', { exact: true }) }).locator('dd')).toHaveText('0 bytes');
-      await expect(page.locator('#why')).toContainText('Already loaded through the same canonical source path.');
+      await expect(page.locator('#why')).toContainText('Already discovered through the same canonical instruction source.');
       await expect(page.locator('#why')).toContainText('Imported from branch-b.md:3');
       expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
       await page.reload();

@@ -1,5 +1,18 @@
 # Release validation
 
+## v0.3.28
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
+
+* Twenty-six isolated Claude Code 2.1.322 scenarios captured thirty loopback Messages API requests. Each checks the fixed completion, request count, ordered instruction markers and canonical source-file lists against the public scan. Four scenarios issue a Read call and verify the instruction sequence before and after opening the target.
+* Initial native cases reproduced incorrect personal/project rule ordering, missing rule imports and unverified external-import admission. The corrected resolver follows per-directory shared/rules/local/AGENTS order and defers matching path-scoped bodies until after startup instructions.
+* Native requests verify that scoped rules expand imports during startup discovery, including unmatched parent rules and imported rules with their own path metadata. Empty path lists load unconditionally. Canonical/logical project keys, Git/non-Git directory selection, saved approval/rejection and absent approval have comparisons. Repository-only scans retain conditional approval.
+* The browser journey changes saved approval through pending, approved and rejected states, then checks source provenance, effective-text ordering, clipboard content, live refresh and portable export on desktop and phone. Conditional sizes and positions carry loading-dependent labels. Public reports passed the private account-state marker checks.
+* The 471-case core suite completed with 469 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. All 81 Chromium browser cases passed. Production dependency audit reported zero vulnerabilities.
+* Product instruction, comparison and finding images and the bundled example HTML were captured from the current interfaces. Desktop and phone approval-state screenshots received visual review.
+* A fresh offline installation with an empty npm cache passed the compiled CLI's pending, approved and rejected import states. JSON, terminal explanations, offline phone HTML and clipboard content retained their expected instruction sequence and private-state handling.
+* A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,158 ms. Fixture creation warmed the filesystem cache. All 44 historical published archive hashes matched the website release manifest.
+
 ## v0.3.27
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-15.
