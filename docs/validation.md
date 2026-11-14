@@ -12,6 +12,8 @@ Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-15.
 * A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,187 ms. Fixture creation warmed the filesystem cache. The same benchmark measured 1,199 ms for v0.3.22.
 * All 41 historical published archive hashes matched their release manifest before final packaging.
 * The unpublished v0.3.23 candidate passed Linux release verification. Its Windows native inventory fixture expected HOME and USERPROFILE to relocate the separate ~/.agents root. Native Codex uses the Windows Known Folder API for that root. The corrected Windows fixture keeps its user metadata under the isolated CODEX_HOME, with both user roots still compared on macOS and Linux. The v0.3.24 candidate then exposed the Windows portable-report separator regression and remained unpublished.
+* The exact packed CLI passed staging journeys after empty-cache offline installation. Checks cover linked user metadata, canonical alias deduplication, ignored file symlinks, canonical disable selectors, configuration-relative re-enabling through Refresh scan, path privacy and separate ignored decisions through export and re-export. Desktop and phone source inspections received visual review. Existing search, source-line, repeated-import, keyboard and physical-touch journeys also passed.
+* Windows, macOS and Linux release verification passed. Linux Firefox completed with 75 passes and three browser-gated skips for touch emulation and WebGL context-loss checks. Anonymous download of the published archive matched its recorded SHA-256 and size. [Release verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43628261782)
 
 ## v0.3.22
 
