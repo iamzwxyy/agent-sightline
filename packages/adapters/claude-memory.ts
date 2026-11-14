@@ -42,7 +42,7 @@ async function projectStateRoot(ctx: Context): Promise<string> {
   const shared = common.replace(/[\r\n]+$/, '');
   if (!shared) throw new Error('Empty shared Git directory pointer.');
   const main = path.dirname(path.resolve(directory, shared));
-  return process.platform === 'win32' ? slash(main) : realpath(main);
+  return process.platform === 'win32' ? project : realpath(main);
 }
 
 export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: string, state?: Source): Promise<void> {
@@ -58,8 +58,10 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
     try {
       const projectKey = await projectStateRoot(ctx);
       if (Object.hasOwn(state.data.projects ?? {}, projectKey)) {
-        approval.approved = state.data.projects[projectKey].hasClaudeMdExternalIncludesApproved;
-        approval.location = locate(state, `projects.${projectKey}.hasClaudeMdExternalIncludesApproved`);
+        approval.approved = state.data.projects[projectKey]?.hasClaudeMdExternalIncludesApproved;
+        const origin = locate(state, `projects.${projectKey}.hasClaudeMdExternalIncludesApproved`);
+        // Private state keys can embed another checkout's path. Keep file/line provenance.
+        approval.location = { path: origin.path, line: origin.line, column: origin.column };
       }
     } catch {
       ctx.options.signal?.throwIfAborted();

@@ -8,6 +8,7 @@ import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
+import { portable } from '../packages/reporter/index.js';
 import { claudeMetadata } from '../packages/adapters/claude.js';
 import { workspace } from './helpers.js';
 
@@ -26,6 +27,7 @@ interface MemoryScenario {
   readTarget?: boolean;
   noGit?: boolean;
   worktree?: boolean;
+  canonicalPaths?: boolean;
 }
 
 function blockText(block: any): string {
@@ -53,6 +55,16 @@ test('Claude instruction order and imports agree with the pinned native request'
     {
       name: 'linked worktree state keys follow native project selection',
       directory: 'src', worktree: true, approval: true,
+      files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n' },
+    },
+    {
+      name: 'canonical linked worktree imports use native shared project approval',
+      directory: 'src', worktree: true, canonicalPaths: true, approval: true, approvalScope: 'main',
+      files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n' },
+    },
+    {
+      name: 'canonical linked worktree state keys follow native project selection',
+      directory: 'src', worktree: true, canonicalPaths: true, approval: true,
       files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n' },
     },
     {
@@ -237,6 +249,9 @@ test('Claude instruction order and imports agree with the pinned native request'
   for (const scenario of scenarios) await t.test(scenario.name, async scenarioTest => {
     const w = await workspace({ 'src/file.ts': 'export {};\n', ...scenario.files }, scenario.home);
     scenarioTest.after(() => rm(w.root, { recursive: true, force: true }));
+    if (scenario.canonicalPaths || scenario.readTarget && process.platform === 'win32') {
+      w.repo = await realpath(w.repo);
+    }
     const env = {
       PATH: process.env.PATH, PATHEXT: process.env.PATHEXT, SystemRoot: process.env.SystemRoot,
       COMSPEC: process.env.COMSPEC, TEMP: process.env.TEMP, TMP: process.env.TMP, TMPDIR: process.env.TMPDIR,
@@ -251,7 +266,7 @@ test('Claude instruction order and imports agree with the pinned native request'
     if (scenario.worktree) {
       execFileSync('git', ['add', '.'], { cwd: w.repo, env });
       execFileSync('git', ['-c', 'user.name=Memory fixture', '-c', 'user.email=memory-fixture@example.test', 'commit', '--quiet', '-m', 'Create the isolated memory fixture'], { cwd: w.repo, env });
-      const linked = path.join(w.root, 'linked');
+      const linked = path.join(scenario.canonicalPaths ? await realpath(w.root) : w.root, 'linked');
       execFileSync('git', ['worktree', 'add', '--quiet', '-b', 'memory-fixture', linked], { cwd: w.repo, env });
       w.repo = linked;
     }
@@ -295,6 +310,7 @@ test('Claude instruction order and imports agree with the pinned native request'
         platform: process.platform,
         directory,
         readPath,
+        gitPointer: scenario.worktree ? await readFile(path.join(w.repo, '.git'), 'utf8') : undefined,
         projects: Object.entries(nativeState.projects ?? {}).map(([key, entry]: [string, any]) => ({
           key,
           approved: entry.hasClaudeMdExternalIncludesApproved ?? null,
@@ -309,6 +325,12 @@ test('Claude instruction order and imports agree with the pinned native request'
       const nativeFiles = await Promise.all([...memory.matchAll(/^Contents of (.+?)(?: \([^\n]*\))?:$/gm)].map(match => realpath(match[1])));
       const reportedFiles = await Promise.all(report.clients[0].decisions.filter(source => ['instructions', 'rules'].includes(source.kind) && source.status === 'active' && source.content.trim()).map(source => realpath(source.path)));
       assert.deepEqual(reportedFiles, nativeFiles);
+      if (scenario.worktree) {
+        const exported = JSON.stringify(portable(report));
+        for (const privatePath of [mainRepository, await realpath(mainRepository)]) {
+          assert.ok(!exported.includes(JSON.stringify(privatePath).slice(1, -1)), 'Portable worktree approval includes the main checkout path.');
+        }
+      }
       if (scenario.directory && scenario.files['docs/policy.md']) {
         const imported = report.clients[0].decisions.find(source => source.path === path.join(w.repo, 'docs/policy.md'))!;
         const loaded = nativeFiles.includes(await realpath(imported.path));
