@@ -11,6 +11,8 @@ Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-15.
 * The 443-case core suite completed with 441 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. All 80 Chromium browser cases passed. The production dependency audit reported zero vulnerabilities.
 * A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,162 ms. Fixture creation warmed the filesystem cache.
 * All 43 historical published archive hashes matched their release manifest before final packaging.
+* The website's static opening now takes its source name and byte counts from the bundled example scan. A disabled-JavaScript regression reproduced the stale 338-byte claim before the correction. The complete 80-case Chromium suite passed afterward, and nine focused website checks also passed with project-path hosting and a delayed report request.
+* Windows, macOS and Linux release verification passed. Linux Firefox completed with 77 passes and three browser-gated skips for touch emulation and WebGL context-loss checks. Anonymous download of the published archive matched its recorded SHA-256 and 1,391,410-byte size. [Release verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43641308649)
 
 ## v0.3.26
 

@@ -40,6 +40,12 @@ const digest = data => createHash('sha256').update(data).digest('hex');
 const socialRevision = digest(readFileSync(path.join(destination, 'social.png'))).slice(0, 12);
 const faviconRevision = digest(readFileSync(path.join(destination, 'favicon.png'))).slice(0, 12);
 const posterRevision = digest(readFileSync(path.join(destination, 'images/context-field.jpg'))).slice(0, 12);
+const report = await scan({ repo: path.resolve('examples/broken-agent-config'), target: 'src/payments/refund.ts', user: false, trust: 'trusted', clients: ['codex', 'claude', 'copilot'] });
+const publicReport = portable(report);
+const openingSource = publicReport.clients.find(client => client.client === 'codex')?.decisions.find(source => ['instructions', 'rules'].includes(source.kind) && source.status === 'truncated');
+if (!openingSource) throw new Error('The opening example must contain a truncated Codex instruction source.');
+const openingFilename = path.posix.basename(openingSource.path.replaceAll('\\', '/'))
+  .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 for (const name of ['index.html', 'guide.html', 'robots.txt', 'sitemap.xml']) {
   const file = path.join(destination, name);
   let content = readFileSync(file, 'utf8')
@@ -47,12 +53,12 @@ for (const name of ['index.html', 'guide.html', 'robots.txt', 'sitemap.xml']) {
     .replaceAll('{{SOCIAL_REV}}', socialRevision)
     .replaceAll('{{FAVICON_REV}}', faviconRevision)
     .replaceAll('{{POSTER_REV}}', posterRevision)
+    .replaceAll('{{HERO_SOURCE}}', openingFilename)
+    .replaceAll('{{HERO_VERDICT}}', `${openingSource.loadedBytes} of ${openingSource.bytes} bytes reach Codex`)
     .replaceAll(originalSite, configuredSite);
   if (name.endsWith('.html')) content = content.replace(/\b(href|src)="\/(?!\/)/g, (_match, attribute) => `${attribute}="${basePath}`);
   writeFileSync(file, content);
 }
-const report = await scan({ repo: path.resolve('examples/broken-agent-config'), target: 'src/payments/refund.ts', user: false, trust: 'trusted', clients: ['codex', 'claude', 'copilot'] });
-const publicReport = portable(report);
 mkdirSync(path.join(destination, 'demo'), { recursive: true });
 writeFileSync(path.join(destination, 'demo/index.html'), html(report));
 writeFileSync(path.join(destination, 'demo-report.json'), JSON.stringify(publicReport));

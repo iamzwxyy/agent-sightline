@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { serveStatic } from '../../scripts/static-server.mjs';
 import { VERSION } from '../../packages/core/version.js';
+import type { Report } from '../../packages/core/types.js';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
@@ -227,9 +228,13 @@ test('opening and primary navigation remain complete with JavaScript disabled', 
   const server = await serveStatic('website/dist');
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
   try {
+    const report: Report = JSON.parse(await readFile('website/dist/demo-report.json', 'utf8'));
+    const selected = report.clients.find(client => client.client === 'codex')!.decisions.find(source => source.status === 'truncated')!;
     const page = await context.newPage();
     await page.goto(server.url);
     await expect(page.getByRole('heading', { name: /Know what your agent/ })).toBeVisible();
+    await expect(page.locator('#hero-source')).toHaveText(selected.path.split(/[\\/]/).pop()!);
+    await expect(page.locator('#hero-verdict')).toHaveText(`${selected.loadedBytes} of ${selected.bytes} bytes reach Codex`);
     await expect(page.locator('.hero-poster')).toBeVisible();
     expect(await page.locator('.hero-poster').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
     await expect(page.locator('#motion-toggle')).toBeHidden();

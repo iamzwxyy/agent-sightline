@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { serveStatic } from '../../scripts/static-server.mjs';
+import type { Report } from '../../packages/core/types.js';
 
 const prefix = '/agent-sightline/';
 const publicUrl = 'https://iamzwxyy.github.io/agent-sightline/';
@@ -27,6 +28,10 @@ test('project-hosted website loads assets, demo, guide and the exact released pa
     page.on('response', response => { if (response.status() >= 400) failures.push(response.url()); });
     await page.route('**/demo-report.json', async route => { await dataGate.promise; await route.continue(); });
     await page.goto(server.url + prefix);
+    const report: Report = JSON.parse(await readFile(path.join(directory, 'website/dist/demo-report.json'), 'utf8'));
+    const selected = report.clients.find(client => client.client === 'codex')!.decisions.find(source => source.status === 'truncated')!;
+    await expect(page.locator('#hero-source')).toHaveText(selected.path.split(/[\\/]/).pop()!);
+    await expect(page.locator('#hero-verdict')).toHaveText(`${selected.loadedBytes} of ${selected.bytes} bytes reach Codex`);
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', publicUrl);
     const command = 'npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.1.2/agent-sightline-0.1.2.tgz ui';
     await expect(page.getByRole('button', { name: 'Copy one-command inspection', exact: true })).toHaveAttribute('data-copy', command);
