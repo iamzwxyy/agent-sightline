@@ -9,6 +9,8 @@ Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-15.
 * Incomplete discovery displays counts for inspected sources and opens scan scope from a phone-sized layout. Pending and failed refreshes clear the previous feedback while preserving the captured report for export. Portable reports retain their inspection location and findings.
 * The 421-case core suite completed with 419 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. All 79 Chromium browser cases passed. The production dependency audit reported zero vulnerabilities.
 * All 42 historical published archive hashes matched their release manifest before final packaging.
+* The exact packed CLI passed empty-cache offline installation and staging journeys for current counts, separate corrections, unchanged scans, failed scans, successful retries, keyboard finding navigation and portable snapshots. Desktop and phone source inspections received visual review. Existing linked-Skill, repeated-import, source-search and physical-touch journeys also passed.
+* Windows, macOS and Linux release verification passed. Linux Firefox completed with 76 passes and three browser-gated skips for touch emulation and WebGL context-loss checks. Anonymous download of the published archive matched its recorded SHA-256 and size. [Release verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43633097605)
 
 ## v0.3.25
 
