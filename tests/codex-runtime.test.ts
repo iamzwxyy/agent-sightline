@@ -319,7 +319,9 @@ test('Codex native skill inventory follows directory links, canonical aliases an
     await writeFile(path.join(directory, 'SKILL.md'), skill(name));
     await writeFile(path.join(directory, 'AGENTS.md'), 'UNRELATED_LINKED_PRIVATE_INSTRUCTIONS');
   }
-  const roots = [path.join(w.repo, '.agents/skills'), path.join(w.home, '.agents/skills'), path.join(w.home, '.codex/skills')];
+  // Native dirs::home_dir uses the Windows Known Folder API.
+  // Keep that platform's user fixture within the isolated CODEX_HOME.
+  const roots = [path.join(w.repo, '.agents/skills'), path.join(w.home, process.platform === 'win32' ? '.codex/skills/shared-user' : '.agents/skills'), path.join(w.home, '.codex/skills')];
   for (const directory of roots) await mkdir(directory, { recursive: true });
   const linkType = process.platform === 'win32' ? 'junction' : 'dir';
   for (const [directory, name] of [[roots[0], 'repo'], [roots[1], 'user'], [roots[2], 'compat']]) {

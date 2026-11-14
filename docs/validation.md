@@ -1,6 +1,6 @@
 # Release validation
 
-## v0.3.23
+## v0.3.24
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-15.
 
@@ -11,6 +11,7 @@ Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-15.
 * The 421-case core suite completed with 419 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. All 77 Chromium browser cases passed. The production dependency audit reported zero vulnerabilities.
 * A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,224 ms. Fixture creation warmed the filesystem cache. The same benchmark measured 1,199 ms for v0.3.22.
 * All 41 historical published archive hashes matched their release manifest before final packaging.
+* The unpublished v0.3.23 candidate passed Linux release verification. Its Windows native inventory fixture expected HOME and USERPROFILE to relocate the separate ~/.agents root. Native Codex uses the Windows Known Folder API for that root. The corrected Windows fixture keeps its user metadata under the isolated CODEX_HOME, with both user roots still compared on macOS and Linux.
 
 ## v0.3.22
 
