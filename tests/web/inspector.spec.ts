@@ -15,6 +15,93 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('source selection stays inside its list through deep links, history and refresh live and offline', async ({ page }) => {
+  const filenames = Array.from({ length: 45 }, (_, index) => `sources/item-${String(index).padStart(2, '0')}.md`);
+  const last = filenames.at(-1)!;
+  const w = await workspace({
+    'CLAUDE.md': filenames.map(filename => '@' + filename).join('\n') + '\n@repeat.md\n',
+    'repeat.md': '@' + last + '\n',
+    ...Object.fromEntries(filenames.map(filename => [filename, '# ' + filename + '\n' + Array(120).fill('Keep the source location visible.').join('\n')])),
+  });
+  const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('source-list-position.html');
+    await (await pending).saveAs(file);
+    const selected = page.locator('#sources .source.selected');
+    const selectionInsideList = () => selected.evaluate(element => {
+      const list = document.getElementById('sources')!;
+      const panel = list.parentElement!;
+      const viewport = list.scrollHeight > list.clientHeight ? list : panel;
+      const bounds = viewport.getBoundingClientRect();
+      const row = element.getBoundingClientRect();
+      const top = bounds.top + viewport.clientTop;
+      return row.top >= top - 1 && row.top + Math.min(row.height, viewport.clientHeight) <= top + viewport.clientHeight + 1;
+    });
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+        await page.setViewportSize(viewport);
+        const route = '#view=effective&client=claude&source=' + encodeURIComponent(last) + '&occurrence=2';
+        await page.goto('about:blank');
+        await page.goto(url + route);
+        await expect(selected).toHaveCount(1);
+        await expect(page.locator('#source-status')).toHaveText('Not loaded');
+        await expect.poll(selectionInsideList).toBe(true);
+        await expect(selected).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.locator('#sources .source[aria-pressed="true"]')).toHaveCount(1);
+        expect(await page.evaluate(() => window.scrollY)).toBe(0);
+        await expect(page.locator('#source-search')).toBeVisible();
+        await page.reload();
+        await expect.poll(selectionInsideList).toBe(true);
+        await selected.evaluate(element => (element as HTMLButtonElement).focus({ preventScroll: true }));
+        await page.keyboard.press('ArrowUp');
+        await page.keyboard.press('Enter');
+        await expect(selected).toBeFocused();
+        await expect(selected).toHaveAttribute('aria-pressed', 'true');
+        await expect.poll(selectionInsideList).toBe(true);
+        await page.goBack();
+        await expect(page.locator('#source-status')).toHaveText('Not loaded');
+        await expect.poll(selectionInsideList).toBe(true);
+        await page.goto(url + '#view=effective&client=claude&source=' + encodeURIComponent(filenames[20]));
+        await expect.poll(selectionInsideList).toBe(true);
+        await page.setViewportSize(viewport.width === 1440 ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+        await expect.poll(selectionInsideList).toBe(true);
+        await page.setViewportSize(viewport);
+        await expect.poll(selectionInsideList).toBe(true);
+        await page.goBack();
+        await expect(page.locator('#source-status')).toHaveText('Not loaded');
+        await expect.poll(selectionInsideList).toBe(true);
+        await page.goto(url + '#view=effective&client=claude&source=' + encodeURIComponent(filenames[0]));
+        await expect(selected.locator('.source-name')).toHaveText('item-00.md');
+        await expect.poll(selectionInsideList).toBe(true);
+        await page.goBack();
+        await expect(page.locator('#source-status')).toHaveText('Not loaded');
+        await expect.poll(selectionInsideList).toBe(true);
+        await page.goto(url + '#view=effective&client=claude&source=' + encodeURIComponent(last) + '&line=100');
+        await expect(page.locator('.code-line.highlight .line-number')).toHaveText('100');
+        await expect(page.locator('.code-line.highlight')).toBeInViewport({ ratio: 1 });
+        await expect.poll(selectionInsideList).toBe(true);
+        await page.locator('#source-search').focus();
+        await page.locator('#source-search').fill('item-00');
+        await expect(page.locator('#sources .source')).toHaveCount(1);
+        await page.locator('#source-search').clear();
+        await expect(page.locator('#source-search')).toBeFocused();
+        await expect(page.locator('#source-search')).toBeInViewport({ ratio: 1 });
+        if (url === server.url) {
+          await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+          await expect(page.locator('#scan-status')).toContainText('Scan complete');
+          await expect.poll(selectionInsideList).toBe(true);
+          await expect(page.locator('.code-line.highlight')).toBeInViewport({ ratio: 1 });
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('repeated source decisions keep their own status, import origin and browser location live and offline', async ({ page }) => {
   const w = await workspace({
     'AGENTS.md': 'Codex instruction.',

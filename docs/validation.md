@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.17
+
+Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
+
+* A v0.3.16 regression with 48 source decisions placed the selected repeated import outside the list's scroll area. A second reproduction showed that viewport changes could clip a previously selected row. Both checks failed before their fixes.
+* Source headings, search and filters stay above the independently scrolling list on desktop. Selection visibility updates after navigation and layout changes. Source buttons expose their selected state to assistive technology.
+* The 413-case core suite completed with 411 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The production dependency audit reported zero vulnerabilities.
+* All 66 Chromium browser cases passed. Long-list journeys cover live and offline reports at 1440×1000, 390×844 and 844×390, repeated decisions, reload, browser history, keyboard focus, window resizing, local refresh and source-search editing. Source-line jumps retain their visible highlight while the list adjusts its own scroll position.
+* Desktop and phone source-list screenshots received visual review. All 35 historical published archive hashes matched their release manifest before packaging.
+
 ## v0.3.16
 
 Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.

@@ -351,7 +351,7 @@
     state.source = selected?.path ?? null;
     state.sourceOccurrence = selection?.occurrence ?? 1;
     $('copy-source').disabled = !selected;
-    renderSourceList();
+    renderSourceList(true);
     if (selected) renderSource(selected);
     else {
       $('source-title').textContent = 'Select a source';
@@ -380,7 +380,7 @@
     else content.append(empty('No proven active instruction text', 'Review the source chain and workspace trust assumptions for this client.'));
     $('effective-document').replaceChildren(content);
   }
-  function renderSourceList() {
+  function renderSourceList(revealSelection = false) {
     const restoreFocus = document.activeElement.classList.contains('source');
     const query = $('source-search').value.toLowerCase();
     const sources = sourceEntries().filter(({ source }) => (state.sourceFilter === 'all' || source.status !== 'ignored' || source.path === state.source) && short(source.path).toLowerCase().includes(query));
@@ -391,9 +391,11 @@
     for (const { source, occurrence } of sources) {
       const group = source.order !== null ? 'Load order' : 'Not in the active chain';
       if (group !== previousGroup) { elements.push(node('div', group, 'source-group-label')); previousGroup = group; }
+      const isSelected = source.path === state.source && occurrence === state.sourceOccurrence;
       const element = button('', () => {
         navigate('effective', state.client, source.path, null, occurrence);
-      }, `source ${source.path === state.source && occurrence === state.sourceOccurrence ? 'selected' : ''}`);
+      }, `source ${isSelected ? 'selected' : ''}`);
+      element.setAttribute('aria-pressed', String(isSelected));
       const importedFrom = source.importedFrom ? `Imported from ${short(source.importedFrom.path)}:${source.importedFrom.line}` : '';
       const labels = [basename(source.path), statusNames[source.status], short(source.path)];
       if (importedFrom) labels.push(importedFrom);
@@ -408,8 +410,22 @@
       elements.push(element);
     }
     $('sources').replaceChildren(...elements);
-    if (restoreFocus) $('sources').querySelector('.source.selected')?.focus({ preventScroll: true });
+    const selected = $('sources').querySelector('.source.selected');
+    if (restoreFocus) selected?.focus({ preventScroll: true });
+    if (revealSelection) revealSourceSelection();
     if (!sources.length) $('sources').append(empty('No matching sources', 'Clear the filter to see the full source list.'));
+  }
+  function revealSourceSelection() {
+    const list = $('sources');
+    const selected = list.querySelector('.source.selected');
+    if (!selected || !list.clientHeight) return;
+    const bounds = list.getBoundingClientRect();
+    const row = selected.getBoundingClientRect();
+    const top = bounds.top + list.clientTop;
+    const bottom = top + list.clientHeight;
+    const visibleBottom = row.top + Math.min(row.height, list.clientHeight);
+    if (row.top < top) list.scrollTop += row.top - top;
+    else if (visibleBottom > bottom) list.scrollTop += visibleBottom - bottom;
   }
   function sourceText(source) {
     const preview = report.sources.find(candidate => candidate.id === source.sourceId)?.preview;
@@ -826,7 +842,7 @@
   document.querySelectorAll('dialog').forEach(dialog => { dialog.onclick = event => { if (event.target === dialog) { const bounds = dialog.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close(); } }; });
   $('mobile-menu').onclick = () => { const open = document.body.classList.toggle('nav-open'); $('mobile-menu').setAttribute('aria-expanded', String(open)); $('navigation-scrim').hidden = !open; };
   $('navigation-scrim').onclick = () => { document.body.classList.remove('nav-open'); $('mobile-menu').setAttribute('aria-expanded', 'false'); $('navigation-scrim').hidden = true; $('mobile-menu').focus(); };
-  $('source-search').oninput = renderSourceList;
+  $('source-search').oninput = () => renderSourceList();
   $('finding-search').oninput = renderFindings;
   $('severity').onchange = renderFindings;
   $('finding-client').onchange = renderFindings;
@@ -915,8 +931,12 @@
     control.removeAttribute('data-startup-disabled');
   });
   renderScanStatus();
-  const headerObserver = new window.ResizeObserver(updateHeaderHeights);
-  headerObserver.observe($('workspace-header'));
-  headerObserver.observe(document.querySelector('.file-tab'));
+  const layoutObserver = new window.ResizeObserver(() => {
+    updateHeaderHeights();
+    if (document.activeElement !== $('source-search')) revealSourceSelection();
+  });
+  layoutObserver.observe($('workspace-header'));
+  layoutObserver.observe(document.querySelector('.file-tab'));
+  layoutObserver.observe($('sources'));
   render();
 })();

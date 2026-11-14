@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.17 — 2026-11-14
+
+* Reveal the selected source within long lists after deep links, source jumps, reload, browser history and local refresh.
+* Keep the source heading, search and filters above an independently scrolling list on desktop. Recalculate the selected row's visibility after layout and viewport changes.
+* Keep list scrolling within its own panel and retain the source-line reading position. Editing a source search retains keyboard focus.
+* Expose each source button's selected state to assistive technology, including separate decisions for repeated imports.
+* Verify long live and portable source lists at desktop, phone and landscape sizes, with keyboard selection, source-line jumps, resizing and search.
+
 ## 0.3.16 — 2026-11-14
 
 * Select individual loading decisions when the same physical file appears more than once. Each row displays its own status, byte contribution, reason and captured import origin.
