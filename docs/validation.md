@@ -9,6 +9,7 @@ Verified locally on macOS ARM64 with Node 22.23.5 on 2026-11-14.
 * All 65 Chromium browser cases passed. Repeated-import fixtures cover three branches, captured parent lines, reload, browser history, cross-client navigation, keyboard focus, local refresh and removal of one reference. Portable reports retain their original import decisions. Phone layouts keep import metadata visible within the viewport width.
 * A synthetic legacy report verifies separate active and truncated contributions for one path, effective-text origin navigation and the selected byte count. File-only links and malformed or unavailable occurrence selectors select the first decision. Missing captured parents retain readable provenance.
 * All 34 historical published archive hashes matched their release manifest before packaging.
+* Windows, macOS and Linux release verification passed, including all 65 Linux Firefox browser cases. Anonymous download of the published archive matched its recorded SHA-256. [Release verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43585258115)
 
 ## v0.3.15
 
