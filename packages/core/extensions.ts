@@ -3,7 +3,7 @@ import { realpath, stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import crossSpawn from 'cross-spawn';
 import type { ClientId, Context, Effective, Extension, Finding, Location, Source } from './types.js';
-import { executable, finding, locate, plainObject, within } from './utils.js';
+import { environmentValue, executable, finding, locate, plainObject, within } from './utils.js';
 import { VERSION } from './version.js';
 
 const mcpKeys = new Set(['command', 'args', 'env', 'env_vars', 'cwd', 'url', 'type', 'transport', 'headers', 'http_headers', 'env_http_headers', 'bearer_token_env_var', 'startup_timeout_sec', 'startup_timeout_ms', 'tool_timeout_sec', 'enabled', 'required', 'enabled_tools', 'disabled_tools', 'tools', 'timeout', 'description', 'name', 'oauth', 'headersHelper', 'alwaysLoad', 'output_token_budget', 'sandbox']);
@@ -85,7 +85,8 @@ export function validateMcpConfiguration(extension: Extension, client: ClientId,
 
 function expandEnvironmentReferences(value: any, env: NodeJS.ProcessEnv, strict = true): any {
   if (typeof value === 'string') return value.replace(/\$\{(?:env:)?([A-Za-z_][\w]*)(?:(:-|-)([^}]*))?\}/g, (_match, name, operator, fallback) => {
-    if (env[name] !== undefined) return env[name];
+    const replacement = environmentValue(env, name);
+    if (replacement !== undefined) return replacement;
     if (operator) return fallback;
     if (!strict) return _match;
     throw new Error('Missing environment variable.');
@@ -139,7 +140,7 @@ export async function validateExtensions(ctx: Context, e: Effective): Promise<Fi
         };
         references(declared);
       }
-      for (const [name, fields] of required) if (ctx.env[name] === undefined) {
+      for (const [name, fields] of required) if (environmentValue(ctx.env, name) === undefined) {
         const [first, ...rest] = fields;
         issue('mcp.env-missing', `MCP server "${x.name}" requires missing environment variable ${name}.`, 'Only variable presence is inspected; values are never exported.', `Set ${name} in the launching environment or configure a supported default.`, 'error', first, rest.map(field => extensionFieldLocation(x, field, source)));
       }
@@ -155,7 +156,7 @@ export async function validateExtensions(ctx: Context, e: Effective): Promise<Fi
       try { if (!(await stat(cwd)).isDirectory()) throw new Error(); } catch { issue('extension.cwd-missing', `Working directory for "${x.name}" does not exist.`, 'The child process cannot start in the configured directory.', 'Correct cwd or create the expected directory.', 'error', typeof config.cwd === 'string' ? 'cwd' : undefined); }
       if (!remote && typeof config.command === 'string' && !/\$\{/.test(config.command)) {
         const env = { ...ctx.env, ...(config.env ?? {}) };
-        const unresolvedPath = expandsEnvironment && (/\$\{/.test(env.PATH ?? '') || process.platform === 'win32' && /\$\{/.test(env.PATHEXT ?? ''));
+        const unresolvedPath = expandsEnvironment && (/\$\{/.test(environmentValue(env, 'PATH') ?? '') || process.platform === 'win32' && /\$\{/.test(environmentValue(env, 'PATHEXT') ?? ''));
         if (!unresolvedPath && !(await executable(config.command, cwd, env))) issue('mcp.command-missing', `MCP command for "${x.name}" was not found or is not executable.`, 'The command is resolved against cwd and PATH without executing it.', 'Install the runtime or use the correct executable path.', 'error', 'command');
         if (process.platform !== 'win32' && /^[A-Za-z]:[\\/]/.test(config.command)) issue('path.platform', 'Windows executable path on a POSIX host.', 'This absolute path cannot resolve on this platform.', 'Use a PATH-resolved command or a platform-specific definition.', 'warn', 'command');
       }

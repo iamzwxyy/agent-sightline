@@ -1,7 +1,8 @@
 # Changelog
 
-## 0.3.12 — 2026-11-14
+## 0.3.13 — 2026-11-14
 
+* Resolve copied Windows environment keys case-insensitively for executable lookup, MCP references and missing-variable checks. PATH/PATHEXT selection follows Node subprocess key ordering, correcting false command-missing findings when the inherited environment uses Path.
 * Correct persisted Copilot trust matching by resolving existing absolute folder paths before comparing canonical directory boundaries. Saved aliases can establish trust, and a session reached through a symlink outside a trusted logical parent retains conditional workspace contributions.
 * Normalize trustedFolders and trusted_folders in declaration order. The last spelling supplies the complete list, including an empty list or malformed value.
 * Require a complete string list and ignore relative/tilde entries for persisted path matching. Add copilot.trust-type with the controlling source key and line for malformed declarations.

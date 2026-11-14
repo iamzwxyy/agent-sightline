@@ -48,11 +48,16 @@ export function prefix(text: string, limit: number): string {
   if (end < buf.length) while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
   return buf.subarray(0, end).toString('utf8');
 }
+export function environmentValue(env: NodeJS.ProcessEnv, name: string, platform = process.platform): string | undefined {
+  // Node forwards the first case-insensitive key in lexicographic order on Windows.
+  const key = platform === 'win32' ? Object.keys(env).sort().find(key => key.toUpperCase() === name.toUpperCase()) : name;
+  return key === undefined ? undefined : env[key];
+}
 export async function executable(command: string, cwd: string, env: NodeJS.ProcessEnv): Promise<string | null> {
   const windows = process.platform === 'win32';
-  const extensions = windows ? (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';') : [''];
+  const extensions = windows ? (environmentValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';') : [''];
   const direct = path.isAbsolute(command) || command.includes('/') || command.includes('\\');
-  const dirs = direct ? [''] : (env.PATH ?? '').split(path.delimiter).filter(Boolean);
+  const dirs = direct ? [''] : (environmentValue(env, 'PATH') ?? '').split(path.delimiter).filter(Boolean);
   for (const dir of dirs) for (const ext of extensions) {
     const name = windows && path.extname(command) ? command : command + ext;
     const candidate = direct ? path.resolve(cwd, name) : path.resolve(dir, name);
