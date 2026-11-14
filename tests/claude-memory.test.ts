@@ -6,7 +6,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
-import { realpath, rm, writeFile } from 'node:fs/promises';
+import { readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { claudeMetadata } from '../packages/adapters/claude.js';
 import { workspace } from './helpers.js';
@@ -260,7 +260,22 @@ test('Claude instruction order and imports agree with the pinned native request'
       const memory = requests.at(-1).messages.filter((message: any) => message.role === 'user').flatMap((message: any) => message.content).map(blockText).join('\n');
       const report = await scan({ ...w, target: scenario.directory ? 'src/file.ts' : '.', clients: ['claude'], trust: 'trusted' });
       assert.ok(!JSON.stringify(report).includes('private-state-sentinel@example.test'));
-      assert.deepEqual(report.clients[0].instructions.match(/[A-Z_]+_INSTRUCTION/g) ?? [], memory.match(/[A-Z_]+_INSTRUCTION/g) ?? []);
+      const nativeState = JSON.parse(await readFile(path.join(w.home, '.claude.json'), 'utf8'));
+      const nativeMessages = requests.at(-1).messages;
+      const diagnostics = {
+        platform: process.platform,
+        directory,
+        readPath,
+        projects: Object.entries(nativeState.projects ?? {}).map(([key, entry]: [string, any]) => ({
+          key,
+          approved: entry.hasClaudeMdExternalIncludesApproved ?? null,
+          trusted: entry.hasTrustDialogAccepted ?? null,
+        })),
+        environment: nativeMessages.filter((message: any) => message.role === 'system').flatMap((message: any) => message.content).map(blockText).join('\n'),
+        toolResults: nativeMessages.filter((message: any) => message.role === 'user').flatMap((message: any) => message.content).filter((block: any) => block.type === 'tool_result').map(blockText),
+        permissionDenials: JSON.parse(output).permission_denials,
+      };
+      assert.deepEqual(report.clients[0].instructions.match(/[A-Z_]+_INSTRUCTION/g) ?? [], memory.match(/[A-Z_]+_INSTRUCTION/g) ?? [], JSON.stringify(diagnostics));
       const nativeFiles = await Promise.all([...memory.matchAll(/^Contents of (.+?)(?: \([^\n]*\))?:$/gm)].map(match => realpath(match[1])));
       const reportedFiles = await Promise.all(report.clients[0].decisions.filter(source => ['instructions', 'rules'].includes(source.kind) && source.status === 'active' && source.content.trim()).map(source => realpath(source.path)));
       assert.deepEqual(reportedFiles, nativeFiles);
