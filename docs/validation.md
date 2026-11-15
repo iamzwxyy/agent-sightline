@@ -1,5 +1,14 @@
 # Release validation
 
+## v0.3.39
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
+
+* The normal scan reproduced plaintext under an uppercase `Env` field. Public-payload, preview/copy and malformed-TOML regressions failed before the correction. A shared privacy predicate now recognizes capitalization variants of environment and header mappings while preserving parsed keys, case-sensitive field warnings and schema validation.
+* Parser fixtures cover JSON, JSONC, TOML, YAML, YML and Markdown frontmatter with escaped values, numeric values and LF/CRLF line endings. Scan fixtures cover copied instructions, YAML aliases, TOML tables, inline tables, dotted assignments and malformed TOML across project, sibling and user scopes. The focused parser/privacy suite passed all 37 cases.
+* The 577-case core suite completed with 575 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. Installed-CLI smoke checks retain field diagnostics while concealing case-variant private values and malformed sibling TOML copies. Production dependency audit reported zero vulnerabilities.
+* All 107 Chromium browser cases and two focused WebKit flows passed. Desktop and phone journeys cover live rescan, source inspection, effective text, comparison, standalone export and offline re-export. Automated WCAG AA checks passed.
+
 ## v0.3.38
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

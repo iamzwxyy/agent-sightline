@@ -9,6 +9,52 @@ import { adapters } from '../packages/adapters/index.js';
 import { VERSION } from '../packages/core/version.js';
 import { createRedactor, redactScanReport } from '../packages/core/redact.js';
 
+test('case-variant environment and header mappings stay private across previews and copied instructions', async t => {
+  const cases = [
+    { file: '.claude/settings.json', text: String.raw`{
+  "\u0045nv": {"NORMAL": "case-json-private-\u0076alue", "NUMBER": 987654321},
+  "model": "public-model-label"
+}`, values: ['case-json-private-value'], fragments: ['case-json-private-', '987654321'] },
+    { file: '.mcp.json', text: JSON.stringify({ mcpServers: { fixture: {
+      command: 'node', Headers: { Custom: 'case-header-private-value' }, HTTP_HEADERS: { Other: 'case-http-header-private-value' },
+    } } }, null, 2), values: ['case-header-private-value', 'case-http-header-private-value'] },
+    { file: 'opencode.jsonc', text: '// Keep source comments.\n{\n  "eNv": {"NORMAL": "case-jsonc-private-value"},\n  "hEaDeRs": {"Custom": ["case-array-private-value"]},\n}', values: ['case-jsonc-private-value', 'case-array-private-value'] },
+    { file: '.codex/config.toml', text: '[mcp_servers.fixture]\ncommand="node"\n[mcp_servers.fixture.EnV]\nNORMAL="case-table-private-\\u0076alue"\n', values: ['case-table-private-value'], fragments: ['case-table-private-'] },
+    { file: '.codex/config.toml', text: '[mcp_servers.fixture]\ncommand="node"\nEnv={NORMAL="case-inline-private-\\u0076alue"}\n', values: ['case-inline-private-value'], fragments: ['case-inline-private-'] },
+    { file: '.codex/config.toml', text: '[mcp_servers.fixture]\ncommand="node"\nHTTP_Headers.Custom="case-dotted-private-\\u0076alue"\n', values: ['case-dotted-private-value'], fragments: ['case-dotted-private-'] },
+    { file: '.claude/skills/check/SKILL.md', text: '---\nname: check\ndescription: Safe skill.\nordinary: &value "case-yaml-private-\\u0076alue"\nHeAdErS:\n  Custom: *value\n---\nSafe skill body.', values: ['case-yaml-private-value'], fragments: ['case-yaml-private-'] },
+  ];
+  for (const fixture of cases) for (const newline of ['\n', '\r\n']) {
+    const text = fixture.text.replaceAll('\n', newline);
+    const instructions = 'Safe introduction.\n\n' + fixture.values.join('\n\n') + '\n\nSafe ending.';
+    const w = await workspace({ [fixture.file]: text, 'AGENTS.md': instructions, 'CLAUDE.md': instructions });
+    t.after(() => rm(w.root, { recursive: true, force: true }));
+    const report = await scan({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+    const source = report.sources.find(source => source.relativePath === fixture.file)!;
+    if (fixture.file.endsWith('.toml')) {
+      assert.equal(source.invalid, true, fixture.file);
+      assert.equal(source.preview, undefined, fixture.file);
+      assert.ok(report.findings.some(finding => finding.ruleId === 'config.schema'), fixture.file);
+    } else {
+      assert.equal(source.invalid, false, fixture.file);
+      assert.ok(source.preview?.includes('[REDACTED]'), fixture.file);
+      assert.equal(source.preview?.split('\n').length, text.split('\n').length, fixture.file);
+    }
+    for (const output of [JSON.stringify(report), json(report), terminal(report, 'explain'), html(report), JSON.stringify(portable(report))]) {
+      for (const fragment of fixture.fragments ?? fixture.values) assert.ok(!output.includes(fragment), fixture.file + ' ' + fragment);
+      assert.ok(output.includes('Safe introduction.'), fixture.file);
+      assert.ok(output.includes('Safe ending.'), fixture.file);
+    }
+    if (fixture.file === '.claude/settings.json') {
+      assert.ok(report.findings.some(finding => finding.ruleId === 'config.field-case' && finding.location.key === 'Env'));
+      const settings = report.clients.find(client => client.client === 'claude')!.settings;
+      assert.equal(settings.find(setting => setting.key === 'model')?.value, 'public-model-label');
+      assert.ok(settings.filter(setting => setting.key.startsWith('Env.')).every(setting => setting.value === '[REDACTED]'));
+      assert.ok(!settings.some(setting => setting.key.startsWith('env.')));
+    }
+  }
+});
+
 test('malformed TOML retains recoverable private assignments for redaction across source scopes', async t => {
   const cases = [
     { text: 'model="public-model-label"\n[mcp_servers.fixture.env]\nNORMAL="broken-toml-private-\\u0076alue"\nBROKEN=[\n', values: ['broken-toml-private-value'] },
@@ -22,6 +68,9 @@ test('malformed TOML retains recoverable private assignments for redaction acros
     { text: '[mcp_servers.fixture.env]\nNORMAL=["unfinished-array-private-value",\n', values: ['unfinished-array-private-value'] },
     { text: '[mcp_servers.fixture]\nenv={NORMAL="unfinished-inline-private-value",BROKEN=[\n', values: ['unfinished-inline-private-value'] },
     { text: '# Original error follows.\n\nmodel="invalid\\q"\n"invalid\\q"=42\n[mcp_servers.fixture.env]\nNORMAL="after-invalid-key-private-value"\n', values: ['after-invalid-key-private-value'], errorLine: 3 },
+    { text: '[mcp_servers.fixture.EnV]\nNORMAL="case-broken-table-private-\\u0076alue"\nBROKEN=[\n', values: ['case-broken-table-private-value'] },
+    { text: '[mcp_servers.fixture]\nHeaders.Custom="case-broken-dotted-private-value"\nBROKEN=[\n', values: ['case-broken-dotted-private-value'] },
+    { text: '[mcp_servers.fixture]\nHTTP_Headers={Custom="case-broken-inline-private-value",BROKEN=[\n', values: ['case-broken-inline-private-value'] },
   ];
   for (const fixture of cases) for (const scope of ['project', 'sibling', 'user']) for (const newline of ['\n', '\r\n']) {
     const file = scope === 'sibling' ? 'sibling/.codex/config.toml' : '.codex/config.toml';

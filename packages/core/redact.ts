@@ -1,7 +1,9 @@
 import type { Finding, Location, Report, Source } from './types.js';
 
 const sensitiveKey = /(?:secret|token|password|passwd|api[_-]?key|cookie|authorization|credential|private[_-]?key|client[_-]?secret)/i;
-export const privateMappings: ReadonlySet<string> = new Set(['env', 'headers', 'http_headers']);
+const privateMappings: ReadonlySet<string> = new Set(['env', 'headers', 'http_headers']);
+// Field-name typos can still contain private values.
+export const isPrivateMapping = (key: string): boolean => privateMappings.has(key.toLowerCase());
 export const isSensitiveKey = (key: string): boolean => key !== 'estimatedTokens' && sensitiveKey.test(key);
 const lineBreaks = (text: string): string => text.match(/\r\n|\r|\n/g)?.join('') ?? '';
 const mask = (text: string, label = '[REDACTED]'): string => label + lineBreaks(text);
@@ -26,7 +28,7 @@ export function createRedactor(envValues: string[] = []): <T>(value: T) => T {
   const pattern = patterns.length ? new RegExp(patterns.join('|'), 'g') : undefined;
   const scrub = (text: string): string => redactText(pattern ? text.replace(pattern, value => mask(value)) : text);
   const walk = (v: any, key = '', parent = ''): any => {
-    if (privateMappings.has(parent)) return '[REDACTED]';
+    if (isPrivateMapping(parent)) return '[REDACTED]';
     if (isSensitiveKey(key)) return '[REDACTED]';
     if (typeof v === 'string') return scrub(v);
     if (Array.isArray(v)) return v.map(x => walk(x, '', key));

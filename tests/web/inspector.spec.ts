@@ -2099,6 +2099,56 @@ test('overlapping personal configuration keeps state private and user inclusion 
   } finally { await rm(w.root, { recursive: true, force: true }); }
 });
 
+test('case-variant private mappings stay concealed through refresh and offline re-export', async ({ page }) => {
+  const secrets = ['browser-case-env-private-value', 'browser-case-header-private-value'];
+  const w = await workspace({
+    'AGENTS.md': 'Safe introduction.\n\n' + secrets.join('\n') + '\n\nSafe ending.',
+    'CLAUDE.md': 'Safe introduction.\n\n' + secrets.join('\n') + '\n\nSafe ending.',
+    '.claude/settings.json': JSON.stringify({ Env: { NORMAL: secrets[0] }, model: 'public-model-label' }, null, 2),
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', Headers: { Custom: secrets[1] } } } }),
+  });
+  const server = await serve({ ...w, user: false, trust: 'trusted', clients: ['codex', 'claude'] });
+  const selection = '#view=effective&client=claude&source=.claude/settings.json';
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.context().setOffline(false);
+      await page.setViewportSize(viewport);
+      await page.goto(server.url + selection);
+      const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === '/api/scan');
+      await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+      const { report } = await (await refreshed).json();
+      expect(report.findings.some((finding: any) => finding.ruleId === 'config.field-case')).toBe(true);
+      for (const value of secrets) expect(JSON.stringify(report)).not.toContain(value);
+      await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+      await expect(page.locator('#source-title')).toHaveText('.claude/settings.json');
+      await expect(page.locator('#instructions')).toContainText('"Env"');
+      await expect(page.locator('#instructions')).toContainText('[REDACTED]');
+      await expect(page.locator('#instructions')).toContainText('public-model-label');
+      for (const generation of ['exported', 'reshared']) {
+        const pending = page.waitForEvent('download');
+        await page.getByRole('button', { name: /Export report/ }).click();
+        const file = test.info().outputPath(`case-mapping-${generation}-${viewport.width}.html`);
+        await (await pending).saveAs(file);
+        const exported = await readFile(file, 'utf8');
+        for (const value of [...secrets, w.repo, await realpath(w.repo), w.home, await realpath(w.home)]) expect(exported).not.toContain(JSON.stringify(value).slice(1, -1));
+        await page.context().setOffline(true);
+        await page.goto(pathToFileURL(file).href);
+        await expect(page.locator('#source-title')).toHaveText('.claude/settings.json');
+        await expect(page.locator('#instructions')).toContainText('[REDACTED]');
+        await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+        await expect(page.locator('#effective-document')).toContainText('Safe introduction.');
+        await expect(page.locator('#effective-document')).toContainText('[REDACTED]');
+        if (viewport.width === 390) await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+        await page.locator('#compare-tab').click();
+        await expect(page.locator('#comparison-blocks')).toContainText('Safe ending.');
+        await expect(page.locator('#comparison-blocks')).toContainText('[REDACTED]');
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.goto(pathToFileURL(file).href + selection);
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true, maxRetries: 5 }); }
+});
+
 test('malformed sibling TOML masks copied private text in live and offline reports', async ({ page }) => {
   const secret = 'browser-malformed-toml-private-value';
   const w = await workspace({

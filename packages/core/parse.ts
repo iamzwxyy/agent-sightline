@@ -2,7 +2,7 @@ import { parseTree, getNodeValue, type Node, type ParseError, printParseErrorCod
 import { parse as toml } from 'smol-toml';
 import { parseDocument, LineCounter, isMap, isNode, isScalar, isSeq } from 'yaml';
 import { finding, lineAt, plainObject } from './utils.js';
-import { isSensitiveKey, privateMappings } from './redact.js';
+import { isSensitiveKey, isPrivateMapping } from './redact.js';
 import type { Finding, Source } from './types.js';
 
 const jsonErrorMessages: Record<string, string> = {
@@ -29,7 +29,7 @@ const tomlAssignment = new RegExp(String.raw`^\s*((?:${tomlKeyPart})(?:\s*\.\s*(
 
 type PrivacyMode = 'public' | 'mapping' | 'private';
 function propertyPrivacy(key: string): PrivacyMode {
-  if (privateMappings.has(key)) return 'mapping';
+  if (isPrivateMapping(key)) return 'mapping';
   return isSensitiveKey(key) ? 'private' : 'public';
 }
 
@@ -144,7 +144,7 @@ function tomlLines(source: Source): void {
       if (assignment) {
         const keys = [...section, ...tomlKeyParts(assignment[1])];
         source.lines[keys.join('.')] = statement.line;
-        const privateValue = keys.some((key, index) => isSensitiveKey(key) || index < keys.length - 1 && privateMappings.has(key));
+        const privateValue = keys.some((key, index) => isSensitiveKey(key) || index < keys.length - 1 && isPrivateMapping(key));
         if (privateValue) source.valueRanges!.push({
           offset: statement.offset + assignment[0].length, length: statement.text.length - assignment[0].length,
           value: keys.reduce<any>((value, key) => value?.[key], source.data), private: true,
@@ -159,7 +159,7 @@ function recoverTomlValues(source: Source): void {
   for (const statement of tomlStatements(source.text, source.valueRanges!)) {
     const header = statement.text.match(/^\[\[?(.+?)\]\]?\s*(?:#.*)?$/);
     if (header) {
-      try { privateSection = tomlKeyParts(header[1]).some(key => isSensitiveKey(key) || privateMappings.has(key)); }
+      try { privateSection = tomlKeyParts(header[1]).some(key => isSensitiveKey(key) || isPrivateMapping(key)); }
       catch { privateSection = false; }
       continue;
     }
@@ -172,7 +172,7 @@ function recoverTomlValues(source: Source): void {
       let keys: string[] = [];
       try { keys = tomlKeyParts(assignment[1]); }
       catch { /* Preserve the original syntax error and continue with later private assignments. */ }
-      const privateValue = privateSection || keys.some(key => isSensitiveKey(key) || privateMappings.has(key));
+      const privateValue = privateSection || keys.some(key => isSensitiveKey(key) || isPrivateMapping(key));
       if (!privateValue) continue;
       const valueStart = statement.offset + assignment[0].length;
       for (const literal of statement.literals) {

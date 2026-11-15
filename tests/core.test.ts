@@ -4,7 +4,7 @@ import path from 'node:path';
 import { chmod, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
 import { parseSource } from '../packages/core/parse.js';
-import { createRedactor, redact, redactText } from '../packages/core/redact.js';
+import { createRedactor, redact, redactSourcePreview, redactText } from '../packages/core/redact.js';
 import { bytes, matches, prefix, slash, splitGlobs } from '../packages/core/utils.js';
 import type { Source } from '../packages/core/types.js';
 import { workspace } from './helpers.js';
@@ -128,6 +128,36 @@ test('text redaction preserves line endings and matches overlapping private valu
       const assignment = label + '="first-private' + newline + 'last-private"' + newline + 'next=value';
       assert.equal(redactText(assignment).split('\n').length, assignment.split('\n').length);
       assert.ok(!redactText(assignment).includes('last-private'));
+    }
+  }
+});
+test('public payload redaction recognizes case-variant private mapping names and preserves opaque keys', () => {
+  for (const key of ['env', 'Env', 'ENV', 'eNv', 'headers', 'Headers', 'HEADERS', 'hEaDeRs', 'http_headers', 'HTTP_HEADERS', 'HTTP_Headers']) {
+    const output = redact({ config: { [key]: { NORMAL: 'private-value', NUMBER: 987654321, NESTED: { child: 'nested-private-value' } } }, 'literal.Env.field': 'public-value' });
+    assert.deepEqual(output.config[key], { NORMAL: '[REDACTED]', NUMBER: '[REDACTED]', NESTED: '[REDACTED]' }, key);
+    assert.equal(output['literal.Env.field'], 'public-value');
+  }
+});
+test('parsers capture case-variant private mapping values without changing key spelling', () => {
+  for (const key of ['Env', 'HEADERS', 'Http_Headers']) {
+    const mapping = `${key}:\n  NORMAL: "parser-private-\\u0076alue"\n  NUMBER: 987654321\n`;
+    const cases = [
+      { ext: 'json', text: `{"public":"public-label","${key}":{"NORMAL":"parser-private-\\u0076alue","NUMBER":987654321}}` },
+      { ext: 'jsonc', text: `// Source comment.\n{"public":"public-label","${key}":{"NORMAL":"parser-private-\\u0076alue","NUMBER":987654321}}` },
+      { ext: 'toml', text: `public="public-label"\n[${key}]\nNORMAL="parser-private-\\u0076alue"\nNUMBER=987654321\n` },
+      { ext: 'yaml', text: 'public: public-label\n' + mapping },
+      { ext: 'yml', text: 'public: public-label\n' + mapping },
+      { ext: 'md', text: '---\npublic: public-label\n' + mapping + '---\nPublic body.' },
+    ];
+    for (const fixture of cases) for (const newline of ['\n', '\r\n']) {
+      const input = source(fixture.text.replaceAll('\n', newline), fixture.ext, fixture.ext === 'md' ? 'rules' : 'settings');
+      assert.deepEqual(parseSource(input), [], fixture.ext + ' ' + key);
+      assert.equal(input.data[key].NORMAL, 'parser-private-value');
+      const preview = redactSourcePreview(input, createRedactor());
+      assert.ok(!preview.includes('parser-private-'), fixture.ext + ' ' + key);
+      assert.ok(!preview.includes('987654321'), fixture.ext + ' ' + key);
+      assert.ok(preview.includes('public-label'), fixture.ext + ' ' + key);
+      assert.equal(preview.split('\n').length, input.text.split('\n').length);
     }
   }
 });

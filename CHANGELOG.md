@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.39 — 2026-11-16
+
+* Conceal environment and header values under capitalization variants of `env`, `headers` and `http_headers`, including misspelled fields such as `Env`.
+* Apply the same privacy recognition to parsed source ranges, copied instruction text, structured report payloads and recoverable malformed TOML. Preserve original key spelling, schema errors and case-sensitive field warnings.
+* Rescan and replace reports exported with 0.3.38 or earlier when configurations contain these capitalization variants. Previously exported JSON and HTML retain their captured content.
+
 ## 0.3.38 — 2026-11-16
 
 * Align two clients’ redacted effective instruction texts line by line, with original effective-text line numbers, addition/removal markers and optional unchanged context.

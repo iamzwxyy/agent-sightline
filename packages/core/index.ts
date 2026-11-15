@@ -4,7 +4,7 @@ import { adapters } from '../adapters/index.js';
 import { finish, sourceInScope } from '../adapters/common.js';
 import { discoverRepository, makeContext, selectedClients } from './discovery.js';
 import { diagnose } from './diagnostics.js';
-import { createRedactor, isSensitiveKey, privateMappings, redactScanReport, redactSourcePreview } from './redact.js';
+import { createRedactor, isSensitiveKey, isPrivateMapping, redactScanReport, redactSourcePreview } from './redact.js';
 import { collectPathMappings } from './paths.js';
 import { compareInstructions } from './comparison.js';
 import { cmp } from './utils.js';
@@ -35,7 +35,7 @@ function privateData(ctx: Context): { values: string[]; settings: Set<string> } 
       if (stack.has(value)) return;
       stack.add(value);
       for (const [key, child] of Object.entries(value)) {
-        const privateMapping = mapping || privateMappings.has(key);
+        const privateMapping = mapping || isPrivateMapping(key);
         walk(child, sensitive || privateMapping || isSensitiveKey(key), privateMapping, keys ? [...keys, key] : undefined, stack);
       }
       stack.delete(value);
