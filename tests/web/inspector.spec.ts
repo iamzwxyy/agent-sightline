@@ -118,7 +118,7 @@ test('starting-directory rescans keep request paths when displayed paths are red
 test('Inspect preserves an unchanged redacted target from server defaults and explicit URLs', async ({ page }) => {
   const w = await workspace({
     'src/file.ts': '', 'src/AGENTS.md': 'Nested instructions.',
-    '.mcp.json': '{"mcpServers":{"fixture":{"command":"node","env":{"TARGET":"src/file.ts"}}}}',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { TARGET: path.join('src', 'file.ts') } } } }),
   });
   const server = await serve({ ...w, target: 'src/file.ts', user: false, clients: ['codex', 'claude'], trust: 'trusted' });
   const inspect = async (action: () => Promise<unknown>, target: string | null) => {
