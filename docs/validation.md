@@ -1,6 +1,6 @@
 # Release validation
 
-## v0.3.33 candidate
+## v0.3.33
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 
@@ -8,6 +8,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 * An additional native comparison verifies empty-home fallback. The native fixture isolates the OS home before importing the published modules and keeps project-memory lookups within its temporary home. All 69 Gemini startup/import cases passed.
 * The 562-case core suite completed with 560 passes and two platform-gated skips. Lint, strict TypeScript and build passed. Empty-cache offline installation checks relative homes for root and nested targets, their applicable global context and private portable output. Production dependency audit reported zero vulnerabilities.
 * All 90 Chromium browser cases passed. Four focused Gemini and all twelve website cases passed in WebKit. Desktop and phone flows select a nested target, refresh changed context, copy redacted effective text and reopen the matching report offline. The phone report received visual review.
+
+* Windows, macOS and Linux verification passed for the released source. Anonymous download matched SHA-256 `31b65b8bbc9aca4f2e78c3a483dbe11d846a8c4f4a5e14ca3a8c9b17e68abd58` and its 1,417,269-byte size. Fresh-cache public execution resolved the relative home for a nested session launched from a separate directory. Offline installation of the exact archive also passed root/nested resolution and portable-path checks. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43697573566)
 
 ## v0.3.32
 
