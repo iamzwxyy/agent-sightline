@@ -10,6 +10,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
 * The 579-case core suite completed with 577 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The installed CLI checks numeric/date copies from malformed sibling TOML, typed sensitive settings and retained field diagnostics. Production dependency audit reported zero vulnerabilities.
 * All 107 Chromium browser cases and three focused WebKit flows passed. Desktop and phone journeys cover live refresh, source inspection, effective text, comparison, standalone export and offline re-export. Automated WCAG AA checks passed.
 
+* Linux, macOS and Windows verification passed for the exact release source. Anonymous download matched SHA-256 `0cac4caa8fd8b6d748cc0da700953c67de112afa80c080411898f16be72152d8` and its 1,566,230-byte size. The public archive passed empty-cache installation, installed-CLI numeric/date-copy privacy and retained diagnostics, desktop/phone source inspection, comparison and offline export/re-export with zero page errors. Ordinary public Boolean configuration remained JSON-parseable. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43757012644)
+
 ## v0.3.39
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
