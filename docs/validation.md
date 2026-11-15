@@ -1,6 +1,6 @@
 # Release validation
 
-## v0.3.32 candidate
+## v0.3.32
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 
@@ -10,6 +10,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 * The installed package verifies saved Gemini trust through all three states, current user context, project custom context and the GEMINI.md fallback. HTML output conceals unrelated saved folder entries and private paths. The production archive excludes the development-only Gemini runtime.
 * Homepage checks cover sourced client icons, the WebGL opening, pause, visibility changes, context loss, reduced motion and JavaScript-disabled fallback. A phone screenshot exposed joined client-strip sentences, and a responsive wording regression now covers their spacing.
 * The initial Windows startup comparison exposed backslashes in generated context delimiters where the native manager uses forward slashes. Delimiters now use the native display form. Import-only comparisons also call the pinned upstream path formatter for their context labels. [Initial OS verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43690495388)
+
+* Windows, macOS and Linux verification passed for the released source. Anonymous download matched SHA-256 `dc556746015e836c2c78b4d6609e2499175a1f3ab89870653213a013854e9d07` and its 1,416,261-byte size. Fresh-cache public execution returned 0.3.32, and empty-cache offline installation of the exact archive produced the bundled three-client demo with sixteen rule IDs and its truncated Codex source. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43692236509)
 
 ## Homepage demo entry, 2026-11-15
 
