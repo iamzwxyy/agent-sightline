@@ -78,6 +78,7 @@ export interface Context {
   claudeProjectRoot?: string;
   geminiTrustRoot?: string;
   privateStatePaths?: Set<string>;
+  privateSourceValues?: Map<string, Set<string>>;
   codexSkillPaths?: Set<string>;
   codexSkillIncompleteRoots?: Set<string>;
   /** Source-aware instruction redaction applied after raw paragraph grouping. */

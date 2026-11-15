@@ -169,6 +169,83 @@ test('Gemini trust JSON comments and custom filenames retain native provenance a
   assert.ok(!JSON.stringify(portable(report)).includes(w.root));
 });
 
+for (const alias of ['gemini', 'claude']) for (const duplicate of [false, true]) test(`Gemini private trust state stays private through a ${alias} directory alias with duplicate keys ${duplicate}`, async t => {
+  const w = await workspace({ 'GEMINI.md': 'PROJECT' }, { '.gemini/GEMINI.md': 'GLOBAL' });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  const directory = path.join(w.repo, 'private-state');
+  await mkdir(directory);
+  const filename = path.join(directory, 'settings.local.json');
+  const unrelated = path.join(w.root, 'UNRELATED_GEMINI_ALIAS_PRIVATE_PROJECT');
+  await writeFile(filename, '{\n' + JSON.stringify(unrelated) + ': "DO_NOT_TRUST",\n'
+    + (duplicate ? JSON.stringify(unrelated) + ': "TRUST_FOLDER",\n' : '')
+    + JSON.stringify(w.repo) + ': "TRUST_FOLDER"\n}');
+  const link = path.join(w.repo, '.' + alias);
+  try { await symlink(directory, link, process.platform === 'win32' ? 'junction' : 'dir'); }
+  catch (error) {
+    if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') { t.skip('Directory aliases require Windows developer mode.'); return; }
+    throw error;
+  }
+  const env = { PATH: process.env.PATH, GEMINI_CLI_TRUSTED_FOLDERS_PATH: filename };
+  const native = nativeStartup(w.repo, w.home, env);
+  const report = await scan({ ...w, clients: ['claude', 'gemini'], env });
+  assert.equal(report.clients.find(client => client.client === 'gemini')?.instructions, native.instructions);
+  const aliasSource = report.sources.find(source => source.path === path.join(link, 'settings.local.json'));
+  assert.ok(aliasSource);
+  assert.equal(aliasSource.preview, undefined);
+  for (const output of [JSON.stringify(report), json(report), terminal(report, 'explain'), html(report)]) assert.ok(!output.includes('UNRELATED_GEMINI_ALIAS_PRIVATE_PROJECT'));
+  const exported = portable(report);
+  assert.deepEqual(portable(exported), exported);
+});
+
+for (const format of ['tree', 'flat']) test(`Gemini ${format} imports conceal private trust entries and escaped source spellings`, async t => {
+  const w = await workspace({
+    'GEMINI.md': 'PROJECT\n@./private-state.json',
+    '.gemini/settings.json': JSON.stringify({ context: { importFormat: format } }),
+  }, { '.gemini/GEMINI.md': 'GLOBAL' });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  const filename = path.join(w.repo, 'private-state.json');
+  const unrelated = 'UNRELATED_IMPORTED_GEMINI_PROJECT';
+  const encoded = unrelated.replaceAll('I', '\\u0049');
+  await writeFile(filename, '{\n"' + encoded + '": "DO_NOT_TRUST",\n' + JSON.stringify(w.repo) + ': "TRUST_FOLDER"\n}');
+  const env = { PATH: process.env.PATH, GEMINI_CLI_TRUSTED_FOLDERS_PATH: filename };
+  const native = nativeStartup(w.repo, w.home, env);
+  assert.ok(native.instructions.includes(encoded));
+  const report = await scan({ ...w, clients: ['gemini'], env });
+  assert.equal(report.clients[0].instructions, native.instructions.replaceAll(encoded, '[REDACTED]'));
+  assert.ok(report.clients[0].decisions.some(source => source.path === filename && source.content.includes('[REDACTED]')));
+  assert.ok(report.diff.some(block => block.content.includes('[REDACTED]')));
+  assert.ok(report.instructionDiff?.some(block => block.content.includes('[REDACTED]')));
+  for (const output of [JSON.stringify(report), json(report), terminal(report, 'explain'), html(report)]) {
+    assert.ok(!output.includes(unrelated));
+    assert.ok(!output.includes(encoded));
+  }
+  assert.deepEqual(portable(portable(report)), portable(report));
+});
+
+test('Gemini invalid private trust entries stay scoped to their source', async t => {
+  const instruction = 'Use model settings. Keep punctuation.';
+  const w = await workspace({
+    'CLAUDE.md': instruction,
+    '.claude/settings.json': '{"model":"fixture-model"}',
+    'GEMINI.md': 'PROJECT',
+    '.claude/settings.local.json': '{".": "INVALID_PRIVATE_LEVEL", "model": "DO_NOT_TRUST"}',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  const filename = path.join(w.repo, '.claude/settings.local.json');
+  const env = { PATH: process.env.PATH, GEMINI_CLI_TRUSTED_FOLDERS_PATH: filename };
+  assert.throws(() => nativeStartup(w.repo, w.home, env));
+  const report = await scan({ ...w, clients: ['claude', 'gemini'], env });
+  const claude = report.clients.find(client => client.client === 'claude')!;
+  assert.equal(claude.instructions, instruction);
+  assert.equal(claude.settings.find(setting => setting.location.path === path.join(w.repo, '.claude/settings.json') && setting.key === 'model')?.value, 'fixture-model');
+  assert.equal(report.repository, w.repo);
+  assert.ok(report.sources.some(source => source.path === filename));
+  assert.ok(report.findings.some(item => item.ruleId === 'gemini.trust-level'));
+  assert.ok(report.instructionDiff?.some(block => block.content === instruction));
+  assert.ok(!JSON.stringify(report).includes('INVALID_PRIVATE_LEVEL'));
+  assert.equal(report.clients.find(client => client.client === 'gemini')?.instructions, '');
+});
+
 test('Gemini comments load while trailing commas stop startup even before workspace approval', async t => {
   const w = await workspace({ 'GEMINI.md': 'PROJECT', '.gemini/settings.json': '// Project settings\n{"model":{"name":"fixture-model"}}' }, { '.gemini/GEMINI.md': 'GLOBAL' });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));

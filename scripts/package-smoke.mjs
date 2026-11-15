@@ -72,6 +72,19 @@ try {
     const exported = readFileSync(geminiFile, 'utf8');
     if (exported.includes(JSON.stringify(geminiHome).slice(1, -1)) || exported.includes(geminiHome.replaceAll('\\', '/'))) throw new Error('Installed Gemini relative home exposed its private path.');
   }
+  const aliasState = path.join(geminiRepo, 'private-state');
+  mkdirSync(aliasState);
+  const aliasTrust = path.join(aliasState, 'settings.local.json');
+  writeFileSync(aliasTrust, JSON.stringify({ 'installed-gemini-alias-private-project': 'DO_NOT_TRUST', [geminiRepo]: 'TRUST_FOLDER' }));
+  symlinkSync(aliasState, path.join(geminiRepo, '.claude'), process.platform === 'win32' ? 'junction' : 'dir');
+  const aliasEnvironment = { ...geminiEnvironment, GEMINI_CLI_TRUSTED_FOLDERS_PATH: aliasTrust };
+  const aliasArgs = ['explain', '.', '--repo', geminiRepo, '--home', geminiHome, '--clients', 'claude,gemini'];
+  const aliasReport = JSON.parse(execFileSync(process.execPath, [cli, ...aliasArgs, '--json'], { encoding: 'utf8', env: aliasEnvironment }));
+  const aliasSource = aliasReport.sources.find(source => source.path === path.join(geminiRepo, '.claude/settings.local.json'));
+  if (!aliasSource || aliasSource.preview !== undefined) throw new Error('Installed Gemini trust alias lost its source or exposed a raw preview.');
+  if (!aliasReport.clients.find(client => client.client === 'gemini').instructions.includes('GEMINI_FIRST')) throw new Error('Installed Gemini trust alias lost the selected workspace approval.');
+  execFileSync(process.execPath, [cli, ...aliasArgs, '--format', 'html', '--output', geminiFile], { env: aliasEnvironment });
+  if ([JSON.stringify(aliasReport), readFileSync(geminiFile, 'utf8')].some(output => output.includes('installed-gemini-alias-private-project'))) throw new Error('Installed Gemini trust alias exposed an unrelated project.');
   const claudeHookRepo = path.join(temp, 'claude-hook-repository');
   const claudeHookHome = path.join(temp, 'claude-hook-home');
   mkdirSync(path.join(claudeHookRepo, '.claude'), { recursive: true });

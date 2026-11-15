@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.34 — 2026-11-15
+
+* Withhold raw private-state previews through captured canonical directory aliases.
+* Conceal unrelated Gemini trust entries in alias settings, parser diagnostics, imported instructions and client comparisons, including escaped source spellings.
+* Scope private trust values to their source and captured aliases. Keep the selected workspace rule's provenance and unrelated client configuration readable.
+* Verify live source views, trust refresh, portable offline reports and installed CLI output through private-state aliases.
+* Rescan and re-export reports created with 0.3.32 or 0.3.33 when a saved Gemini trust file was also discovered through a configuration alias or imported as context. Previously exported files retain their captured content.
+
 ## 0.3.33 — 2026-11-15
 
 * Resolve relative GEMINI_CLI_HOME values from the modeled session's native working directory, including nested targets and configuration homes inside or outside the repository.

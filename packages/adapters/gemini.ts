@@ -51,6 +51,11 @@ async function workspaceTrust(e: Effective, ctx: Context, user: Source | null, p
   const source = await ctx.read(filename, 'gemini', 'settings', 'user', { format: 'json' });
   if (!source) return pending;
   (ctx.privateStatePaths ??= new Set()).add(source.path);
+  const privateValues = new Set(Object.keys(source.data));
+  for (const range of source.valueRanges ?? []) {
+    if (typeof range.value === 'string' && !['TRUST_FOLDER', 'TRUST_PARENT', 'DO_NOT_TRUST'].includes(range.value)) privateValues.add(range.value);
+  }
+  (ctx.privateSourceValues ??= new Map()).set(source.path, privateValues);
   for (const item of ctx.findings) if (item.location.path === source.path && item.ruleId === 'parse.duplicate-key') item.message = 'Duplicate key in saved Gemini folder trust.';
   if (source.invalid) {
     decision(e, source, 'invalid', 'Gemini cannot load an invalid saved folder-trust file.');
@@ -80,6 +85,7 @@ async function workspaceTrust(e: Effective, ctx: Context, user: Source | null, p
   }
   decision(e, source, 'active', selected ? 'Saved Gemini folder-trust entry selected for this workspace.' : 'No saved Gemini folder-trust entry matches this workspace.');
   if (!selected) return pending;
+  privateValues.delete(selected.key);
   ctx.geminiTrustRoot = selected.root;
   const location = locate(source, selected.key);
   const trusted = selected.level !== 'DO_NOT_TRUST';

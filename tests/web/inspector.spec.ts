@@ -65,6 +65,54 @@ test('relative Gemini homes follow the selected session through target changes, 
   } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true, maxRetries: 5 }); }
 });
 
+test('Gemini private trust aliases stay concealed in source views, refresh and offline reports', async ({ page }) => {
+  const w = await workspace({ 'GEMINI.md': 'PROJECT_INSTRUCTION', 'CLAUDE.md': 'CLAUDE_INSTRUCTION' });
+  const directory = path.join(w.repo, 'private-state');
+  await mkdir(directory);
+  await symlink(directory, path.join(w.repo, '.claude'), process.platform === 'win32' ? 'junction' : 'dir');
+  const filename = path.join(directory, 'settings.local.json');
+  const marker = 'UNRELATED_BROWSER_GEMINI_PROJECT';
+  const saveTrust = (level: string) => writeFile(filename, JSON.stringify({ [marker]: 'DO_NOT_TRUST', [w.repo]: level }));
+  await saveTrust('TRUST_FOLDER');
+  const server = await serve({ ...w, clients: ['claude', 'gemini'], env: { PATH: process.env.PATH, GEMINI_CLI_TRUSTED_FOLDERS_PATH: filename } });
+  const selection = '#view=effective&client=claude&source=.claude/settings.local.json';
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await saveTrust('TRUST_FOLDER');
+      await page.goto(server.url + selection);
+      await page.reload();
+      for (const level of ['TRUST_FOLDER', 'DO_NOT_TRUST']) {
+        await saveTrust(level);
+        const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === '/api/scan');
+        await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+        const { report } = await (await refreshed).json();
+        await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+        await expect(page.locator('#source-title')).toHaveText('.claude/settings.local.json');
+        expect(await page.locator('body').textContent()).not.toContain(marker);
+        expect(JSON.stringify(report)).not.toContain(marker);
+        expect(report.sources.find((source: any) => source.relativePath === '.claude/settings.local.json').preview).toBeUndefined();
+        expect(report.clients.find((client: any) => client.client === 'gemini').instructions.includes('PROJECT_INSTRUCTION')).toBe(level === 'TRUST_FOLDER');
+        const pending = page.waitForEvent('download');
+        await page.getByRole('button', { name: /Export report/ }).click();
+        const file = test.info().outputPath(`gemini-private-alias-${level}-${viewport.width}.html`);
+        await (await pending).saveAs(file);
+        const exported = await readFile(file, 'utf8');
+        expect(exported).not.toContain(marker);
+        expect(exported).not.toContain(JSON.stringify(w.root).slice(1, -1));
+        await page.context().setOffline(true);
+        await page.goto(pathToFileURL(file).href);
+        await expect(page.locator('#source-title')).toHaveText('.claude/settings.local.json');
+        expect(await page.locator('body').textContent()).not.toContain(marker);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({ path: test.info().outputPath(`gemini-private-alias-${level}-${viewport.width}.png`) });
+        await page.context().setOffline(false);
+        await page.goto(server.url + selection);
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true, maxRetries: 5 }); }
+});
+
 test('Gemini saved workspace trust refreshes custom context, clipboard and private portable reports', async ({ page }) => {
   const w = await workspace({
     'GEMINI.md': 'DEFAULT_PROJECT_INSTRUCTION',

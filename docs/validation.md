@@ -1,5 +1,13 @@
 # Release validation
 
+## v0.3.34
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
+
+* Four directory-alias cases reproduced unrelated Gemini trust entries in raw previews, Claude settings and duplicate-key diagnostics. All four pass with captured canonical identities and source-scoped private values. Two additional native comparisons cover escaped entries imported in tree/flat context. Invalid relative keys retain unrelated Claude instructions, settings and report paths.
+* The 569-case core suite completed with 567 passes and two platform-gated skips. All 76 Gemini startup/import cases passed. Lint, strict TypeScript, build and empty-cache offline installation passed. The installed CLI verifies alias discovery, selected trust, concealed previews and private JSON/HTML output. Production dependency audit reported zero vulnerabilities.
+* All 91 Chromium browser cases and five focused Gemini WebKit flows passed. Desktop and phone journeys inspect an aliased trust file, refresh approval/rejection, export the selected source and reopen its portable report offline. The phone source view received visual review.
+
 ## v0.3.33
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.

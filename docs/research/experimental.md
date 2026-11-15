@@ -18,6 +18,8 @@ Before approval, active context uses user settings and global memory. Conditiona
 
 Settings and trust files accept comments, reject trailing commas and retain the last duplicate key with a warning. Bare custom context filenames are trimmed and deduplicated, with GEMINI.md retained. Trust reports expose the selected rule's file and line. Raw state previews and unrelated folder entries are withheld, and portable exports replace the selected trust root.
 
+Directory-alias fixtures reproduce private trust state being independently discovered as Gemini or Claude settings. Captured canonical identities propagate preview withholding and source-scoped private values to those aliases. Duplicate-key diagnostics, escaped key spellings and tree/flat imports have regression coverage. Native startup comparisons retain the selected rule and effective context before report redaction. Short relative keys and invalid levels remain scoped to their own source, preserving unrelated client instructions, configuration and report paths.
+
 Configuration-home comparisons cover relative GEMINI_CLI_HOME values from project-root and nested sessions, with homes inside and outside the repository. Native Node working-directory semantics determine their base path. The comparisons include the normal CLI entry point. An empty environment value uses the OS home. Native fallback fixtures isolate os.homedir before importing the published modules. Explicit inspection homes select their own configuration. [Versioned path utilities](https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/core/src/utils/paths.ts)
 
 ## Gemini import evidence

@@ -56,14 +56,23 @@ export function redactSourcePreview(source: Source, scrub: ReturnType<typeof cre
 }
 
 /** Apply captured private values to scan payloads while retaining engine-generated report structure. */
-export function redactScanReport(report: Report, scrub: ReturnType<typeof createRedactor>, privateSettings: ReadonlySet<string>): Report {
+export function redactScanReport(report: Report, scrub: ReturnType<typeof createRedactor>, privateSettings: ReadonlySet<string>, privateSources: ReadonlyMap<string, ReturnType<typeof createRedactor>> = new Map()): Report {
+  const sourced = <T>(value: T, paths: string[]): T => {
+    let result = scrub(value);
+    const scrubbers = new Set(paths.map(path => privateSources.get(path)));
+    for (const sourceScrub of scrubbers) if (sourceScrub) result = sourceScrub(result);
+    return result;
+  };
   const location = (value: Location): Location => ({
-    ...value, path: scrub(value.path), ...(value.key === undefined ? {} : { key: scrub(value.key) }),
+    ...value, path: scrub(value.path), ...(value.key === undefined ? {} : { key: sourced(value.key, [value.path]) }),
   });
-  const finding = (value: Finding): Finding => ({
-    ...value, message: scrub(value.message), why: scrub(value.why), suggestion: scrub(value.suggestion),
-    location: location(value.location), related: value.related.map(location),
-  });
+  const finding = (value: Finding): Finding => {
+    const paths = [value.location, ...value.related].map(origin => origin.path);
+    return {
+      ...value, message: sourced(value.message, paths), why: sourced(value.why, paths), suggestion: sourced(value.suggestion, paths),
+      location: location(value.location), related: value.related.map(location),
+    };
+  };
   return {
     ...report,
     ...(report.inputs ? { inputs: { codexProfile: scrub(report.inputs.codexProfile) } } : {}),
@@ -72,34 +81,37 @@ export function redactScanReport(report: Report, scrub: ReturnType<typeof create
     assumptions: report.assumptions.map(scrub),
     sources: report.sources.map(source => ({
       ...source, path: scrub(source.path), relativePath: scrub(source.relativePath),
-      ...(source.preview === undefined ? {} : { preview: scrub(source.preview) }),
+      ...(source.preview === undefined ? {} : { preview: sourced(source.preview, [source.path]) }),
     })),
     clients: report.clients.map(client => ({
       ...client, metadata: structuredClone(client.metadata),
-      executable: scrub(client.executable), instructions: scrub(client.instructions), notes: client.notes.map(scrub),
+      executable: scrub(client.executable),
+      instructions: sourced(client.instructions, client.decisions.filter(decision => ['active', 'truncated'].includes(decision.status) && decision.content && ['instructions', 'rules'].includes(decision.kind)).map(decision => decision.path)),
+      notes: client.notes.map(scrub),
       decisions: client.decisions.map(decision => ({
-        ...decision, path: scrub(decision.path), reason: scrub(decision.reason), content: scrub(decision.content),
+        ...decision, path: scrub(decision.path), reason: sourced(decision.reason, [decision.path]), content: sourced(decision.content, [decision.path]),
         ...(decision.importedFrom ? { importedFrom: location(decision.importedFrom) } : {}),
       })),
       settings: client.settings.map(setting => ({
-        ...setting, key: scrub(setting.key), value: privateSettings.has(setting.location.path + '\0' + (setting.location.key ?? setting.key)) ? '[REDACTED]' : scrub(setting.value), reason: scrub(setting.reason),
+        ...setting, key: sourced(setting.key, [setting.location.path]), value: privateSettings.has(setting.location.path + '\0' + (setting.location.key ?? setting.key)) ? '[REDACTED]' : sourced(setting.value, [setting.location.path]), reason: sourced(setting.reason, [setting.location.path]),
         location: location(setting.location), overrides: setting.overrides.map(location),
       })),
       extensions: client.extensions.map(extension => {
-        const config = scrub(extension.config);
+        const paths = [extension.location, ...extension.origins?.map(origin => origin.location) ?? []].map(origin => origin.path);
+        const config = sourced(extension.config, paths);
         // Permission actions are generated enums, like client IDs and statuses.
         if (extension.kind === 'permission' && ['allow', 'ask', 'deny'].includes(extension.config.action)) config.action = extension.config.action;
         return {
-          ...extension, name: scrub(extension.name), config, reason: scrub(extension.reason), location: location(extension.location),
-          ...(extension.origins ? { origins: extension.origins.map(origin => ({ key: scrub(origin.key), location: location(origin.location) })) } : {}),
+          ...extension, name: sourced(extension.name, paths), config, reason: sourced(extension.reason, paths), location: location(extension.location),
+          ...(extension.origins ? { origins: extension.origins.map(origin => ({ key: sourced(origin.key, [origin.location.path]), location: location(origin.location) })) } : {}),
         };
       }),
       findings: client.findings.map(finding),
     })),
     findings: report.findings.map(finding),
-    diff: report.diff.map(entry => ({ ...entry, content: scrub(entry.content), sources: entry.sources.map(location) })),
+    diff: report.diff.map(entry => ({ ...entry, content: sourced(entry.content, entry.sources.map(origin => origin.path)), sources: entry.sources.map(location) })),
     ...(report.instructionDiff ? { instructionDiff: report.instructionDiff.map(block => ({
-      ...block, content: scrub(block.content),
+      ...block, content: sourced(block.content, block.origins.map(origin => origin.location.path)),
       origins: block.origins.map(origin => ({ ...origin, location: location(origin.location) })),
     })) } : {}),
   };

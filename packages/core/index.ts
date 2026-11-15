@@ -9,9 +9,20 @@ import { collectPathMappings } from './paths.js';
 import { compareInstructions } from './comparison.js';
 import { cmp } from './utils.js';
 import { VERSION } from './version.js';
-import type { Context, Effective, Report, ScanOptions } from './types.js';
+import type { Context, Effective, Report, ScanOptions, Source } from './types.js';
 export type * from './types.js';
 export { adapters } from '../adapters/index.js';
+
+function encodedPrivateValues(sources: Source[], values: ReadonlySet<string>): string[] {
+  const retained = new Set(values);
+  for (const source of sources) for (const range of source.valueRanges ?? []) {
+    if (typeof range.value !== 'string' || !values.has(range.value)) continue;
+    let literal = source.text.slice(range.offset, range.offset + range.length);
+    if ((literal.startsWith('"') || literal.startsWith("'")) && literal.endsWith(literal[0])) literal = literal.slice(1, -1);
+    if (literal && !literal.includes(range.value)) retained.add(literal);
+  }
+  return [...retained];
+}
 
 function privateData(ctx: Context): { values: string[]; settings: Set<string> } {
   const values = new Set<string>(ctx.privateInstructionValues);
@@ -34,14 +45,7 @@ function privateData(ctx: Context): { values: string[]; settings: Set<string> } 
     for (const range of source.valueRanges ?? []) walk(range.value, range.private === true);
   }
   const retained = new Set([...values].filter(value => value && !/^\$\{(?:env:)?[A-Za-z_][\w]*\}$/.test(value)));
-  const decoded = new Set(retained);
-  for (const source of ctx.sources) for (const range of source.valueRanges ?? []) {
-    if (typeof range.value !== 'string' || !decoded.has(range.value)) continue;
-    let literal = source.text.slice(range.offset, range.offset + range.length);
-    if ((literal.startsWith('"') || literal.startsWith("'")) && literal.endsWith(literal[0])) literal = literal.slice(1, -1);
-    if (literal && !literal.includes(range.value)) retained.add(literal);
-  }
-  return { values: [...retained], settings };
+  return { values: encodedPrivateValues(ctx.sources, retained), settings };
 }
 export async function scan(options: ScanOptions & { probe?: boolean } = {}): Promise<Report> {
   options.signal?.throwIfAborted();
@@ -79,6 +83,14 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
   }
   const privateValues = privateData(ctx);
   const scrub = createRedactor(privateValues.values);
+  const privateSourceScrubbers = new Map<string, ReturnType<typeof createRedactor>>();
+  for (const [filename, values] of ctx.privateSourceValues ?? []) {
+    const state = ctx.sources.find(source => source.path === filename)!;
+    const stateScrub = createRedactor(encodedPrivateValues([state], values));
+    for (const source of ctx.sources) {
+      if (source.path === filename || state.canonicalPath && source.canonicalPath === state.canonicalPath) privateSourceScrubbers.set(source.path, stateScrub);
+    }
+  }
   const instructionDiff = compareInstructions(clients, ctx.sources, scrub);
   for (const client of clients) for (const contribution of client.decisions) {
     const redacted = ctx.redactedInstructionContent?.get(contribution);
@@ -86,10 +98,11 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
   }
   const copilotState = join(ctx.copilotHome, 'config.json');
   const privateStatePaths = new Set([copilotState, ...ctx.privateStatePaths ?? []]);
+  for (const source of ctx.sources) if (basename(source.path) === '.claude.json') privateStatePaths.add(source.path);
+  const canonicalStates = new Set(ctx.sources.filter(source => privateStatePaths.has(source.path)).map(source => source.canonicalPath));
   const canonicalState = await realpath(copilotState).catch(() => undefined);
-  if (canonicalState) await Promise.all(ctx.sources.filter(source => basename(source.path) === 'config.json').map(async source => {
-    if (await realpath(source.path).catch(() => undefined) === canonicalState) privateStatePaths.add(source.path);
-  }));
+  if (canonicalState) canonicalStates.add(canonicalState);
+  for (const source of ctx.sources) if (source.canonicalPath && canonicalStates.has(source.canonicalPath)) privateStatePaths.add(source.path);
   const report: Report = {
     schemaVersion: '1.0', tool: { name: 'Agent Sightline', version: VERSION }, repository: ctx.repo, target: ctx.target, sessionDirectory: ctx.directory,
     ...(options.codexProfile ? { inputs: { codexProfile: options.codexProfile } } : {}),
@@ -99,12 +112,12 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
       const { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid } = source;
       // Syntax errors can discard private values during parsing, including overwritten duplicate keys.
       // Account/session state files only expose the parsed fields used by adapters.
-      const privateState = /[/\\]\.claude\.json$/.test(path) || privateStatePaths.has(path);
+      const privateState = privateStatePaths.has(path);
       return { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid, ...(privateState || invalid ? {} : { preview: redactSourcePreview(source, scrub) }) };
     }),
     clients, findings: unique, diff: [...diff.values()], instructionDiff,
   };
-  const result = redactScanReport(report, scrub, privateValues.settings);
+  const result = redactScanReport(report, scrub, privateValues.settings, privateSourceScrubbers);
   const configuration = [result.clients, result.findings];
   result.pathMappings = (await collectPathMappings(ctx, configuration)).map(mapping => ({
     path: scrub(mapping.path), replacement: scrub(mapping.replacement),
