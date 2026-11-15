@@ -10,6 +10,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 * All 99 Chromium browser cases and six focused WebKit flows passed. Desktop/phone and live/offline checks cover structured instruction roles, private imported values, grouped contributions, source lines, keyboard focus and complete extension definitions. Legacy reports without instructionDiff and empty configuration retain their comparison behavior. Automated WCAG AA checks reported zero violations.
 * Phone visual review reproduced a clipped long path in the new contribution dialog. The dialog now uses the existing wrapping path presentation. Comparison source columns also wrap long paths, and actions for individual contributions have a 44 px minimum height.
 
+* Linux, macOS and Windows verification passed for the released source. Anonymous download matched SHA-256 `14f7688e449e45e18900142953637d561665ba043392a2b8f2906d267926b2b8` and its 1,425,307-byte size. The exact public archive passed empty-cache installation and desktop/phone offline structured-import, repeated-contribution, permission-name and conditional-extension comparisons with zero page errors. Fresh-cache public execution returned 0.3.36. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43722428252)
+
 ## v0.3.35
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
