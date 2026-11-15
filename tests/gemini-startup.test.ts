@@ -295,5 +295,5 @@ test('Gemini duplicate JSON settings retain the native last value and a diagnost
   const report = await scan({ ...w, clients: ['gemini'] });
   assert.equal(report.clients[0].instructions, native.instructions);
   assert.ok(report.findings.some(item => item.ruleId === 'parse.duplicate-key' && item.severity === 'warn'));
-  assert.equal(report.sources.find(source => source.path.endsWith('.gemini/settings.json'))?.invalid, false);
+  assert.equal(report.sources.find(source => source.path === path.join(w.home, '.gemini/settings.json'))?.invalid, false);
 });
