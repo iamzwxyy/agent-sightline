@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.40
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
+
+* A normal scan reproduced a numeric environment value in copied Claude instruction text. The new scalar-copy regression failed before the correction. Captured numeric and TOML date/time values now conceal their text copies and source spellings across project, sibling and user scopes.
+* Fixtures cover JSON scientific notation, YAML hexadecimal values, TOML tables, inline tables, incomplete arrays, digit separators, signed/scientific/non-decimal numbers, date/time literals, Infinity/NaN and LF/CRLF. Zero and an escaped single digit require a complete placeholder for their encoded spelling. The parser/privacy/Gemini-memory checks passed all 82 cases.
+* Flattened sensitive setting paths mask typed passwords, Boolean credentials and null values. Boolean/null handling uses parsed privacy context, preserving ordinary typed configuration. Matching scalar placeholders retain quotes in source previews. An existing browser fixture reuses private value 42 as a malformed hook cwd. The source now shows its quoted mask at the original line 9, with the type diagnostic and valid sibling server retained.
+* The 579-case core suite completed with 577 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The installed CLI checks numeric/date copies from malformed sibling TOML, typed sensitive settings and retained field diagnostics. Production dependency audit reported zero vulnerabilities.
+* All 107 Chromium browser cases and three focused WebKit flows passed. Desktop and phone journeys cover live refresh, source inspection, effective text, comparison, standalone export and offline re-export. Automated WCAG AA checks passed.
+
 ## v0.3.39
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

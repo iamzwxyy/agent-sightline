@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.40 — 2026-11-16
+
+* Conceal private numeric and TOML date/time values when copied into instructions, comparisons and report text.
+* Capture bare TOML scalar spellings, including numeric separators, scientific notation, non-decimal numbers and recoverable malformed assignments. Conceal complete escaped spellings even when they contain the decoded value.
+* Mask typed values in flattened sensitive settings, including numeric passwords and Boolean credentials.
+* Quote matching scalar redaction placeholders in source previews and retain original source lines.
+* Rescan and replace reports exported with 0.3.39 or earlier when private scalar values were copied into instructions or sensitive fields contained typed values. Previously exported JSON and HTML retain their captured content.
+
 ## 0.3.39 — 2026-11-16
 
 * Conceal environment and header values under capitalization variants of `env`, `headers` and `http_headers`, including misspelled fields such as `Env`.

@@ -9,6 +9,56 @@ import { adapters } from '../packages/adapters/index.js';
 import { VERSION } from '../packages/core/version.js';
 import { createRedactor, redactScanReport } from '../packages/core/redact.js';
 
+test('private scalar values and their source spellings stay hidden when copied into instructions', async t => {
+  const cases = [
+    { file: '.claude/settings.json', text: '{"env":{"PIN":987654321,"FLAG":false,"EMPTY":null}}', copies: ['987654321'] },
+    { file: '.claude/settings.json', text: '{"Env":{"PIN":9.87654321e8,"FLAG":true}}', copies: ['987654321', '9.87654321e8'] },
+    { file: '.claude/settings.json', text: '{"env":{"PIN":0e0,"DIGIT":"\\u0031"}}', copies: ['0', '0e0', '1', '\\u0031'] },
+    { file: '.claude/settings.json', text: '{"password":123456789,"credential":true,"private_key":null}', copies: ['123456789'] },
+    { file: '.claude/skills/check/SKILL.md', text: '---\nname: check\ndescription: Safe skill.\nHEADERS:\n  Pin: 0x3ade68b1\n  Flag: FALSE\n  Empty: ~\n---\nSafe skill body.', copies: ['987654321', '0x3ade68b1'] },
+    { file: '.codex/config.toml', text: '[mcp_servers.fixture.env]\nPIN=987_654_321 # Keep comment.\nFLAG=false\nDATE=2031-04-05\nTIME=12:34:56.789\n', copies: ['987654321', '987_654_321', '2031-04-05', '12:34:56.789'] },
+    { file: '.codex/config.toml', text: '[mcp_servers.fixture]\nenv={PIN=0x3ade68b1, FLAG=true, DATE=2031-04-05 12:34:56+05:30}\n', copies: ['987654321', '0x3ade68b1', '2031-04-05 12:34:56+05:30'] },
+    { file: '.codex/config.toml', text: '[mcp_servers.fixture.Env]\nPIN=[987_654_321, false, 2031-04-05,\n', copies: ['987654321', '987_654_321', '2031-04-05'] },
+    { file: '.codex/config.toml', text: '[mcp_servers.fixture.env]\nZERO=0x0\nNEGATIVE=-4.2e1\nOCTAL=0o52\nINFINITE=+inf\nNOT_A_NUMBER=nan\n', copies: ['0', '0x0', '-42', '-4.2e1', '42', '0o52', 'Infinity', '+inf', 'NaN', 'nan'] },
+  ];
+  for (const fixture of cases) for (const scope of ['project', 'sibling', 'user']) for (const newline of ['\n', '\r\n']) {
+    const file = scope === 'sibling' ? 'sibling/' + fixture.file : fixture.file;
+    const text = fixture.text.replaceAll('\n', newline);
+    const instructions = 'Safe introduction.\n\n' + fixture.copies.map(copy => 'Copied value ' + copy).join('\n') + '\n\nSafe ending.';
+    const w = await workspace({ 'AGENTS.md': instructions, 'CLAUDE.md': instructions, ...(scope === 'user' ? {} : { [file]: text }) }, scope === 'user' ? { [file]: text } : {});
+    t.after(() => rm(w.root, { recursive: true, force: true }));
+    const report = await scan({ ...w, clients: ['codex', 'claude'], trust: 'trusted' });
+    const expected = 'Safe introduction.\n\n' + fixture.copies.map(() => 'Copied value [REDACTED]').join('\n') + '\n\nSafe ending.';
+    for (const client of report.clients) {
+      assert.equal(client.instructions, expected, fixture.file + ' ' + scope + ' ' + client.client);
+      assert.equal(typeof client.instructionBytes, 'number');
+      assert.equal(typeof client.detected, 'boolean');
+      assert.ok(client.decisions.some(decision => decision.status === 'active' && decision.kind === 'instructions'));
+      for (const setting of client.settings.filter(setting => /^(?:password|credential|private_key)$/.test(setting.key))) assert.equal(setting.value, '[REDACTED]');
+    }
+    assert.equal(report.schemaVersion, '1.0');
+    assert.equal(report.tool.version, VERSION);
+    assert.equal(report.discovery?.complete, true);
+    for (const output of [JSON.stringify(report), json(report), terminal(report, 'explain'), terminal(report, 'diff'), html(report), JSON.stringify(portable(report))]) {
+      for (const copy of fixture.copies) assert.ok(!output.includes('Copied value ' + copy), fixture.file + ' ' + scope + ' ' + copy);
+      for (const copy of fixture.copies.filter(copy => /^\d{6,}$/.test(copy))) assert.ok(!output.includes(copy), fixture.file + ' ' + scope + ' ' + copy);
+      assert.ok(output.includes('Safe introduction.'));
+      assert.ok(output.includes('Safe ending.'));
+    }
+  }
+});
+
+test('source previews keep matching scalar redactions JSON-parseable and preserve other typed values', async t => {
+  const publicValues = { ordinaryCount: 987654321, ordinaryFlag: true, ordinaryNull: null };
+  for (const fixture of [{ value: 987654321, key: 'ordinaryCount' }, { value: 'true', key: 'ordinaryFlag' }, { value: 'null', key: 'ordinaryNull' }]) {
+    const w = await workspace({ '.claude/settings.json': JSON.stringify({ env: { VALUE: fixture.value }, ...publicValues }, null, 2) });
+    t.after(() => rm(w.root, { recursive: true, force: true }));
+    const report = await scan({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+    const preview = report.sources.find(source => source.relativePath === '.claude/settings.json')!.preview!;
+    assert.deepEqual(JSON.parse(preview), { env: { VALUE: '[REDACTED]' }, ...publicValues, [fixture.key]: '[REDACTED]' });
+  }
+});
+
 test('case-variant environment and header mappings stay private across previews and copied instructions', async t => {
   const cases = [
     { file: '.claude/settings.json', text: String.raw`{

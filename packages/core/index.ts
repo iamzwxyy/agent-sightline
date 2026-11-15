@@ -4,7 +4,7 @@ import { adapters } from '../adapters/index.js';
 import { finish, sourceInScope } from '../adapters/common.js';
 import { discoverRepository, makeContext, selectedClients } from './discovery.js';
 import { diagnose } from './diagnostics.js';
-import { createRedactor, isSensitiveKey, isPrivateMapping, redactScanReport, redactSourcePreview } from './redact.js';
+import { createRedactor, isSensitiveKey, isPrivateMapping, redactScanReport, redactSourcePreview, scalarText } from './redact.js';
 import { collectPathMappings } from './paths.js';
 import { compareInstructions } from './comparison.js';
 import { cmp } from './utils.js';
@@ -13,13 +13,20 @@ import type { Context, Effective, Report, ScanOptions, Source } from './types.js
 export type * from './types.js';
 export { adapters } from '../adapters/index.js';
 
+// Boolean/null masking uses parsed ranges and private setting paths.
+function copiedValueText(value: unknown): string | undefined {
+  if (typeof value === 'boolean' || value === null) return undefined;
+  return scalarText(value);
+}
+
 function encodedPrivateValues(sources: Source[], values: ReadonlySet<string>): string[] {
   const retained = new Set(values);
   for (const source of sources) for (const range of source.valueRanges ?? []) {
-    if (typeof range.value !== 'string' || !values.has(range.value)) continue;
+    const value = copiedValueText(range.value);
+    if (value === undefined || !values.has(value)) continue;
     let literal = source.text.slice(range.offset, range.offset + range.length);
     if ((literal.startsWith('"') || literal.startsWith("'")) && literal.endsWith(literal[0])) literal = literal.slice(1, -1);
-    if (literal && !literal.includes(range.value)) retained.add(literal);
+    if (literal && literal !== value) retained.add(literal);
   }
   return [...retained];
 }
@@ -29,8 +36,9 @@ function privateData(ctx: Context): { values: string[]; settings: Set<string> } 
   const settings = new Set<string>();
   for (const source of ctx.sources) {
     const walk = (value: unknown, sensitive = false, mapping = false, keys?: string[], stack = new Set<object>()): void => {
-      if (mapping && keys) settings.add(source.path + '\0' + keys.join('.'));
-      if (typeof value === 'string') { if (sensitive) values.add(value); return; }
+      if (sensitive && keys) settings.add(source.path + '\0' + keys.join('.'));
+      const scalar = copiedValueText(value);
+      if (scalar !== undefined) { if (sensitive) values.add(scalar); return; }
       if (!value || typeof value !== 'object') return;
       if (stack.has(value)) return;
       stack.add(value);

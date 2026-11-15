@@ -44,7 +44,7 @@ function jsonValues(node: Node, source: Source, privacy: PrivacyMode = 'public')
     }
   } else if (node.type === 'array') {
     for (const value of node.children ?? []) jsonValues(value, source);
-  } else if (node.type === 'string') source.valueRanges!.push({ offset: node.offset, length: node.length, value: node.value });
+  } else if (['string', 'number', 'boolean', 'null'].includes(node.type)) source.valueRanges!.push({ offset: node.offset, length: node.length, value: getNodeValue(node) });
 }
 
 function yamlValues(node: unknown, source: Source, offset = 0, privacy: PrivacyMode = 'public'): void {
@@ -60,7 +60,7 @@ function yamlValues(node: unknown, source: Source, offset = 0, privacy: PrivacyM
     }
   } else if (isSeq(node)) {
     for (const value of node.items) yamlValues(value, source, offset);
-  } else if (isScalar(node) && typeof node.value === 'string') source.valueRanges!.push({ ...range, value: node.value });
+  } else if (isScalar(node)) source.valueRanges!.push({ ...range, value: node.value });
 }
 
 function tomlKeyParts(text: string): string[] {
@@ -110,6 +110,14 @@ function* tomlStatements(text: string, values: NonNullable<Source['valueRanges']
       literalStart = index;
       quote = text.startsWith(char.repeat(3), index) ? char.repeat(3) : char;
       index += quote.length - 1;
+    } else if (!/[\w.+-]/.test(text[index - 1] ?? '') && /^(?:[+-]?(?:\d|inf\b|nan\b)|true\b|false\b)/.test(text.slice(index))) {
+      // Keep bare scalar spellings, including TOML numeric separators and date/time literals.
+      const literal = text.slice(index).match(/^(?:\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})?|[^\s,[\]{}#="']+)/)?.[0];
+      if (literal) {
+        try { values.push({ offset: index, length: literal.length, value: toml('value = ' + literal).value }); }
+        catch { /* Malformed bare values retain the complete parser's syntax finding. */ }
+        index += literal.length - 1;
+      }
     } else if (char === '[' || char === '{') depth++;
     else if (char === ']' || char === '}') depth--;
   }

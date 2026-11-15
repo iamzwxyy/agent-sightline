@@ -5,6 +5,12 @@ const privateMappings: ReadonlySet<string> = new Set(['env', 'headers', 'http_he
 // Field-name typos can still contain private values.
 export const isPrivateMapping = (key: string): boolean => privateMappings.has(key.toLowerCase());
 export const isSensitiveKey = (key: string): boolean => key !== 'estimatedTokens' && sensitiveKey.test(key);
+export function scalarText(value: unknown): string | undefined {
+  if (value === null) return 'null';
+  if (value instanceof Date) return value.toJSON() ?? undefined;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return undefined;
+}
 const lineBreaks = (text: string): string => text.match(/\r\n|\r|\n/g)?.join('') ?? '';
 const mask = (text: string, label = '[REDACTED]'): string => label + lineBreaks(text);
 
@@ -47,7 +53,9 @@ export function redactSourcePreview(source: Source, scrub: ReturnType<typeof cre
   const ranges = [...source.valueRanges ?? []].sort((a, b) => a.offset - b.offset || b.length - a.length || Number(!!b.private) - Number(!!a.private));
   for (const range of ranges) {
     if (range.offset < cursor) continue;
-    const value = range.private ? '[REDACTED]' : typeof range.value === 'string' ? scrub(range.value) : range.value;
+    const text = scalarText(range.value);
+    const redacted = text === undefined ? undefined : scrub(text);
+    const value = range.private ? '[REDACTED]' : redacted !== text ? redacted : range.value;
     if (!range.private && value === range.value) continue;
     const original = source.text.slice(range.offset, range.offset + range.length);
     parts.push(source.text.slice(cursor, range.offset), JSON.stringify(value) + lineBreaks(original));

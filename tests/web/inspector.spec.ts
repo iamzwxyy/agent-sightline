@@ -2100,12 +2100,14 @@ test('overlapping personal configuration keeps state private and user inclusion 
 });
 
 test('case-variant private mappings stay concealed through refresh and offline re-export', async ({ page }) => {
-  const secrets = ['browser-case-env-private-value', 'browser-case-header-private-value'];
+  const secrets = ['browser-case-env-private-value', 'browser-case-header-private-value', '987654321', '0x3ade68b1', '2031-04-05'];
+  const instructions = 'Safe introduction.\n\n' + secrets.join('\n') + '\n\nSafe ending.';
   const w = await workspace({
-    'AGENTS.md': 'Safe introduction.\n\n' + secrets.join('\n') + '\n\nSafe ending.',
-    'CLAUDE.md': 'Safe introduction.\n\n' + secrets.join('\n') + '\n\nSafe ending.',
-    '.claude/settings.json': JSON.stringify({ Env: { NORMAL: secrets[0] }, model: 'public-model-label' }, null, 2),
+    'AGENTS.md': instructions,
+    'CLAUDE.md': instructions,
+    '.claude/settings.json': JSON.stringify({ Env: { NORMAL: secrets[0], PIN: 987654321, FLAG: false, EMPTY: null }, model: 'public-model-label' }, null, 2),
     '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', Headers: { Custom: secrets[1] } } } }),
+    'sibling/.codex/config.toml': '[mcp_servers.fixture.env]\nPIN=0x3ade68b1\nDATE=2031-04-05\nBROKEN=[\n',
   });
   const server = await serve({ ...w, user: false, trust: 'trusted', clients: ['codex', 'claude'] });
   const selection = '#view=effective&client=claude&source=.claude/settings.json';
@@ -3200,7 +3202,8 @@ test('malformed extensions stay inspectable with exact source lines and portable
     await page.locator('#findings-list .finding').filter({ hasText: 'Hook working directory must be a string.' }).click();
     await page.getByRole('button', { name: /Inspect source/ }).click();
     await expect(page.locator('#source-title')).toContainText('.github/hooks/test.json');
-    await expect(page.locator('.code-line.highlight')).toContainText('"cwd": 42');
+    await expect(page.locator('.code-line.highlight')).toContainText('"cwd": "[REDACTED]"');
+    await expect(page.locator('.code-line.highlight .line-number')).toHaveText('9');
     const pending = page.waitForEvent('download');
     await page.getByRole('button', { name: /Export report/ }).click();
     const filename = test.info().outputPath('malformed-extensions.html');

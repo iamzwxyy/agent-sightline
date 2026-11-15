@@ -131,8 +131,8 @@ try {
   mkdirSync(path.join(repo, 'sibling/.claude'), { recursive: true });
   writeFileSync(path.join(repo, 'sibling/index.ts'), '');
   const malformedTomlPrivate = 'installed-malformed-toml-private-value';
-  writeFileSync(path.join(repo, 'AGENTS.md'), 'Installed package works.\n\n' + malformedTomlPrivate);
-  writeFileSync(path.join(repo, 'sibling/.codex/config.toml'), '[mcp_servers.fixture.Env]\nNORMAL="' + malformedTomlPrivate + '"\nBROKEN=[\n');
+  writeFileSync(path.join(repo, 'AGENTS.md'), 'Installed package works.\n\n' + malformedTomlPrivate + '\nCopied scalar 987654321\nCopied scalar 0x3ade68b1\nCopied scalar 2031-04-05');
+  writeFileSync(path.join(repo, 'sibling/.codex/config.toml'), '[mcp_servers.fixture.Env]\nNORMAL="' + malformedTomlPrivate + '"\nPIN=0x3ade68b1\nDATE=2031-04-05\nBROKEN=[\n');
   writeFileSync(path.join(repo, 'sibling/.claude/settings.local.json'), '{ broken JSON');
   const scopedRoot = JSON.parse(execFileSync(process.execPath, [cli, 'ci', '--repo', repo, '--no-user', '--clients', 'codex,claude,copilot', '--trust', 'trusted'], { encoding: 'utf8' }));
   if (scopedRoot.findings.some(finding => finding.ruleId.startsWith('parse.')) || !scopedRoot.sources.some(source => source.relativePath === 'sibling/.codex/config.toml' && source.invalid)) throw new Error('Installed target-scoped discovery failed.');
@@ -143,6 +143,7 @@ try {
   execFileSync(process.execPath, [cli, 'report', ...malformedArgs, '--format', 'html', '--output', malformedHtmlFile]);
   for (const text of [JSON.stringify(scopedRoot), JSON.stringify(scopedSibling), execFileSync(process.execPath, [cli, ...malformedArgs], { encoding: 'utf8' }), readFileSync(malformedHtmlFile, 'utf8')]) {
     if (text.includes(malformedTomlPrivate)) throw new Error('Installed malformed TOML exposed a copied private value.');
+    if (['987654321', '0x3ade68b1', '2031-04-05'].some(value => text.includes(value))) throw new Error('Installed malformed TOML exposed a private scalar or its source spelling.');
   }
   if (!scopedRoot.clients.find(client => client.client === 'codex').instructions.includes('[REDACTED]')) throw new Error('Installed malformed TOML lost its copied-value mask.');
   writeFileSync(path.join(repo, 'AGENTS.md'), 'Installed package works.');
@@ -180,14 +181,15 @@ try {
     Headers: { Custom: 'installed-case-header-private-value' }, HTTP_HEADERS: { Custom: 'installed-case-http-private-value' },
   } } }));
   mkdirSync(path.join(previewRepo, '.claude'));
-  writeFileSync(path.join(previewRepo, '.claude/settings.json'), '{"Env":{"NORMAL":"installed-case-env-private-\\u0076alue"}}');
-  writeFileSync(path.join(previewRepo, 'CLAUDE.md'), 'Safe instructions.\ninstalled-case-env-private-value\ninstalled-case-header-private-value\ninstalled-case-http-private-value');
+  writeFileSync(path.join(previewRepo, '.claude/settings.json'), '{"Env":{"NORMAL":"installed-case-env-private-\\u0076alue","PIN":987654321,"FLAG":false,"EMPTY":null},"password":123456789}');
+  writeFileSync(path.join(previewRepo, 'CLAUDE.md'), 'Safe instructions.\ninstalled-case-env-private-value\ninstalled-case-header-private-value\ninstalled-case-http-private-value\nCopied scalar 987654321');
   const previewOutput = execFileSync(process.execPath, [cli, '--repo', previewRepo, '--no-user', '--trust', 'trusted', '--clients', 'codex,claude', '--json'], { encoding: 'utf8' });
   const previewReport = JSON.parse(previewOutput);
   const tomlPreview = previewReport.sources.find(source => source.relativePath === '.codex/config.toml').preview;
   const previewFinding = previewReport.findings.find(finding => finding.ruleId === 'hook.command-missing');
   if (previewOutput.includes('installed-multiline-confidential-') || previewOutput.includes('installed-escaped-confidential-') || previewOutput.includes('valueRanges')) throw new Error('Installed encoded-source privacy failed.');
   if (previewOutput.includes('installed-case-') || !previewReport.findings.some(finding => finding.ruleId === 'config.field-case')) throw new Error('Installed case-variant privacy or field diagnostics failed.');
+  if (['987654321', '123456789'].some(value => previewOutput.includes(value))) throw new Error('Installed scalar privacy failed.');
   if (previewFinding?.location.line !== 10 || tomlPreview.split('\n').length !== previewToml.split('\n').length || !tomlPreview.split('\n')[9].includes('missing-preview-hook-fixture')) throw new Error('Installed preview source lines changed during redaction.');
   const alias = path.join(temp, 'repository-alias');
   symlinkSync(repo, alias, process.platform === 'win32' ? 'junction' : 'dir');
