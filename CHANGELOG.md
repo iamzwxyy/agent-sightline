@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.31 — 2026-11-15
+
+* Resolve Gemini context imports with its published 0.68.0 tree and flat processing rules, including nested and repeated references, cycles, code spans, path validation and native context delimiters.
+* Apply native memory boundary markers when selecting project context and resolving imports. Retain the five-level tree boundary and longer flat chains.
+* Keep literal source segments in their loading order with original line and column positions. Preserve imported configuration files as context text and apply their structural diagnostics to their configuration consumers.
+* Redact private fields in imported JSON, TOML, YAML and Markdown frontmatter, including scalar values, escaped strings and aliases. Retain raw paragraph membership before redacting source segments and effective text.
+* Mark imports outside the inspection boundary or source-reading budget as incomplete, with a diagnostic at the declaring reference.
+* Verify source inspection, effective-text copying, refresh, desktop/phone views, portable exports and installed CLI behavior for both Gemini formats.
+* Preserve the selected client and source when opening the website demo, retain keyboard focus and tab navigation, and provide manual command copying when clipboard access fails.
+
 ## 0.3.30 — 2026-11-15
 
 * Discover Claude local MCP servers using the native saved project identity, including logical/canonical paths, nested and non-Git sessions, wider scan boundaries and linked worktrees.

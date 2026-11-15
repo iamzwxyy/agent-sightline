@@ -33,13 +33,20 @@ export function compareInstructions(clients: Effective[], sources: Source[], scr
     for (const decision of client.decisions) {
       if (!['active', 'truncated'].includes(decision.status) || !['instructions', 'rules'].includes(decision.kind)) continue;
       const source = sourceById.get(decision.sourceId);
-      const prefix = source?.text.slice(0, source.text.length - source.body.length).replace(/[^\r\n]/g, '\0') ?? '';
-      const body = source?.body ?? '';
+      const literal = source && source.kind !== decision.kind;
+      const prefix = literal ? '' : source?.text.slice(0, source.text.length - source.body.length).replace(/[^\r\n]/g, '\0') ?? '';
+      const body = literal ? source.text : source?.body ?? '';
       const sourceText = (prefix + (client.client === 'claude' ? stripComments(body, true) : body)).replace(/\r\n/g, '\n');
       const contentLines = scrub(decision.content.replace(/\r\n/g, '\n')).split('\n');
       let cursor = 0;
-      let sourceLine = 1;
-      let sourceColumn = 1;
+      for (let line = 1; line < decision.line; line++) {
+        const newline = sourceText.indexOf('\n', cursor);
+        if (newline < 0) { cursor = sourceText.length; break; }
+        cursor = newline + 1;
+      }
+      cursor = Math.min(sourceText.length, cursor + (decision.column ?? 1) - 1);
+      let sourceLine = decision.line;
+      let sourceColumn = decision.column ?? 1;
       let canLocate = true;
       for (const paragraph of paragraphs(decision.content)) {
         const content = paragraph.content;
@@ -52,6 +59,7 @@ export function compareInstructions(clients: Effective[], sources: Source[], scr
           client: client.client, location: { path: decision.path, line: decision.line, column: 1 }, order: ++order,
         };
         const offset = canLocate ? sourceText.indexOf(content, cursor) : -1;
+        if (source?.valueRanges?.some(range => range.private && (offset < 0 || range.offset < offset + content.length && range.offset + range.length > offset))) block.content = '[REDACTED]';
         if (offset >= 0) {
           const before = sourceText.slice(cursor, offset);
           sourceLine += before.match(/\n/g)?.length ?? 0;

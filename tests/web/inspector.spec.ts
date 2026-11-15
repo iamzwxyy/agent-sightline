@@ -15,6 +15,60 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+for (const format of ['tree', 'flat']) test(`Gemini ${format} imports retain source inspection, effective text and portable export`, async ({ page }) => {
+  const shared = (body: string) => '---\nenv:\n  NORMAL: browser-gemini-import-private\n  FLAG: true\n---\n' + body + '\n';
+  const w = await workspace({
+    'GEMINI.md': 'FIRST_INSTRUCTION\n\nBefore @./shared.md After\n\nLAST_INSTRUCTION',
+    'shared.md': shared('IMPORTED_INSTRUCTION'),
+    '.gemini/settings.json': JSON.stringify({ context: { importFormat: format } }),
+  });
+  const server = await serve({ ...w, user: false, clients: ['gemini'] });
+  try {
+    await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: {
+      writeText: async (text: string) => { (window as any).copiedInstructions = text; },
+    }, configurable: true }));
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await writeFile(path.join(w.repo, 'shared.md'), shared('IMPORTED_INSTRUCTION'));
+      await page.goto(server.url + '#view=effective&client=gemini&source=shared.md');
+      await expect(page.locator('#source-title')).toHaveText('shared.md');
+      await expect(page.locator('#source-status')).toHaveText('Loaded');
+      await expect(page.locator('#why')).toContainText('Imported from GEMINI.md:3');
+      await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+      const text = await page.locator('#effective-document .effective-text').textContent();
+      expect(text).not.toContain('browser-gemini-import-private');
+      expect(text).not.toContain('FLAG: true');
+      expect(text?.match(/[A-Z_]+_INSTRUCTION/g)).toEqual(format === 'tree'
+        ? ['FIRST_INSTRUCTION', 'IMPORTED_INSTRUCTION', 'LAST_INSTRUCTION']
+        : ['FIRST_INSTRUCTION', 'LAST_INSTRUCTION', 'IMPORTED_INSTRUCTION']);
+      await page.getByRole('button', { name: 'Copy effective text', exact: true }).click();
+      expect(await page.evaluate(() => (window as any).copiedInstructions)).toBe(text);
+      const pending = page.waitForEvent('download');
+      await page.getByRole('button', { name: /Export report/ }).click();
+      const file = test.info().outputPath(`gemini-${format}-${viewport.width}.html`);
+      await (await pending).saveAs(file);
+      const exported = await readFile(file, 'utf8');
+      expect(exported).not.toContain('browser-gemini-import-private');
+      expect(exported).not.toContain(JSON.stringify(w.root).slice(1, -1));
+      await page.context().setOffline(true);
+      await page.goto(pathToFileURL(file).href);
+      await expect(page.locator('#effective-document .effective-text')).toContainText('IMPORTED_INSTRUCTION');
+      await page.getByRole('button', { name: 'Trace sources', exact: true }).click();
+      await expect(page.locator('#source-title')).toHaveText('shared.md');
+      await page.getByRole('button', { name: 'Imported from GEMINI.md:3', exact: true }).click();
+      await expect(page.locator('.code-line.highlight')).toContainText('Before @./shared.md After');
+      await page.context().setOffline(false);
+      await page.goto(server.url + '#view=effective&client=gemini&text=effective');
+      await writeFile(path.join(w.repo, 'shared.md'), shared('REFRESHED_INSTRUCTION'));
+      await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+      await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+      await expect(page.locator('#effective-document .effective-text')).toContainText('REFRESHED_INSTRUCTION');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: test.info().outputPath(`gemini-${format}-${viewport.width}.png`) });
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true, maxRetries: 5 }); }
+});
+
 test('Codex Unicode instruction selection survives copying, refresh and portable export', async ({ page }) => {
   const w = await workspace({ 'AGENTS.md': '\uFEFF', 'src/AGENTS.md': 'UNLOADED_NESTED', 'src/a.ts': '' }, {
     '.codex/config.toml': 'project_doc_max_bytes=3\n',

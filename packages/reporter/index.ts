@@ -43,7 +43,7 @@ export function terminal(report: Report, mode = 'scan'): string {
   if (mode === 'explain') for (const e of report.clients) {
     lines.push(`${e.metadata.name} · ${e.metadata.maturity} rules ${e.metadata.ruleVersion}`, '');
     for (const d of e.decisions.sort((a, b) => (a.order ?? 999999) - (b.order ?? 999999))) {
-      lines.push(`  ${d.order ?? '–'}  ${d.status.toUpperCase().padEnd(11)} ${d.path}:${d.line}`, `     ${d.reason}`, `     ${d.loadedBytes}/${d.bytes} bytes · ~${d.estimatedTokens} tokens · ${d.scope}`);
+      lines.push(`  ${d.order ?? '–'}  ${d.status.toUpperCase().padEnd(11)} ${d.path}:${d.line}${d.column === undefined ? '' : ':' + d.column}`, `     ${d.reason}`, `     ${d.loadedBytes}/${d.bytes} bytes · ~${d.estimatedTokens} tokens · ${d.scope}`);
     }
     lines.push('', `Effective instructions · ${e.instructionBytes} bytes · ~${e.estimatedTokens} tokens`, e.instructions || '(no proven active instructions)', '', 'Effective settings');
     for (const s of e.settings.filter(s => s.status !== 'shadowed')) lines.push(`  [${s.status}] ${s.key} = ${JSON.stringify(s.value)}  ← ${s.location.path}:${s.location.line}`);

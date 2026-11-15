@@ -2,10 +2,11 @@ import path from 'node:path';
 import type { AdapterMetadata, ClientId, Context, Source } from '../core/types.js';
 import { readUserTree } from '../core/discovery.js';
 import { cmp, finding, locate, matches, slash, within } from '../core/utils.js';
-import { adapter, addInstruction, base, decision, effectiveValue, finish, mcp, pathPatterns, rootOf, settings } from './common.js';
+import { adapter, addInstruction, base, decision, finish, mcp, pathPatterns, rootOf, settings } from './common.js';
+import { resolveGeminiMemory } from './gemini-memory.js';
 
 const metadata = (id: ClientId, name: string, evidence: string[], limitations: string[]): AdapterMetadata => ({ id, name, maturity: 'experimental', ruleVersion: 'official documentation snapshot 2026-11-12', verifiedOn: '2026-11-12', evidence, limitations });
-export const geminiMetadata = metadata('gemini', 'Gemini CLI', ['https://geminicli.com/docs/reference/configuration/', 'https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/gemini-md.md'], ['Default user/project settings and ancestor/JIT instruction files only.', 'Imports, extension contexts, policy engine, .env loading and workspace trust are not fully resolved.']);
+export const geminiMetadata: AdapterMetadata = { ...metadata('gemini', 'Gemini CLI', ['https://geminicli.com/docs/reference/configuration/', 'https://geminicli.com/docs/reference/memport/', 'https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/core/src/utils/memoryImportProcessor.ts'], ['Default user/project settings, bare context filenames and in-boundary context imports.', 'The published 0.68.0 import processor has direct executable comparisons. Extension contexts, policy engine, .env loading, user-project memory, additional workspaces and workspace trust remain partial.']), ruleVersion: '0.68.0 import processor + official docs', verifiedOn: '2026-11-15' };
 export const cursorMetadata = metadata('cursor', 'Cursor', ['https://cursor.com/docs/rules', 'https://cursor.com/docs/mcp'], ['Local project rules and AGENTS.md only; editor user/team state and installed plugins are not inspected.', 'Intelligent/manual rules remain conditional; @references are not inlined.']);
 export const opencodeMetadata = metadata('opencode', 'OpenCode V2', ['https://opencode.ai/docs/instructions/', 'https://opencode.ai/docs/config/'], ['V2 configuration and AGENTS.md; V1 CLAUDE.md fallback is not asserted.', 'Only in-boundary local files; remote/configured glob instructions, plugins and policy evaluation are not resolved.']);
 async function discover(ctx: Context, id: ClientId): Promise<Source[]> {
@@ -25,13 +26,7 @@ export const gemini = adapter(geminiMetadata, ctx => discover(ctx, 'gemini'), as
   for (const file of [...(ctx.options.user !== false ? [path.join(ctx.home, '.gemini/settings.json')] : []), path.join(ctx.directory, '.gemini/settings.json')]) {
     const s = ctx.sources.find(s => s.path === file); if (s) { settings(e, s, 'active'); mcp(e, s, s.data.mcpServers, 'mcpServers', 'active'); }
   }
-  const filenames = effectiveValue(e, 'context.fileName', 'GEMINI.md');
-  const names = Array.isArray(filenames) ? filenames : [filenames];
-  for (const dir of [...(ctx.options.user !== false ? [path.join(ctx.home, '.gemini')] : []), ...ctx.dirs]) for (const n of names) {
-    if (typeof n !== 'string' || n.includes('/') || n.includes('\\')) continue;
-    const s = await ctx.read(path.join(dir, n), 'gemini', 'instructions', within(ctx.repo, dir) ? undefined : 'user');
-    if (s) { addInstruction(e, s, 'Global, ancestor or target JIT context file.'); if (/@\S+/.test(s.body)) e.findings.push(finding('experimental.imports', 'info', locate(s), 'Gemini imports require deeper resolution.', 'This experimental adapter displays the literal context; imports are not expanded.', 'Verify the loaded context with Gemini /memory show.', 'gemini')); }
-  }
+  await resolveGeminiMemory(e, ctx);
   e.notes.push(...geminiMetadata.limitations); return finish(e, ctx);
 });
 export const cursor = adapter(cursorMetadata, ctx => discover(ctx, 'cursor'), async ctx => {

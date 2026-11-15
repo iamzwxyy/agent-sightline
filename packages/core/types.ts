@@ -21,6 +21,7 @@ export interface Source {
 }
 export interface Decision {
   sourceId: string; path: string; line: number; kind: Kind; scope: Source['scope'];
+  column?: number;
   status: Status; reason: string; order: number | null; bytes: number; loadedBytes: number;
   estimatedTokens: number; content: string; importedFrom?: Location;
 }
@@ -77,6 +78,9 @@ export interface Context {
   claudeProjectRoot?: string;
   codexSkillPaths?: Set<string>;
   codexSkillIncompleteRoots?: Set<string>;
+  /** Source-aware instruction redaction applied after raw paragraph grouping. */
+  redactedInstructionContent?: WeakMap<Decision, string>;
+  privateInstructionValues?: Set<string>;
   findings: Finding[]; options: ScanOptions; env: NodeJS.ProcessEnv;
   discovery?: Discovery;
   read: (path: string, owner: ClientId, kind: Kind, scope?: Source['scope'], options?: { allowExternal?: boolean }) => Promise<Source | null>;

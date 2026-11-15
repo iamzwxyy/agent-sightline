@@ -14,23 +14,34 @@ export type * from './types.js';
 export { adapters } from '../adapters/index.js';
 
 function privateData(ctx: Context): { values: string[]; settings: Set<string> } {
-  const values = new Set<string>();
+  const values = new Set<string>(ctx.privateInstructionValues);
   const settings = new Set<string>();
   for (const source of ctx.sources) {
-    const walk = (value: unknown, sensitive = false, mapping = false, keys?: string[]): void => {
+    const walk = (value: unknown, sensitive = false, mapping = false, keys?: string[], stack = new Set<object>()): void => {
       if (mapping && keys) settings.add(source.path + '\0' + keys.join('.'));
       if (typeof value === 'string') { if (sensitive) values.add(value); return; }
       if (!value || typeof value !== 'object') return;
+      if (stack.has(value)) return;
+      stack.add(value);
       for (const [key, child] of Object.entries(value)) {
         const privateMapping = mapping || privateMappings.has(key);
-        walk(child, sensitive || privateMapping || isSensitiveKey(key), privateMapping, keys ? [...keys, key] : undefined);
+        walk(child, sensitive || privateMapping || isSensitiveKey(key), privateMapping, keys ? [...keys, key] : undefined, stack);
       }
+      stack.delete(value);
     };
     walk(source.data, false, false, []);
     // Recovered statement trees retain private keys after whole-file parse failure.
     for (const range of source.valueRanges ?? []) walk(range.value, range.private === true);
   }
-  return { values: [...values].filter(value => value && !/^\$\{(?:env:)?[A-Za-z_][\w]*\}$/.test(value)), settings };
+  const retained = new Set([...values].filter(value => value && !/^\$\{(?:env:)?[A-Za-z_][\w]*\}$/.test(value)));
+  const decoded = new Set(retained);
+  for (const source of ctx.sources) for (const range of source.valueRanges ?? []) {
+    if (typeof range.value !== 'string' || !decoded.has(range.value)) continue;
+    let literal = source.text.slice(range.offset, range.offset + range.length);
+    if ((literal.startsWith('"') || literal.startsWith("'")) && literal.endsWith(literal[0])) literal = literal.slice(1, -1);
+    if (literal && !literal.includes(range.value)) retained.add(literal);
+  }
+  return { values: [...retained], settings };
 }
 export async function scan(options: ScanOptions & { probe?: boolean } = {}): Promise<Report> {
   options.signal?.throwIfAborted();
@@ -60,12 +71,19 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
   const diff = new Map<string, Report['diff'][number]>();
   for (const e of clients) for (const d of e.decisions) if (['active', 'truncated'].includes(d.status) && d.content.trim()) {
     const key = d.content.trim(); const entry = diff.get(key) ?? { content: key, clients: [], sources: [] };
+    const redactedContent = ctx.redactedInstructionContent?.get(d);
+    if (redactedContent !== undefined && redactedContent.trim() !== key) entry.content = '[REDACTED]';
     if (!entry.clients.includes(e.client)) entry.clients.push(e.client);
-    if (!entry.sources.some(x => x.path === d.path && x.line === d.line)) entry.sources.push({ path: d.path, line: d.line, column: 1 });
+    if (!entry.sources.some(x => x.path === d.path && x.line === d.line && x.column === (d.column ?? 1))) entry.sources.push({ path: d.path, line: d.line, column: d.column ?? 1 });
     diff.set(key, entry);
   }
   const privateValues = privateData(ctx);
   const scrub = createRedactor(privateValues.values);
+  const instructionDiff = compareInstructions(clients, ctx.sources, scrub);
+  for (const client of clients) for (const contribution of client.decisions) {
+    const redacted = ctx.redactedInstructionContent?.get(contribution);
+    if (redacted !== undefined) contribution.content = redacted;
+  }
   const copilotState = join(ctx.copilotHome, 'config.json');
   const privateStatePaths = new Set([copilotState]);
   const canonicalState = await realpath(copilotState).catch(() => undefined);
@@ -84,7 +102,7 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
       const privateState = /[/\\]\.claude\.json$/.test(path) || privateStatePaths.has(path);
       return { id, path, relativePath, owners, kind, scope, bytes, bodyLine, invalid, ...(privateState || invalid ? {} : { preview: redactSourcePreview(source, scrub) }) };
     }),
-    clients, findings: unique, diff: [...diff.values()], instructionDiff: compareInstructions(clients, ctx.sources, scrub),
+    clients, findings: unique, diff: [...diff.values()], instructionDiff,
   };
   const result = redactScanReport(report, scrub, privateValues.settings);
   const configuration = [result.clients, result.findings];

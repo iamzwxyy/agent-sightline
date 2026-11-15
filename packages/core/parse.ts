@@ -238,7 +238,9 @@ export function parseSource(s: Source): Finding[] {
       const lc = new LineCounter(); const doc = parseDocument(s.text, { uniqueKeys: true, lineCounter: lc });
       for (const e of doc.errors) issue(e.code === 'DUPLICATE_KEY' ? 'parse.duplicate-key' : 'parse.yaml', e.code, e.linePos?.[0].line ?? 1);
       yamlValues(doc.contents, s);
-      const v = doc.toJS(); if (!plainObject(v)) issue('parse.structure', 'Expected a YAML mapping.'); else s.data = v;
+      const v = doc.toJS();
+      s.valueRanges.push({ offset: 0, length: s.text.length, value: v });
+      if (!plainObject(v)) issue('parse.structure', 'Expected a YAML mapping.'); else s.data = v;
     } else {
       if (s.kind !== 'rules' && s.kind !== 'skill') return findings;
       const fm = s.text.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
@@ -246,7 +248,9 @@ export function parseSource(s: Source): Finding[] {
         const doc = parseDocument(fm[1], { uniqueKeys: true });
         for (const e of doc.errors) issue(e.code === 'DUPLICATE_KEY' ? 'parse.duplicate-key' : 'parse.frontmatter', e.code, (e.linePos?.[0].line ?? 1) + 1);
         yamlValues(doc.contents, s, fm[0].indexOf('\n') + 1);
-        const v = doc.toJS(); if (v != null && !plainObject(v)) issue('parse.frontmatter', 'Frontmatter must be a mapping.', 2); else s.data = v ?? {};
+        const v = doc.toJS();
+        s.valueRanges.push({ offset: fm[0].indexOf('\n') + 1, length: fm[1].length, value: v });
+        if (v != null && !plainObject(v)) issue('parse.frontmatter', 'Frontmatter must be a mapping.', 2); else s.data = v ?? {};
         s.body = s.text.slice(fm[0].length); s.bodyLine = lineAt(s.text, fm[0].length);
         fm[1].split('\n').forEach((l, i) => { const m = l.match(/^([\w-]+):/); if (m) s.lines[m[1]] = i + 2; });
       } else if (/^---\r?\n/.test(s.text)) issue('parse.frontmatter', 'Unclosed Markdown frontmatter.');

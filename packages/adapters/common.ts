@@ -8,7 +8,7 @@ import { hookCommandField, validateExtensions, validateMcpConfiguration, probeMc
 export const outsideScopeReason = 'Outside the client’s documented discovery scope for this target.';
 
 export function sourceInScope(effective: Effective, source: Source): boolean {
-  return source.owners.includes(effective.client) && effective.decisions.some(decision => decision.sourceId === source.id && decision.reason !== outsideScopeReason);
+  return source.owners.includes(effective.client) && effective.decisions.some(decision => decision.sourceId === source.id && decision.kind === source.kind && decision.reason !== outsideScopeReason);
 }
 
 export async function base(metadata: AdapterMetadata, ctx: Context): Promise<Effective> {

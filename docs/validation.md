@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.31
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
+
+* Forty-three Gemini import cases include thirty-one isolated executions of the published 0.68.0 processor. Comparisons cover tree and flat order, repeated references, cycles, backtick regions, native path validation, memory boundaries, aliases, separate global/ancestor state and a forty-file flat chain.
+* Import segments retain source lines and columns. Literal structured imports retain instruction semantics while their configuration consumers receive structural diagnostics. JSON, JSONC, TOML, YAML, Markdown frontmatter, scalar values, escaped strings, aliases and cyclic aliases have privacy regressions. Private tree expansions also conceal earlier and nested contributions.
+* The 536-case core suite completed with 534 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. All 86 Chromium browser cases and both focused Gemini WebKit cases passed. Production dependency audit reported zero vulnerabilities.
+* Desktop and phone journeys inspect imported source lines, copy effective text, refresh changed imports and reopen portable reports while offline. Tree/flat screenshots received visual review. Installed CLI smoke checks verify both native formats, import provenance and portable HTML.
+* A Windows-style checkout reproduced byte changes in all four pristine upstream fixture files under automatic CRLF conversion. A scoped Git attribute now retains their original bytes. The same checkout comparison then passed for all four files.
+* A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,396 ms. Fixture creation warmed the filesystem cache.
+
 ## Website interaction update, 2026-11-15
 
 * The homepage example now carries its selected client, source path and source line into the complete inspector. Checks cover all three preview clients, including sources the selected client ignores.

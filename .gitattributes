@@ -1,0 +1,2 @@
+# Preserve the published processor bytes used by the native comparison tests.
+fixtures/upstream/gemini-0.68.0/* -text

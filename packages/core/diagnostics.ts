@@ -48,7 +48,7 @@ export function diagnose(ctx: Context, clients: Effective[]): Finding[] {
     if (s.data.mcpServers) out.push(finding('config.unsupported-capability', 'warn', locate(s, 'mcpServers'), 'Claude settings.json does not configure MCP servers.', 'Claude MCP servers belong in .mcp.json or ~/.claude.json.', 'Move the server definition to the appropriate MCP configuration.', 'claude'));
   }
   for (const s of ctx.sources.filter(s => s.kind === 'mcp' && !s.invalid)) {
-    const applicable = clients.some(client => client.decisions.some(decision => decision.sourceId === s.id && decision.status !== 'ignored'));
+    const applicable = clients.some(client => client.decisions.some(decision => decision.sourceId === s.id && decision.kind === 'mcp' && decision.status !== 'ignored'));
     if (applicable && path.basename(s.path) !== '.claude.json' && s.data.mcpServers === undefined && s.owners.some(owner => selected.has(owner) && ['claude', 'copilot', 'cursor'].includes(owner))) out.push(finding('mcp.root-key', 'error', locate(s), 'MCP configuration has no mcpServers object.', 'The client does not read this top-level shape (for example, VS Code uses a different servers key).', 'Use the client’s mcpServers schema.'));
   }
   return out;
