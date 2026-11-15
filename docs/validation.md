@@ -1,5 +1,14 @@
 # Release validation
 
+## Website interaction update, 2026-11-15
+
+* The homepage example now carries its selected client, source path and source line into the complete inspector. Checks cover all three preview clients, including sources the selected client ignores.
+* Source selection retains keyboard focus after rendering. Client and workflow tabs use one tab stop, support arrow/Home/End navigation and name their associated panel.
+* Homepage and guide commands open a selected, read-only command field when clipboard access fails. Desktop, phone and short landscape checks verify the close control and focus return. The guide uses the site's sourced Solar copy icon.
+* All 84 Chromium browser cases and all eleven website WebKit cases passed. Existing automated WCAG AA route checks and an additional open-copy-dialog audit reported zero violations. Lint and strict TypeScript checks passed.
+* The ordinary npm preview command served both root and GitHub Pages builds with their correct asset prefixes. Browser journeys at 1440×1000, 390×844 and 667×320 passed source links, manual copying, guide navigation and overflow checks for both builds.
+* Both local builds served the published v0.3.30 archive with SHA-256 `54151f5458580656e54184239b3e1e584590d0ea2af16135a90d9a9372cd6a48` and a 1,401,708-byte size.
+
 ## v0.3.30
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.

@@ -38,6 +38,95 @@ test('homepage and guide copy the published one-command repository inspection', 
   } finally { await server.close(); }
 });
 
+test('homepage preserves keyboard selection and opens the selected source in the inspector', async ({ page }) => {
+  const server = await serveStatic('website/dist');
+  try {
+    await page.goto(server.url);
+    await expect(page.locator('#demo-sources button').first()).toBeVisible();
+    const tabs = page.getByRole('tablist', { name: 'Example client' });
+    const codex = tabs.getByRole('tab', { name: 'Codex', exact: true });
+    await codex.focus();
+    await page.keyboard.press('End');
+    const copilot = tabs.getByRole('tab', { name: 'Copilot', exact: true });
+    await expect(copilot).toBeFocused();
+    await expect(copilot).toHaveAttribute('tabindex', '0');
+    await expect(codex).toHaveAttribute('tabindex', '-1');
+    await expect(page.getByRole('tabpanel', { name: 'Copilot', exact: true })).toBeVisible();
+
+    const source = page.locator('#demo-sources button').nth(1);
+    const filename = await source.locator('.source-label').textContent();
+    await source.focus();
+    await page.keyboard.press('Enter');
+    await expect(source).toBeFocused();
+    await expect(source).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#demo-file')).toHaveText(filename!);
+    const inspect = page.getByRole('link', { name: 'Open full inspector', exact: true });
+    const destination = new URL((await inspect.getAttribute('href'))!, server.url);
+    const selection = new URLSearchParams(destination.hash.slice(1));
+    expect(selection.get('view')).toBe('effective');
+    expect(selection.get('client')).toBe('copilot');
+    expect(selection.get('source')).toBeTruthy();
+    await expect(page.getByRole('link', { name: 'Open the full interactive demo', exact: true })).toHaveAttribute('href', destination.pathname + destination.hash);
+    await inspect.click();
+    await expect(page.locator('#effective')).toBeVisible();
+    await expect(page.locator('#source-title')).toHaveText(selection.get('source')!);
+    await expect(page.locator('#clients .selected')).toContainText('GitHub Copilot');
+    for (const name of ['Codex', 'Claude Code']) {
+      await page.goto(server.url);
+      await page.getByRole('tab', { name, exact: true }).click();
+      const ignored = page.locator('#demo-sources button').last();
+      await ignored.click();
+      await expect(ignored).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('#demo-status')).toHaveText('Not loaded');
+      const inspect = page.getByRole('link', { name: 'Open full inspector', exact: true });
+      const selection = new URLSearchParams(new URL((await inspect.getAttribute('href'))!, server.url).hash.slice(1));
+      await inspect.click();
+      await expect(page.locator('#source-title')).toHaveText(selection.get('source')!);
+      await expect(page.locator('#source-status')).toHaveText('Not loaded');
+    }
+
+    await page.goto(server.url);
+    const workflows = page.getByRole('tablist', { name: 'Explore the workflow' });
+    await workflows.getByRole('tab').first().focus();
+    await page.keyboard.press('End');
+    const comparison = workflows.getByRole('tab').last();
+    await expect(comparison).toBeFocused();
+    await expect(comparison).toHaveAttribute('tabindex', '0');
+    await expect(workflows.getByRole('tab').first()).toHaveAttribute('tabindex', '-1');
+    await expect(page.getByRole('tabpanel', { name: /Compare perspectives/ })).toBeVisible();
+  } finally { await server.close(); }
+});
+
+test('homepage and guide provide selected command text when clipboard access fails', async ({ page }) => {
+  const server = await serveStatic('website/dist');
+  try {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', { value: {
+        writeText: async () => { throw new Error('Clipboard permission denied'); },
+      } });
+    });
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      for (const route of ['/#download', '/guide.html#install']) {
+        await page.goto(server.url + route);
+        const trigger = page.getByRole('button', { name: 'Copy one-command inspection', exact: true });
+        await trigger.click();
+        const dialog = page.getByRole('dialog', { name: 'Copy this command', exact: true });
+        await expect(dialog).toBeVisible();
+        const command = dialog.getByRole('textbox', { name: 'Command to copy', exact: true });
+        await expect(command).toBeFocused();
+        await expect(command).toHaveValue((await trigger.getAttribute('data-copy'))!);
+        expect(await command.evaluate((field: HTMLTextAreaElement) => field.selectionStart === 0 && field.selectionEnd === field.value.length)).toBe(true);
+        expect(await dialog.evaluate(element => { const bounds = element.getBoundingClientRect(); return bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight; })).toBe(true);
+        if (viewport.width === 390) await dialog.getByRole('button', { name: 'Close copy command', exact: true }).click();
+        else await page.keyboard.press('Escape');
+        await expect(dialog).toBeHidden();
+        await expect(trigger).toBeFocused();
+      }
+    }
+  } finally { await server.close(); }
+});
+
 test('opening motion follows client selection and supports pause and reduced motion', async ({ page }) => {
   const server = await serveStatic('website/dist');
   try {

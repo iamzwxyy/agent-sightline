@@ -5,6 +5,7 @@
   let clientId = 'codex';
   let selectedPath;
   let toastTimer;
+  let copyTrigger;
   const basename = value => value.replace(/\\/g, '/').split('/').pop();
   const statusNames = { active: 'Loaded', conditional: 'Conditional', shadowed: 'Shadowed', ignored: 'Not loaded', truncated: 'Truncated', invalid: 'Invalid' };
   const node = (tag, text, className) => {
@@ -20,17 +21,33 @@
     const selected = sources.find(source => source.path === selectedPath) ?? sources.find(source => source.status === 'truncated') ?? sources.find(source => source.status === 'active') ?? sources[0];
     if (!selected) return;
     selectedPath = selected.path;
-    document.querySelectorAll('[data-demo-client]').forEach(button => button.setAttribute('aria-selected', String(button.dataset.demoClient === clientId)));
+    document.querySelectorAll('[data-demo-client]').forEach(button => {
+      const selected = button.dataset.demoClient === clientId;
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
+    $('demo-panel').setAttribute('aria-labelledby', `demo-tab-${clientId}`);
     document.querySelectorAll('[data-hero-client]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.heroClient === clientId)));
     const hero = document.querySelector('.hero');
     if (hero) hero.dataset.client = clientId;
-    $('demo-sources').replaceChildren(...sources.map(source => {
+    const focusedSource = document.activeElement?.dataset.demoSource;
+    const sourceButtons = sources.map(source => {
       const button = node('button', undefined, `demo-source${source.path === selected.path ? ' selected' : ''}`);
+      button.type = 'button';
+      button.dataset.demoSource = source.path;
+      button.setAttribute('aria-pressed', String(source.path === selected.path));
       button.title = source.path + ' — ' + source.reason;
       button.append(node('span', source.order === null ? '—' : String(source.order).padStart(2, '0'), 'source-number'), node('span', basename(source.path), 'source-label'), node('span', undefined, `source-state-dot ${source.status}`));
       button.onclick = () => { selectedPath = source.path; renderDemo(); };
       return button;
-    }));
+    });
+    $('demo-sources').replaceChildren(...sourceButtons);
+    sourceButtons.find(button => button.dataset.demoSource === focusedSource)?.focus({ preventScroll: true });
+    const repositoryPrefix = report.repository.replace(/\\/g, '/') + '/';
+    const normalizedPath = selected.path.replace(/\\/g, '/');
+    const sourcePath = normalizedPath.startsWith(repositoryPrefix) ? normalizedPath.slice(repositoryPrefix.length) : normalizedPath;
+    const selection = new URLSearchParams({ view: 'effective', client: clientId, source: sourcePath, line: String(selected.line) });
+    document.querySelectorAll('[data-inspector-link]').forEach(link => { link.href = basePath + 'demo/#' + selection; });
     $('demo-file').textContent = basename(selected.path);
     $('demo-status').textContent = statusNames[selected.status];
     $('demo-status').className = `demo-status${['truncated', 'conditional'].includes(selected.status) ? ' warn' : ''}`;
@@ -68,7 +85,11 @@
   document.querySelectorAll('[data-workflow]').forEach(button => {
     button.onclick = () => {
       const selected = workflows[button.dataset.workflow];
-      document.querySelectorAll('[data-workflow]').forEach(item => item.setAttribute('aria-selected', String(item === button)));
+      document.querySelectorAll('[data-workflow]').forEach(item => {
+        item.setAttribute('aria-selected', String(item === button));
+        item.tabIndex = item === button ? 0 : -1;
+      });
+      $('workflow-panel').setAttribute('aria-labelledby', button.id);
       $('workflow-image').src = selected.image;
       $('workflow-image').alt = selected.alt;
       $('workflow-caption').textContent = selected.caption;
@@ -82,11 +103,16 @@
         $('site-toast').textContent = 'Copied to clipboard'; $('site-toast').hidden = false;
         clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('site-toast').hidden = true; }, 2000);
       } catch {
-        const text = button.previousElementSibling;
-        if (text) { const range = document.createRange(); range.selectNodeContents(text); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range); }
+        copyTrigger = button;
+        $('copy-command-text').value = button.dataset.copy;
+        $('copy-command-dialog').showModal();
+        $('copy-command-text').focus();
+        $('copy-command-text').select();
       }
     };
   });
+  $('close-copy-command').onclick = () => $('copy-command-dialog').close();
+  $('copy-command-dialog').addEventListener('close', () => copyTrigger?.focus({ preventScroll: true }));
   document.querySelectorAll('[role="tablist"]').forEach(list => {
     list.addEventListener('keydown', event => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
