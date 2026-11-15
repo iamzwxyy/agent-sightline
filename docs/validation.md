@@ -9,6 +9,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 * All 94 Chromium browser cases and three focused WebKit flows passed. Desktop and phone checks verify a first-viewport conditional-loading action, keyboard focus, source selection, trust refresh and offline report navigation. Repeated Gemini source occurrences and distinct source IDs with redacted paths retain their counts and selected decisions. Automated WCAG AA checks reported zero violations, and the phone overview received visual review.
 * README terminal and inspector screenshots and the example HTML report were regenerated through the repository's capture script and reviewed.
 
+* Linux, macOS and Windows verification passed for the released source. Anonymous download matched SHA-256 `8205ca573ad75b0d830f2c02890fd73b951910aa297ed430c54dc4cfcb74468c` and its 1,421,922-byte size. The exact public archive passed empty-cache offline installation, the normal first entry, conditional/trusted/untrusted summaries and read-only configuration checks. Its standalone report passed desktop/phone offline source navigation. Fresh-cache public execution returned 0.3.35. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43712341993)
+
 ## v0.3.34
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
