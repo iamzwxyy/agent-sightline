@@ -10,6 +10,7 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 * Desktop and phone journeys inspect imported source lines, copy effective text, refresh changed imports and reopen portable reports while offline. Tree/flat screenshots received visual review. Installed CLI smoke checks verify both native formats, import provenance and portable HTML.
 * A Windows-style checkout reproduced byte changes in all four pristine upstream fixture files under automatic CRLF conversion. A scoped Git attribute now retains their original bytes. The same checkout comparison then passed for all four files.
 * A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,396 ms. Fixture creation warmed the filesystem cache.
+* Initial Windows verification exposed a broken-link `stat` error where the published processor reaches `open`. Import preflight now inspects the link entry before reproducing native reads. Portable-path assertions also accept Windows separators. [Initial verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43678857496)
 
 ## Website interaction update, 2026-11-15
 

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { access, lstat, readFile, readlink, realpath, stat } from 'node:fs/promises';
+import { access, lstat, readFile, readlink, realpath } from 'node:fs/promises';
 import type { Context, Effective, Location, Source } from '../core/types.js';
 import { bytes, cmp, finding, within } from '../core/utils.js';
 import { decision, effectiveValue } from './common.js';
@@ -153,7 +153,7 @@ export async function resolveGeminiMemory(e: Effective, ctx: Context): Promise<v
     const origin = location(source, reference.start);
     try {
       await access(target);
-      const info = await stat(target);
+      const info = await lstat(target);
       if (!info.isFile()) await readFile(target, { encoding: 'utf8', signal: ctx.options.signal });
       const imported = await ctx.read(target, 'gemini', 'instructions', source.scope === 'user' ? 'user' : 'import');
       if (imported) {

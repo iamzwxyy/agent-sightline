@@ -227,7 +227,7 @@ for (const format of ['tree', 'flat'] as const) test(`Gemini ${format} global an
   const user = report.clients[0].decisions.find(source => source.path === path.join(w.home, '.gemini/shared.md'))!;
   assert.equal(user.scope, 'user');
   const exported = portable(report);
-  assert.ok(exported.clients[0].decisions.some(source => source.path === '~/.gemini/shared.md'));
+  assert.ok(exported.clients[0].decisions.some(source => source.path.replaceAll('\\', '/') === '~/.gemini/shared.md'));
   assert.ok(!JSON.stringify(exported).includes(w.root));
 });
 
