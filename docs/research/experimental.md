@@ -1,12 +1,22 @@
 # Experimental adapters
 
-Cursor and OpenCode contracts were checked against official documentation on 2026-11-12. Gemini context imports were checked against published 0.68.0 code on 2026-11-15. Partial discovery contracts also have fixtures in `fixtures/mixed/experimental.json`.
+Cursor and OpenCode contracts were checked against official documentation on 2026-11-12. Gemini startup, folder trust and context imports were checked against published 0.68.0 code on 2026-11-15. Partial discovery contracts also have fixtures in `fixtures/mixed/experimental.json`.
 
-* Gemini inspects default user/project settings, bare context filenames, applicable ancestor context and local imports. Its import processor has thirty-one isolated executable comparisons covering both formats, shared references, cycles, code regions, native boundaries, aliases and a forty-file flat chain. Workspace trust, user-project memory, additional directories, .env loading, extensions, hooks, skills and policy remain partial. [Configuration](https://geminicli.com/docs/reference/configuration/) [Context files](https://geminicli.com/docs/cli/gemini-md/)
+* Gemini inspects user/project settings, persisted folder trust, bare context filenames, applicable ancestor context and local imports. Its import processor has thirty-one isolated executable comparisons covering both formats, shared references, cycles, code regions, native boundaries, aliases and a forty-file flat chain. Startup comparisons additionally execute the published settings, trust and memory modules. IDE trust, system settings, user-project memory, additional directories, .env loading, extensions, hooks, skills and policy remain partial. [Configuration](https://geminicli.com/docs/reference/configuration/) [Context files](https://geminicli.com/docs/cli/gemini-md/)
 * [Cursor rules](https://cursor.com/docs/rules): AGENTS.md hierarchy, .mdc frontmatter, alwaysApply, globs, intelligent/manual conditional state. @references remain literal. Editor user/team rules, plugin components and hooks are outside scope. Local MCP files are recognized.
 * [OpenCode V2 instructions](https://opencode.ai/docs/instructions/) and [config](https://opencode.ai/docs/config/): global + nearest-first ancestor AGENTS.md, direct config before .opencode layers. V2 recognizes AGENTS.md only, so V1 CLAUDE.md fallback is not asserted. Configured glob/remote instructions, MCP and policy evaluation need expansion.
 
 Experimental reports remain useful for discovery and syntax errors, but must be reviewed with each adapter’s limitations before setting CI policy.
+
+## Gemini startup and folder trust
+
+`tests/gemini-startup.test.ts` loads the published `@google/gemini-cli` 0.68.0 settings, trust and MemoryContextManager modules in isolated Node processes. The test checks the two imported bundle chunks against SHA-256 digests before comparing workspace trust, resolved context text and MCP definitions. Temporary homes and absent system-settings paths isolate each fixture. The comparisons use configuration reads and local memory refreshes. [Published package](https://registry.npmjs.org/@google/gemini-cli/-/gemini-cli-0.68.0.tgz)
+
+Native comparisons cover pending approval, TRUST_FOLDER, TRUST_PARENT, DO_NOT_TRUST, longest matching normalized paths and equal-length canonical aliases. `GEMINI_RESTRICTED_MODE`, `GEMINI_CLI_TRUST_WORKSPACE`, disabled user folder-trust settings, `GEMINI_CLI_HOME`, custom trusted-folder files and the sandbox-exec cache location have fixtures. Explicit inspection homes select their own configuration, and repository-only scans exclude personal trust state. [Versioned settings source](https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/cli/src/config/settings.ts) [Versioned trust source](https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/core/src/utils/trust.ts)
+
+Before approval, active context uses user settings and global memory. Conditional contributions describe the trusted loading order, including project changes to context filenames and import format. Rejection keeps global context while withholding project settings, project context and MCP startup. Invalid applicable settings or invalid trust entries stop the modeled startup. Environment decisions can bypass the unused saved-trust file. Project settings cannot disable their own trust check.
+
+Settings and trust files accept comments, reject trailing commas and retain the last duplicate key with a warning. Bare custom context filenames are trimmed and deduplicated, with GEMINI.md retained. Trust reports expose the selected rule's file and line. Raw state previews and unrelated folder entries are withheld, and portable exports replace the selected trust root.
 
 ## Gemini import evidence
 

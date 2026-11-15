@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.32 candidate
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
+
+* Twenty-two startup cases pin the published Gemini CLI 0.68.0 modules and cover folder approval/rejection, parent inheritance, canonical aliases, environment overrides, custom homes and trust files, JSON loading and custom context filenames. Existing import comparisons retain explicit trusted-session assumptions.
+* The 558-case core suite completed with 556 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. Production dependency audit reported zero vulnerabilities.
+* All 89 Chromium browser cases passed. Three focused Gemini and all twelve website cases passed in WebKit. Desktop and phone flows verify pending/approved/rejected context, refresh, copied effective text and private offline reports. Their source views received visual review.
+* The installed package verifies saved Gemini trust through all three states, current user context, project custom context and the GEMINI.md fallback. HTML output conceals unrelated saved folder entries and private paths. The production archive excludes the development-only Gemini runtime.
+* Homepage checks cover sourced client icons, the WebGL opening, pause, visibility changes, context loss, reduced motion and JavaScript-disabled fallback. A phone screenshot exposed joined client-strip sentences, and a responsive wording regression now covers their spacing.
+
 ## Homepage demo entry, 2026-11-15
 
 * A browser regression reproduced the primary homepage demo action opening Overview after selecting a preview client. The action now opens the selected client's instruction source, with its original line. Desktop and phone checks cover Codex, Claude Code and Copilot.

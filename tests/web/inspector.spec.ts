@@ -8,12 +8,79 @@ import { workspace } from '../helpers.js';
 import { trustWorkspace } from '../copilot-trust-fixture.js';
 import { mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
-import { html } from '../../packages/reporter/index.js';
+import { html, portable } from '../../packages/reporter/index.js';
 import type { Report } from '../../packages/core/types.js';
 import { scan } from '../../packages/core/index.js';
 import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
+
+test('Gemini saved workspace trust refreshes custom context, clipboard and private portable reports', async ({ page }) => {
+  const w = await workspace({
+    'GEMINI.md': 'DEFAULT_PROJECT_INSTRUCTION',
+    'TEAM.md': 'PROJECT_INSTRUCTION\n@./shared.md',
+    'shared.md': '---\nenv:\n  NORMAL: browser-gemini-trust-private\n---\nIMPORTED_INSTRUCTION',
+    '.gemini/settings.json': JSON.stringify({ context: { fileName: 'TEAM.md' } }),
+  }, {
+    '.gemini/PERSONAL.md': 'GLOBAL_INSTRUCTION',
+    '.gemini/TEAM.md': 'GLOBAL_TEAM_INSTRUCTION',
+    '.gemini/settings.json': JSON.stringify({ context: { fileName: 'PERSONAL.md' } }),
+  });
+  const trustFile = path.join(w.home, '.gemini/trustedFolders.json');
+  const saveTrust = (level?: string) => writeFile(trustFile, JSON.stringify({
+    [path.join(w.root, 'UNRELATED_GEMINI_PRIVATE_PROJECT')]: 'DO_NOT_TRUST',
+    ...(level ? { [w.repo]: level } : {}),
+  }));
+  await saveTrust();
+  const server = await serve({ ...w, clients: ['gemini'] });
+  const location = '#view=effective&client=gemini&source=GEMINI.md';
+  try {
+    await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: {
+      writeText: async (text: string) => { (window as any).copiedInstructions = text; },
+    }, configurable: true }));
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await saveTrust();
+      await page.goto(server.url + location);
+      await page.reload();
+      for (const state of ['pending', 'approved', 'rejected']) {
+        if (state !== 'pending') {
+          await saveTrust(state === 'approved' ? 'TRUST_FOLDER' : 'DO_NOT_TRUST');
+          await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+          await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+        }
+        const status = state === 'approved' ? 'Loaded' : state === 'rejected' ? 'Not loaded' : 'Conditional';
+        await expect(page.locator('#source-title')).toHaveText('GEMINI.md');
+        await expect(page.locator('#source-status')).toHaveText(status);
+        await expect(page.locator('#why')).toContainText(state === 'pending' ? 'after workspace approval' : state === 'approved' ? 'context' : 'rejects this workspace');
+        await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+        const text = await page.locator('#effective-document .effective-text').textContent();
+        expect(text?.match(/[A-Z_]+_INSTRUCTION/g)).toEqual(state === 'approved'
+          ? ['GLOBAL_TEAM_INSTRUCTION', 'DEFAULT_PROJECT_INSTRUCTION', 'PROJECT_INSTRUCTION', 'IMPORTED_INSTRUCTION']
+          : ['GLOBAL_INSTRUCTION']);
+        const portableText = portable(await scan({ ...w, clients: ['gemini'] })).clients[0].instructions;
+        await page.getByRole('button', { name: 'Copy effective text', exact: true }).click();
+        expect(await page.evaluate(() => (window as any).copiedInstructions)).toBe(text);
+        const pending = page.waitForEvent('download');
+        await page.getByRole('button', { name: /Export report/ }).click();
+        const file = test.info().outputPath(`gemini-trust-${state}-${viewport.width}.html`);
+        await (await pending).saveAs(file);
+        const exported = await readFile(file, 'utf8');
+        for (const privateText of ['browser-gemini-trust-private', 'UNRELATED_GEMINI_PRIVATE_PROJECT', JSON.stringify(w.root).slice(1, -1)]) expect(exported).not.toContain(privateText);
+        await page.context().setOffline(true);
+        await page.goto(pathToFileURL(file).href);
+        expect(await page.locator('#effective-document .effective-text').textContent()).toBe(portableText);
+        await page.getByRole('button', { name: 'Trace sources', exact: true }).click();
+        await expect(page.locator('#source-title')).toHaveText('GEMINI.md');
+        await expect(page.locator('#source-status')).toHaveText(status);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({ path: test.info().outputPath(`gemini-trust-${state}-${viewport.width}.png`) });
+        await page.context().setOffline(false);
+        await page.goto(server.url + location);
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true, maxRetries: 5 }); }
+});
 
 for (const format of ['tree', 'flat']) test(`Gemini ${format} imports retain source inspection, effective text and portable export`, async ({ page }) => {
   const shared = (body: string) => '---\nenv:\n  NORMAL: browser-gemini-import-private\n  FLAG: true\n---\n' + body + '\n';
@@ -22,7 +89,7 @@ for (const format of ['tree', 'flat']) test(`Gemini ${format} imports retain sou
     'shared.md': shared('IMPORTED_INSTRUCTION'),
     '.gemini/settings.json': JSON.stringify({ context: { importFormat: format } }),
   });
-  const server = await serve({ ...w, user: false, clients: ['gemini'] });
+  const server = await serve({ ...w, user: false, clients: ['gemini'], trust: 'trusted' });
   try {
     await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: {
       writeText: async (text: string) => { (window as any).copiedInstructions = text; },

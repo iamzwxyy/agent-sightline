@@ -10,7 +10,7 @@ if (!npm) throw new Error('Run this script using npm run smoke.');
 const runNpm = args => execFileSync(process.execPath, [npm, ...args], { encoding: 'utf8' });
 try {
   const result = JSON.parse(runNpm(['pack', '--ignore-scripts', '--json', '--pack-destination', temp]));
-  if (result[0].files.some(file => file.path.startsWith('fixtures/upstream/') || /node_modules\/(?:@openai\/codex(?:[/-]|$)|@anthropic-ai\/claude-code(?:[/-]|$)|@github\/copilot(?:[/-]|$)|typescript\/|@playwright\/|eslint\/|tsx\/|esbuild\/|gsap\/|lenis\/|three\/)/.test(file.path))) throw new Error('The production archive includes development tools.');
+  if (result[0].files.some(file => file.path.startsWith('fixtures/upstream/') || /node_modules\/(?:@openai\/codex(?:[/-]|$)|@anthropic-ai\/claude-code(?:[/-]|$)|@github\/copilot(?:[/-]|$)|@google\/gemini-cli(?:[/-]|$)|typescript\/|@playwright\/|eslint\/|tsx\/|esbuild\/|gsap\/|lenis\/|three\/)/.test(file.path))) throw new Error('The production archive includes development tools.');
   const tarball = path.join(temp, result[0].filename);
   runNpm(['install', '--offline', '--cache', path.join(temp, 'empty-cache'), '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', path.join(temp, 'install'), tarball]);
   const cli = path.join(temp, 'install/node_modules/agent-sightline/dist/cli/index.js');
@@ -19,18 +19,46 @@ try {
   writeFileSync(path.join(geminiRepo, 'GEMINI.md'), 'GEMINI_FIRST\n@./shared.md\nGEMINI_LAST');
   writeFileSync(path.join(geminiRepo, 'shared.md'), 'GEMINI_IMPORTED');
   const geminiArgs = ['explain', '.', '--repo', geminiRepo, '--no-user', '--client', 'gemini'];
+  const pendingGemini = JSON.parse(execFileSync(process.execPath, [cli, ...geminiArgs, '--json'], { encoding: 'utf8' }));
+  if (pendingGemini.clients[0].instructions || !pendingGemini.clients[0].decisions.some(source => source.kind === 'instructions' && source.status === 'conditional')) throw new Error('Installed Gemini scan lost pending workspace approval.');
+  geminiArgs.push('--trust', 'trusted');
   const gemini = JSON.parse(execFileSync(process.execPath, [cli, ...geminiArgs, '--json'], { encoding: 'utf8' }));
   const geminiText = gemini.clients[0].instructions;
   const geminiImport = gemini.clients[0].decisions.find(source => source.path === path.join(geminiRepo, 'shared.md'));
   if (geminiText.match(/GEMINI_(?:FIRST|IMPORTED|LAST)/g)?.join(',') !== 'GEMINI_FIRST,GEMINI_IMPORTED,GEMINI_LAST' || geminiImport?.importedFrom?.line !== 2 || geminiImport?.importedFrom?.column !== 1) throw new Error('Installed Gemini tree context or import provenance failed.');
   const geminiFile = path.join(temp, 'gemini-context.html');
-  execFileSync(process.execPath, [cli, 'report', '--repo', geminiRepo, '--no-user', '--client', 'gemini', '--format', 'html', '--output', geminiFile]);
+  execFileSync(process.execPath, [cli, 'report', '--repo', geminiRepo, '--no-user', '--client', 'gemini', '--trust', 'trusted', '--format', 'html', '--output', geminiFile]);
   const geminiHtml = readFileSync(geminiFile, 'utf8');
   if (!geminiHtml.includes('GEMINI_IMPORTED') || geminiHtml.includes(JSON.stringify(realpathSync(geminiRepo)).slice(1, -1))) throw new Error('Installed Gemini context export lost content or portable paths.');
   mkdirSync(path.join(geminiRepo, '.gemini'));
   writeFileSync(path.join(geminiRepo, '.gemini/settings.json'), '{"context":{"importFormat":"flat"}}');
   const geminiFlat = JSON.parse(execFileSync(process.execPath, [cli, ...geminiArgs, '--json'], { encoding: 'utf8' }));
   if (geminiFlat.clients[0].instructions.match(/GEMINI_(?:FIRST|IMPORTED|LAST)/g)?.join(',') !== 'GEMINI_FIRST,GEMINI_LAST,GEMINI_IMPORTED') throw new Error('Installed Gemini flat context order failed.');
+  const geminiHome = path.join(temp, 'gemini-home');
+  mkdirSync(path.join(geminiHome, '.gemini'), { recursive: true });
+  writeFileSync(path.join(geminiHome, '.gemini/settings.json'), '{"context":{"fileName":"PERSONAL.md"}}');
+  writeFileSync(path.join(geminiHome, '.gemini/PERSONAL.md'), 'GEMINI_PERSONAL');
+  writeFileSync(path.join(geminiHome, '.gemini/TEAM.md'), 'GEMINI_TEAM_GLOBAL');
+  writeFileSync(path.join(geminiRepo, 'TEAM.md'), 'GEMINI_TEAM_PROJECT');
+  writeFileSync(path.join(geminiRepo, '.gemini/settings.json'), '{"context":{"fileName":"TEAM.md","importFormat":"flat"}}');
+  const savedGeminiArgs = ['explain', '.', '--repo', geminiRepo, '--home', geminiHome, '--client', 'gemini'];
+  const geminiEnvironment = { ...process.env };
+  for (const name of ['GEMINI_CLI_TRUSTED_FOLDERS_PATH', 'GEMINI_CLI_TRUST_WORKSPACE', 'GEMINI_RESTRICTED_MODE', 'SANDBOX']) delete geminiEnvironment[name];
+  for (const level of [undefined, 'TRUST_FOLDER', 'DO_NOT_TRUST']) {
+    writeFileSync(path.join(geminiHome, '.gemini/trustedFolders.json'), JSON.stringify({
+      [path.join(temp, 'installed-gemini-unrelated-private-project')]: 'DO_NOT_TRUST',
+      ...(level ? { [geminiRepo]: level } : {}),
+    }));
+    const saved = JSON.parse(execFileSync(process.execPath, [cli, ...savedGeminiArgs, '--json'], { encoding: 'utf8', env: geminiEnvironment }));
+    const approved = level === 'TRUST_FOLDER';
+    if (saved.clients[0].instructions.includes('GEMINI_PERSONAL') === approved
+      || saved.clients[0].instructions.includes('GEMINI_TEAM_GLOBAL') !== approved
+      || saved.clients[0].instructions.includes('GEMINI_TEAM_PROJECT') !== approved
+      || saved.clients[0].instructions.includes('GEMINI_FIRST') !== approved) throw new Error('Installed Gemini saved trust or custom context fallback failed.');
+    execFileSync(process.execPath, [cli, 'report', ...savedGeminiArgs.slice(2), '--format', 'html', '--output', geminiFile], { env: geminiEnvironment });
+    const exported = readFileSync(geminiFile, 'utf8');
+    if (JSON.stringify(saved).includes('installed-gemini-unrelated-private-project') || exported.includes('installed-gemini-unrelated-private-project') || exported.includes(JSON.stringify(geminiHome).slice(1, -1))) throw new Error('Installed Gemini trust report exposed private state.');
+  }
   const claudeHookRepo = path.join(temp, 'claude-hook-repository');
   const claudeHookHome = path.join(temp, 'claude-hook-home');
   mkdirSync(path.join(claudeHookRepo, '.claude'), { recursive: true });

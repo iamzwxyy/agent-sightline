@@ -1,6 +1,6 @@
 {
   "name": "agent-sightline",
-  "version": "0.3.31",
+  "version": "0.3.32",
   "description": "See what your coding agent actually sees. Local, read-only configuration diagnostics.",
   "type": "module",
   "license": "MIT",
@@ -63,6 +63,7 @@
     "@axe-core/playwright": "4.14.0",
     "@eslint/js": "9.39.1",
     "@github/copilot": "1.0.110",
+    "@google/gemini-cli": "0.68.0",
     "@openai/codex": "0.167.2",
     "@playwright/test": "1.65.0",
     "@types/cross-spawn": "6.0.6",

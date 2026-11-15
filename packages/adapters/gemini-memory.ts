@@ -78,9 +78,11 @@ async function memoryRoot(ctx: Context, directory: string, markers: string[]): P
   }
 }
 
-export async function resolveGeminiMemory(e: Effective, ctx: Context): Promise<void> {
+export async function resolveGeminiMemory(e: Effective, ctx: Context, includeProject = true): Promise<void> {
   const configuredNames = effectiveValue(e, 'context.fileName', 'GEMINI.md');
-  const names = (Array.isArray(configuredNames) ? configuredNames : [configuredNames]).filter((name): name is string => typeof name === 'string' && !name.includes('/') && !name.includes('\\'));
+  const names = [...new Set([...(Array.isArray(configuredNames) ? configuredNames : [configuredNames]), 'GEMINI.md']
+    .filter((name): name is string => typeof name === 'string').map(name => name.trim())
+    .filter(name => name && !name.includes('/') && !name.includes('\\')))];
   const markers = effectiveValue(e, 'context.memoryBoundaryMarkers', ['.git']);
   if (!Array.isArray(markers) || markers.some(marker => typeof marker !== 'string')) {
     const setting = e.settings.findLast(setting => setting.key === 'context.memoryBoundaryMarkers');
@@ -89,13 +91,13 @@ export async function resolveGeminiMemory(e: Effective, ctx: Context): Promise<v
   }
   const format = effectiveValue(e, 'context.importFormat') === 'flat' ? 'flat' : 'tree';
   const boundary = await memoryRoot(ctx, ctx.directory, markers);
-  const userRoot = path.join(ctx.home, '.gemini');
+  const userRoot = ctx.geminiHome;
   const roots: Source[] = [];
   if (ctx.options.user !== false) for (const name of names) {
     const source = await ctx.read(path.join(userRoot, name), 'gemini', 'instructions', 'user');
     if (source) { capturePrivacy(source); roots.push(source); }
   }
-  const projectPaths = ctx.dirs.filter(directory => nativeWithin(boundary, directory) && directory !== userRoot)
+  const projectPaths = ctx.dirs.filter(directory => includeProject && nativeWithin(boundary, directory) && directory !== userRoot)
     .flatMap(directory => names.map(name => path.join(directory, name))).sort(cmp);
   for (const filename of [...new Set(projectPaths)]) {
     const source = await ctx.read(filename, 'gemini', 'instructions');

@@ -74,8 +74,10 @@ export interface ScanOptions {
 }
 export interface Context {
   repo: string; target: string; directory: string; home: string; codexHome: string;
-  claudeHome: string; copilotHome: string; dirs: string[]; sources: Source[];
+  claudeHome: string; copilotHome: string; geminiHome: string; dirs: string[]; sources: Source[];
   claudeProjectRoot?: string;
+  geminiTrustRoot?: string;
+  privateStatePaths?: Set<string>;
   codexSkillPaths?: Set<string>;
   codexSkillIncompleteRoots?: Set<string>;
   /** Source-aware instruction redaction applied after raw paragraph grouping. */
@@ -83,7 +85,7 @@ export interface Context {
   privateInstructionValues?: Set<string>;
   findings: Finding[]; options: ScanOptions; env: NodeJS.ProcessEnv;
   discovery?: Discovery;
-  read: (path: string, owner: ClientId, kind: Kind, scope?: Source['scope'], options?: { allowExternal?: boolean }) => Promise<Source | null>;
+  read: (path: string, owner: ClientId, kind: Kind, scope?: Source['scope'], options?: { allowExternal?: boolean; format?: 'json' }) => Promise<Source | null>;
 }
 export interface Adapter {
   metadata: AdapterMetadata;

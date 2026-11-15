@@ -14,8 +14,9 @@ export async function collectPathMappings(ctx: Context, configuration: unknown[]
   };
   const roots: { path: string; canonical: string; replacement: string }[] = [];
   const directories = [[ctx.repo, '<repo>'], [ctx.home, '~']];
-  if (ctx.options.user !== false) directories.push([ctx.codexHome, '<codex-home>'], [ctx.claudeHome, '<claude-home>'], [ctx.copilotHome, '<copilot-home>']);
+  if (ctx.options.user !== false) directories.push([ctx.codexHome, '<codex-home>'], [ctx.claudeHome, '<claude-home>'], [ctx.copilotHome, '<copilot-home>'], [ctx.geminiHome, '<gemini-home>']);
   if (ctx.claudeProjectRoot) directories.push([ctx.claudeProjectRoot, '<claude-project>']);
+  if (ctx.geminiTrustRoot) directories.push([ctx.geminiTrustRoot, '<gemini-trust-root>']);
   for (const [directory, fallback] of directories) {
     const canonical = await resolve(directory) ?? directory;
     const parent = roots.find(root => within(root.canonical, canonical));
@@ -30,6 +31,8 @@ export async function collectPathMappings(ctx: Context, configuration: unknown[]
   remember(roots[0]);
   const claudeProject = roots.find(root => root.path === ctx.claudeProjectRoot);
   if (claudeProject) remember(claudeProject);
+  const geminiTrust = roots.find(root => root.path === ctx.geminiTrustRoot);
+  if (geminiTrust) remember(geminiTrust);
   for (const source of ctx.sources) {
     const canonical = source.canonicalPath;
     if (!canonical || roots.some(root => within(root.canonical, canonical))) continue;

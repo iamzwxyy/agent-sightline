@@ -105,6 +105,7 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
     codexHome: options.home ? path.join(home, '.codex') : path.resolve(env.CODEX_HOME ?? path.join(home, '.codex')),
     claudeHome: options.home ? path.join(home, '.claude') : path.resolve(env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude')),
     copilotHome: options.home ? path.join(home, '.copilot') : path.resolve(env.COPILOT_HOME ?? path.join(home, '.copilot')),
+    geminiHome: path.resolve(options.home ? home : env.GEMINI_CLI_HOME ?? home, '.gemini'),
     read: async () => null,
   };
   ctx.read = async (file, owner, kind, scope, readOptions) => {
@@ -124,7 +125,7 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
         existing.invalid = false;
         delete existing.valueRanges;
         ctx.findings = ctx.findings.filter(finding => finding.location.path !== abs || !finding.ruleId.startsWith('parse.') && finding.ruleId !== 'source.empty');
-        ctx.findings.push(...parseSource(existing));
+        ctx.findings.push(...parseSource(existing, readOptions?.format));
       }
       return existing;
     }
@@ -149,7 +150,7 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
       const text = await readFile(abs, { encoding: 'utf8', signal: ctx.options.signal });
       const owners = scope === undefined ? classify(abs)?.owners ?? [owner] : [owner];
       const s: Source = { id: hash(abs), path: abs, canonicalPath: real, relativePath: within(repo, abs) ? slash(path.relative(repo, abs)) : abs, owners, kind, scope: scope ?? (path.dirname(abs) === repo ? 'repository' : 'directory'), baseDir: path.dirname(abs), bytes: bytes(text), text, body: text, bodyLine: 1, data: {}, lines: {}, invalid: false };
-      ctx.findings.push(...parseSource(s)); ctx.sources.push(s); return s;
+      ctx.findings.push(...parseSource(s, readOptions?.format)); ctx.sources.push(s); return s;
     } catch (error) {
       ctx.options.signal?.throwIfAborted();
       discovery.complete = false;

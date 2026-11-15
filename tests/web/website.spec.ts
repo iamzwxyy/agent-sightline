@@ -45,6 +45,7 @@ test('opening the demo retains the preview client and source on desktop and phon
       await page.setViewportSize(viewport);
       for (const [name, client] of [['Codex', 'codex'], ['Claude Code', 'claude'], ['Copilot', 'copilot']]) {
         await page.goto(server.url);
+        expect(await page.locator('.client-strip > span').innerText()).toMatch(/One repository\.\s+Every perspective\./);
         await expect(page.locator('#demo-sources button').first()).toBeAttached();
         await page.getByRole('button', { name, exact: true }).click();
         const source = page.getByRole('link', { name: 'Open full inspector', exact: true });

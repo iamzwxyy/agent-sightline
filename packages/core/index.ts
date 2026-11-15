@@ -85,7 +85,7 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
     if (redacted !== undefined) contribution.content = redacted;
   }
   const copilotState = join(ctx.copilotHome, 'config.json');
-  const privateStatePaths = new Set([copilotState]);
+  const privateStatePaths = new Set([copilotState, ...ctx.privateStatePaths ?? []]);
   const canonicalState = await realpath(copilotState).catch(() => undefined);
   if (canonicalState) await Promise.all(ctx.sources.filter(source => basename(source.path) === 'config.json').map(async source => {
     if (await realpath(source.path).catch(() => undefined) === canonicalState) privateStatePaths.add(source.path);

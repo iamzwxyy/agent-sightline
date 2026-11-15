@@ -54,7 +54,7 @@ for (const fixture of cases) for (const format of ['tree', 'flat'] as const) {
   test(`Gemini ${format} context matches the published processor for ${fixture.name}`, async t => {
     const w = await workspace({ ...fixture.files, '.gemini/settings.json': JSON.stringify({ context: { importFormat: format } }) });
     t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-    const report = await scan({ ...w, user: false, clients: ['gemini'] });
+    const report = await scan({ ...w, user: false, clients: ['gemini'], trust: 'trusted' });
     assert.equal(report.clients[0].instructions, nativeContext(path.join(w.repo, 'GEMINI.md'), format));
     assert.equal(report.discovery?.complete, true);
     assert.ok(!report.findings.some(finding => finding.ruleId === 'experimental.imports'));
@@ -75,7 +75,7 @@ for (const format of ['tree', 'flat'] as const) test(`Gemini ${format} imports p
   }
   await mkdir(path.join(w.repo, '.gemini'));
   await writeFile(path.join(w.repo, '.gemini/settings.json'), JSON.stringify({ context: { importFormat: format } }));
-  const report = await scan({ ...w, user: false, clients: ['gemini'] });
+  const report = await scan({ ...w, user: false, clients: ['gemini'], trust: 'trusted' });
   assert.equal(report.clients[0].instructions, nativeContext(path.join(w.repo, 'GEMINI.md'), format));
   assert.ok(!JSON.stringify(report).includes('Outside the native boundary.'));
 });
@@ -84,13 +84,13 @@ test('Gemini text imports retain raw configuration text and scope its structural
   const secret = 'gemini-import-private-sentinel';
   const w = await workspace({ 'GEMINI.md': 'Instructions\n@./.mcp.json\nEnd.', '.mcp.json': '{"mcpServers":{"test":{"env":{"NORMAL":"' + secret + '"},"command":' });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, user: false, clients: ['gemini'] });
+  const report = await scan({ ...w, user: false, clients: ['gemini'], trust: 'trusted' });
   assert.ok(report.clients[0].instructions.includes('"mcpServers"'));
   assert.ok(report.clients[0].instructions.includes('[REDACTED]'));
   assert.ok(report.clients[0].decisions.some(source => source.path.endsWith('.mcp.json') && source.kind === 'instructions' && source.status === 'active'));
   assert.ok(!report.findings.some(finding => finding.ruleId.startsWith('parse.')));
   for (const output of [JSON.stringify(report), json(report), terminal(report, 'explain'), html(report)]) assert.ok(!output.includes(secret));
-  const mixed = await scan({ ...w, user: false, clients: ['claude', 'gemini'] });
+  const mixed = await scan({ ...w, user: false, clients: ['claude', 'gemini'], trust: 'trusted' });
   assert.ok(mixed.findings.some(finding => finding.ruleId.startsWith('parse.')));
   assert.ok(mixed.clients.find(client => client.client === 'gemini')!.instructions.includes('"mcpServers"'));
 });
@@ -98,10 +98,10 @@ test('Gemini text imports retain raw configuration text and scope its structural
 test('Gemini text imports keep inactive foreign MCP files outside their configuration consumer', async t => {
   const w = await workspace({ 'GEMINI.md': '@./nested/.mcp.json', 'nested/.mcp.json': '{"servers":{"example":{"command":"node"}}}' });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, user: false, clients: ['claude', 'gemini'] });
+  const report = await scan({ ...w, user: false, clients: ['claude', 'gemini'], trust: 'trusted' });
   assert.ok(report.clients.find(client => client.client === 'gemini')!.instructions.includes('"servers"'));
   assert.ok(!report.findings.some(finding => finding.ruleId === 'mcp.root-key'));
-  const own = await scan({ ...w, repo: path.join(w.repo, 'nested'), user: false, clients: ['claude', 'gemini'] });
+  const own = await scan({ ...w, repo: path.join(w.repo, 'nested'), user: false, clients: ['claude', 'gemini'], trust: 'trusted' });
   assert.ok(own.findings.some(finding => finding.ruleId === 'mcp.root-key'));
 });
 
@@ -115,7 +115,7 @@ for (const extension of ['json', 'jsonc', 'toml', 'yaml', 'yml', 'md']) test(`Ge
   const text = extension === 'md' ? `---\n${structured}---\nLiteral context body.` : structured;
   const w = await workspace({ 'GEMINI.md': `Root\n@./context.${extension}\nCopied ${secret}`, [`context.${extension}`]: text });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, user: false, clients: ['gemini'] });
+  const report = await scan({ ...w, user: false, clients: ['gemini'], trust: 'trusted' });
   for (const output of [JSON.stringify(report), json(report), terminal(report, 'explain'), html(report)]) {
     assert.ok(!output.includes(secret));
     assert.ok(!output.includes('987654321'));
@@ -140,7 +140,7 @@ test('Gemini private tree imports conceal earlier public segments and nested imp
     'context.json': '{"env":{"NORMAL":" @./shared.md "}}',
   });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, user: false, clients: ['gemini'] });
+  const report = await scan({ ...w, user: false, clients: ['gemini'], trust: 'trusted' });
   for (const output of [JSON.stringify(report), json(report), terminal(report, 'explain'), html(report)]) {
     for (const value of ['PRIVATE_BEFORE', 'PRIVATE_AFTER', 'PRIVATE_LEAF']) assert.ok(!output.includes(value), value);
   }
@@ -154,7 +154,7 @@ test('Gemini literal YAML imports conceal decoded aliases and escaped public spe
     'context.yaml': 'ordinary: &shared "gemini-alias-private-\\u0076alue"\n\nenv:\n  NORMAL: *shared\n  FLAG: true\nordinaryFlag: true\n',
   });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, user: false, clients: ['gemini'] });
+  const report = await scan({ ...w, user: false, clients: ['gemini'], trust: 'trusted' });
   for (const output of [JSON.stringify(report), json(report), terminal(report, 'explain'), html(report)]) assert.ok(!output.includes('gemini-alias-private-'));
   assert.ok(report.clients[0].instructions.includes('ordinaryFlag: true'));
   assert.equal(report.discovery?.complete, true);
@@ -166,7 +166,7 @@ test('Gemini literal YAML imports retain cyclic aliases while protecting their p
     'context.yaml': 'ordinary: &shared\n  VALUE: gemini-cyclic-alias-private\n  self: *shared\nenv:\n  NORMAL: *shared\n',
   });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, user: false, clients: ['gemini'] });
+  const report = await scan({ ...w, user: false, clients: ['gemini'], trust: 'trusted' });
   for (const output of [JSON.stringify(report), json(report), terminal(report, 'explain'), html(report)]) assert.ok(!output.includes('gemini-cyclic-alias-private'));
   assert.ok(report.clients[0].instructions.includes('ordinary: &shared'));
   assert.equal(report.discovery?.complete, true);
@@ -175,7 +175,7 @@ test('Gemini literal YAML imports retain cyclic aliases while protecting their p
 test('Gemini tree segments keep their original lines and import columns in comparisons and portable reports', async t => {
   const w = await workspace({ 'GEMINI.md': 'Repeated\n\nBefore @./child.md After\n\nRepeated', 'child.md': 'Child.' });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, user: false, clients: ['gemini'] });
+  const report = await scan({ ...w, user: false, clients: ['gemini'], trust: 'trusted' });
   const repeated = report.instructionDiff!.find(block => block.content === 'Repeated')!;
   assert.deepEqual(repeated.origins.map(origin => origin.location.line), [1, 5]);
   const imported = report.clients[0].decisions.find(source => source.path.endsWith('child.md'))!;
@@ -195,7 +195,7 @@ for (const markers of [[], ['.memory-root'], ['.git']]) test(`Gemini context dis
     'nested/.gemini/settings.json': JSON.stringify({ context: { memoryBoundaryMarkers: markers } }),
   });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, target: 'nested', user: false, clients: ['gemini'] });
+  const report = await scan({ ...w, target: 'nested', user: false, clients: ['gemini'], trust: 'trusted' });
   assert.equal(report.clients[0].instructions, nativeContext(path.join(w.repo, 'nested/GEMINI.md'), 'tree', markers));
   assert.ok(!report.clients[0].instructions.includes('Outer context.'));
   assert.ok(!report.clients[0].instructions.includes('Outer import.'));
@@ -204,7 +204,7 @@ for (const markers of [[], ['.memory-root'], ['.git']]) test(`Gemini context dis
 test('Gemini reports an import outside the inspection boundary as incomplete without reading its body', async t => {
   const w = await workspace({ 'GEMINI.md': 'Outer context.', 'shared.md': 'Uninspected private body.', 'nested/GEMINI.md': 'Nested\n@../shared.md\nEnd.' });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, repo: path.join(w.repo, 'nested'), user: false, clients: ['gemini'] });
+  const report = await scan({ ...w, repo: path.join(w.repo, 'nested'), user: false, clients: ['gemini'], trust: 'trusted' });
   assert.equal(report.discovery?.complete, false);
   assert.ok(report.findings.some(finding => finding.ruleId === 'include.inspection-scope'));
   assert.ok(!JSON.stringify(report).includes('Uninspected private body.'));
@@ -221,7 +221,7 @@ for (const format of ['tree', 'flat'] as const) test(`Gemini ${format} global an
     '.gemini/GEMINI.md': 'Global\n@./shared.md', '.gemini/shared.md': 'Global shared.',
   });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, target: 'src/file.ts', clients: ['gemini'] });
+  const report = await scan({ ...w, target: 'src/file.ts', clients: ['gemini'], trust: 'trusted' });
   const files = [path.join(w.home, '.gemini/GEMINI.md'), path.join(w.repo, 'GEMINI.md'), path.join(w.repo, 'src/GEMINI.md')];
   assert.equal(report.clients[0].instructions, files.map(filename => nativeContext(filename, format)).join('\n\n'));
   const user = report.clients[0].decisions.find(source => source.path === path.join(w.home, '.gemini/shared.md'))!;
@@ -234,7 +234,7 @@ for (const format of ['tree', 'flat'] as const) test(`Gemini ${format} global an
 test('Gemini context import reading limits keep report discovery incomplete', async t => {
   const w = await workspace({ 'GEMINI.md': 'Before\n@./large.md\nAfter', 'large.md': 'x'.repeat(2 * 1024 * 1024 + 1) });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, user: false, clients: ['gemini'] });
+  const report = await scan({ ...w, user: false, clients: ['gemini'], trust: 'trusted' });
   assert.equal(report.discovery?.complete, false);
   assert.ok(report.findings.some(finding => finding.ruleId === 'source.read-limit'));
   assert.ok(report.findings.some(finding => finding.ruleId === 'include.inspection-scope'));
@@ -245,7 +245,7 @@ test('Gemini context import reading limits keep report discovery incomplete', as
 test('Gemini diagnoses malformed boundary settings without applying context from an unproven scope', async t => {
   const w = await workspace({ 'GEMINI.md': 'Context.', '.gemini/settings.json': '{"context":{"memoryBoundaryMarkers":42}}' });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  const report = await scan({ ...w, user: false, clients: ['gemini'] });
+  const report = await scan({ ...w, user: false, clients: ['gemini'], trust: 'trusted' });
   assert.equal(report.clients[0].instructions, '');
   assert.ok(report.findings.some(finding => finding.ruleId === 'gemini.context-type' && finding.location.key === 'context.memoryBoundaryMarkers'));
 });

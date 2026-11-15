@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.32 — 2026-11-15
+
+* Resolve Gemini persisted workspace trust, parent inheritance and canonical aliases using executable comparisons with the published 0.68.0 startup modules.
+* Keep current global context before approval, mark trusted project contributions as conditional and exclude project configuration after saved rejection.
+* Honor Gemini trust environment overrides, custom configuration homes, custom trust-file paths and sandbox-exec trust storage. Explicit inspection assumptions and repository-only scans retain their scope.
+* Match native JSON comments, trailing-comma rejection and last duplicate values. Invalid applicable settings or trust entries block effective startup contributions.
+* Retain GEMINI.md alongside trimmed custom context filenames. Project MCP definitions replace complete user entries.
+* Conceal unrelated saved folder entries and raw trust-state previews, with source-line provenance and portable path replacements for the selected rule.
+* Verify desktop/phone refresh, clipboard content and offline reports through pending, approved and rejected states. Keep the homepage client-strip wording spaced on phone layouts.
+
 ## 0.3.31 — 2026-11-15
 
 * Resolve Gemini context imports with its published 0.68.0 tree and flat processing rules, including nested and repeated references, cycles, code spans, path validation and native context delimiters.

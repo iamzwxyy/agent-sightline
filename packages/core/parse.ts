@@ -185,7 +185,7 @@ function recoverTomlValues(source: Source): void {
   }
 }
 
-export function parseSource(s: Source): Finding[] {
+export function parseSource(s: Source, format?: 'json'): Finding[] {
   const findings: Finding[] = [];
   const issue = (rule: string, message: string, line = 1, column = 1) => {
     s.invalid = true;
@@ -197,7 +197,7 @@ export function parseSource(s: Source): Finding[] {
   s.valueRanges = [];
   let syntaxRule = 'parse.frontmatter';
   try {
-    if (/\.jsonc?$/.test(s.path)) {
+    if (format === 'json' || /\.jsonc?$/.test(s.path)) {
       syntaxRule = 'parse.json';
       const errors: ParseError[] = [];
       const copilotPersonalJsonc = s.scope === 'user' && s.owners.includes('copilot') && (
@@ -205,7 +205,8 @@ export function parseSource(s: Source): Finding[] {
         || s.kind === 'mcp' && /(?:^|[/\\])mcp-config\.json$/.test(s.path)
       );
       const jsonc = s.path.endsWith('.jsonc') || copilotPersonalJsonc || s.owners.includes('copilot') && s.kind === 'settings' && /settings(?:\.local)?\.json$/.test(s.path);
-      const tree = parseTree(s.text, errors, { allowTrailingComma: jsonc, disallowComments: !jsonc });
+      const geminiJson = s.owners.includes('gemini') && s.kind === 'settings';
+      const tree = parseTree(s.text, errors, { allowTrailingComma: jsonc && !geminiJson, disallowComments: !jsonc && !geminiJson });
       for (const error of errors) {
         const message = jsonErrorMessages[printParseErrorCode(error.error)] ?? 'Invalid JSON syntax.';
         issue('parse.json', message, lineAt(s.text, error.offset), error.offset - s.text.slice(0, error.offset).lastIndexOf('\n'));
@@ -216,7 +217,11 @@ export function parseSource(s: Source): Finding[] {
           for (const p of n.children ?? []) {
             const name = String(p.children![0].value); const full = [...keys, name].join('.');
             s.lines[full] = lineAt(s.text, p.offset);
-            if (seen.has(name)) issue('parse.duplicate-key', `Duplicate key "${name}".`, s.lines[full], p.offset - s.text.slice(0, p.offset).lastIndexOf('\n'));
+            if (seen.has(name)) {
+              const column = p.offset - s.text.slice(0, p.offset).lastIndexOf('\n');
+              if (geminiJson) findings.push(finding('parse.duplicate-key', 'warn', { path: s.path, line: s.lines[full], column }, `Duplicate key "${name}".`, 'Gemini keeps the last value for this JSON key.', 'Keep a single definition for this key.', 'gemini'));
+              else issue('parse.duplicate-key', `Duplicate key "${name}".`, s.lines[full], column);
+            }
             seen.add(name);
             // A recovered JSON tree can retain a property whose value is missing.
             if (p.children?.[1]) visit(p.children[1], [...keys, name]);
