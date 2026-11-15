@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.37 — 2026-11-15
+
+* Retain comparison client selections, content filters, Differences only and expanded paragraphs in reloadable browser links.
+* Restore the inspected comparison through browser history, live refresh, standalone export and offline re-export.
+* Honor a single selected client and recover unavailable clients or invalid filter values to supported defaults.
+* Keep keyboard focus on the client selector after changing its selection.
+
 ## 0.3.36 — 2026-11-15
 
 * Include structured files used as instructions in the client coverage matrix, with configuration roles for other clients reading the same source.

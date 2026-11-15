@@ -1,5 +1,14 @@
 # Release validation
 
+## v0.3.37
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
+
+* Three new browser regressions failed before the correction. Reload lost selected comparison clients and filters, expanded paragraphs returned to their initial count, and keyboard client selection lost focus. Comparison navigation now records these choices in the inspection fragment and restores the selected control.
+* Desktop and phone checks cover live refresh, browser Back/Forward, source inspection, exported HTML and offline re-export. A single selected client remains selected. Unknown clients and invalid filter or paragraph values fall back to available report data and defaults.
+* The 574-case core suite completed with 572 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. Production dependency audit reported zero vulnerabilities.
+* All 102 Chromium browser cases and four focused WebKit flows passed. Automated WCAG AA checks passed. The exported comparison received desktop and phone visual review. The example report and inspector capture were regenerated from the working CLI.
+
 ## v0.3.36
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.

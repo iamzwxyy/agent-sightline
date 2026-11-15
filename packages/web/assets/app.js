@@ -14,11 +14,18 @@
     sourceFilter: 'relevant',
     instructionView: 'sources',
     extensionKind: 'all',
-    compareClients: new Set(report.clients.filter(client => client.detected).slice(0, 3).map(client => client.client)),
+    compareClients: comparisonSelection(),
     comparisonLimit: 100,
     highlightLine: null,
     request: 0,
   };
+  function comparisonSelection(requested = []) {
+    const selected = new Set(report.clients.filter(client => requested.includes(client.client)).map(client => client.client));
+    if (selected.size) return selected;
+    const defaults = new Set(report.clients.filter(client => client.detected).slice(0, 3).map(client => client.client));
+    if (defaults.size < 2) report.clients.slice(0, 3).forEach(client => defaults.add(client.client));
+    return defaults;
+  }
   let toastTimer;
   let scanController;
   let targetTimer;
@@ -179,6 +186,12 @@
       if (sourcePath && occurrence > 1) hash.set('occurrence', String(occurrence));
       if (sourcePath && state.highlightLine !== null) hash.set('line', String(state.highlightLine));
       if (state.instructionView === 'document') hash.set('text', 'effective');
+    }
+    if (state.view === 'compare') {
+      hash.set('clients', report.clients.filter(client => state.compareClients.has(client.client)).map(client => client.client).join(','));
+      if ($('content-filter').value !== 'all') hash.set('content', $('content-filter').value);
+      if (!$('differences-only').checked) hash.set('differences', 'all');
+      if (state.comparisonLimit > 100) hash.set('paragraphs', String(state.comparisonLimit));
     }
     return '#' + hash.toString();
   }
@@ -715,7 +728,7 @@
     if (!rows.length) rows.push(empty('No matching instruction paragraphs', blocks.length ? 'Choose another content filter or client selection.' : 'Selected clients have no proven active instruction text for this target.'));
     if (filtered.length > state.comparisonLimit) rows.push(button(`Show ${Math.min(100, filtered.length - state.comparisonLimit)} more paragraphs`, () => {
       const firstNew = state.comparisonLimit;
-      state.comparisonLimit += 100; renderContentComparison(clients);
+      state.comparisonLimit += 100; navigate('compare');
       $('comparison-blocks').querySelectorAll('.instruction-block pre')[firstNew]?.focus();
     }, 'button button-small content-diff-more'));
     $('comparison-blocks').replaceChildren(...rows);
@@ -726,13 +739,14 @@
   }
   function renderCompare() {
     const clients = report.clients.filter(client => state.compareClients.has(client.client));
-    $('compare-clients').replaceChildren(...report.clients.map(client => {
+    $('compare-clients').replaceChildren(...report.clients.map((client, index) => {
       const element = button('', () => {
         if (state.compareClients.has(client.client)) {
           if (state.compareClients.size === 1) { toast('Keep at least one client selected'); return; }
           state.compareClients.delete(client.client);
         } else state.compareClients.add(client.client);
-        state.comparisonLimit = 100; renderCompare();
+        state.comparisonLimit = 100; navigate('compare');
+        $('compare-clients').children[index].focus({ preventScroll: true });
       }, 'compare-chip');
       element.append(avatar(client.client), node('span', names[client.client]));
       element.setAttribute('aria-pressed', String(state.compareClients.has(client.client)));
@@ -1045,8 +1059,8 @@
   $('setting-client').onchange = renderSettings;
   $('include-shadowed').onchange = renderSettings;
   $('extension-client').onchange = renderExtensions;
-  $('differences-only').onchange = renderCompare;
-  $('content-filter').onchange = () => { state.comparisonLimit = 100; renderCompare(); };
+  $('differences-only').onchange = () => navigate('compare');
+  $('content-filter').onchange = () => { state.comparisonLimit = 100; navigate('compare'); };
   $('review-findings').onclick = () => { $('severity').value = 'actionable'; navigate('findings'); };
   $('scope-button').onclick = () => {
     if (document.body.classList.contains('nav-open')) setNavigationOpen(false);
@@ -1125,6 +1139,13 @@
     const hash = new URLSearchParams(location.hash.slice(1));
     state.view = viewLabels[hash.get('view')] ? hash.get('view') : 'overview';
     if (report.clients.some(client => client.client === hash.get('client'))) state.client = hash.get('client');
+    if (state.view === 'compare') {
+      state.compareClients = comparisonSelection((hash.get('clients') ?? '').split(','));
+      $('content-filter').value = ['shared', 'different'].includes(hash.get('content')) ? hash.get('content') : 'all';
+      $('differences-only').checked = hash.get('differences') !== 'all';
+      const limit = Number(hash.get('paragraphs'));
+      state.comparisonLimit = Number.isSafeInteger(limit) && limit >= 100 ? limit : 100;
+    }
     state.instructionView = hash.get('text') === 'effective' ? 'document' : 'sources';
     const sourcePath = hash.get('source');
     const occurrence = Number(hash.get('occurrence'));
@@ -1154,7 +1175,6 @@
     clearExcludingSourceSearch();
     render();
   });
-  if (state.compareClients.size < 2) report.clients.slice(0, 3).forEach(client => state.compareClients.add(client.client));
   const trustAssumption = report.assumptions.find(assumption => assumption.startsWith('Trust:')) ?? '';
   if (trustAssumption.includes('trusted;')) $('trust').value = 'trusted';
   if (trustAssumption.includes('untrusted;')) $('trust').value = 'untrusted';

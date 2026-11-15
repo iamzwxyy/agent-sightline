@@ -15,6 +15,134 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('comparison context survives reload, refresh, export and offline re-export on desktop and phone', async ({ page }) => {
+  const w = await workspace({
+    'AGENTS.md': 'SHARED_GUIDANCE\n\nCODEX_GUIDANCE',
+    'CLAUDE.md': 'CLAUDE_GUIDANCE',
+    '.github/copilot-instructions.md': 'COPILOT_GUIDANCE',
+    'GEMINI.md': 'SHARED_GUIDANCE\n\nGEMINI_GUIDANCE',
+  });
+  const server = await serve({ ...w, user: false, trust: 'trusted', clients: ['codex', 'claude', 'copilot', 'gemini'] });
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const expectComparison = async (clients: string[], content: string, differences: boolean) => {
+    await expect(page.locator('#compare')).toBeVisible();
+    await expect(page.locator('#compare-clients button[aria-pressed="true"]')).toHaveText(clients);
+    await expect(page.locator('#content-filter')).toHaveValue(content);
+    await expect(page.locator('#differences-only')).toBeChecked({ checked: differences });
+  };
+  const exportReport = async (filename: string) => {
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath(filename);
+    await (await downloading).saveAs(file);
+    return pathToFileURL(file).href;
+  };
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await page.context().setOffline(false);
+      await page.goto(server.url + '#view=compare');
+      const choices = page.locator('#compare-clients');
+      await choices.getByRole('button', { name: 'Claude Code', exact: true }).click();
+      await choices.getByRole('button', { name: 'GitHub Copilot', exact: true }).click();
+      await choices.getByRole('button', { name: 'Gemini CLI', exact: true }).click();
+      await page.locator('#content-filter').selectOption('shared');
+      await page.locator('#differences-only').uncheck();
+      await expectComparison(['Codex', 'Gemini CLI'], 'shared', false);
+      await expect(page.locator('#comparison-blocks .instruction-block')).toHaveCount(1);
+      await page.reload();
+      await expectComparison(['Codex', 'Gemini CLI'], 'shared', false);
+      await page.locator('#refresh').click();
+      await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+      await expectComparison(['Codex', 'Gemini CLI'], 'shared', false);
+      const first = await exportReport(`comparison-context-${viewport.width}.html`);
+      await page.context().setOffline(true);
+      await page.goto(first);
+      await expectComparison(['Codex', 'Gemini CLI'], 'shared', false);
+      await expect(page.locator('#comparison-blocks .instruction-block')).toHaveCount(1);
+      await page.screenshot({ path: test.info().outputPath(`comparison-context-${viewport.width}.png`), fullPage: true });
+      await page.locator('#compare-clients').getByRole('button', { name: 'Codex', exact: true }).click();
+      await page.locator('#content-filter').selectOption('different');
+      await page.locator('#differences-only').check();
+      const second = await exportReport(`comparison-context-reshared-${viewport.width}.html`);
+      await page.goto(second);
+      await expectComparison(['Gemini CLI'], 'different', true);
+      await page.reload();
+      await expectComparison(['Gemini CLI'], 'different', true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('comparison history restores each selection and filter and source navigation returns to its comparison', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'CODEX_GUIDANCE', 'CLAUDE.md': 'CLAUDE_GUIDANCE', 'GEMINI.md': 'GEMINI_GUIDANCE' });
+  const server = await serve({ ...w, user: false, trust: 'trusted', clients: ['codex', 'claude', 'gemini'] });
+  try {
+    await page.goto(server.url + '#view=compare');
+    const choices = page.locator('#compare-clients');
+    const claude = choices.getByRole('button', { name: 'Claude Code', exact: true });
+    await claude.focus();
+    await page.keyboard.press('Enter');
+    await expect(claude).toBeFocused();
+    await expect(claude).toHaveAttribute('aria-pressed', 'false');
+    await page.locator('#content-filter').selectOption('different');
+    await page.locator('#differences-only').uncheck();
+    await page.locator('#comparison-text .comparison-document').first().getByRole('button', { name: /Trace this instruction chain/ }).click();
+    await expect(page.locator('#effective-title')).toHaveText('Codex’s instructions');
+    await page.goBack();
+    await expect(page.locator('#compare')).toBeVisible();
+    await expect(page.locator('#compare-clients button[aria-pressed="true"]')).toHaveText(['Codex', 'Gemini CLI']);
+    await expect(page.locator('#content-filter')).toHaveValue('different');
+    await expect(page.locator('#differences-only')).not.toBeChecked();
+    await page.goBack();
+    await expect(page.locator('#differences-only')).toBeChecked();
+    await expect(page.locator('#content-filter')).toHaveValue('different');
+    await page.goBack();
+    await expect(page.locator('#content-filter')).toHaveValue('all');
+    await expect(claude).toHaveAttribute('aria-pressed', 'false');
+    await page.goBack();
+    await expect(claude).toHaveAttribute('aria-pressed', 'true');
+    await page.goForward();
+    await expect(claude).toHaveAttribute('aria-pressed', 'false');
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('comparison paragraph expansion persists and invalid links recover to available clients and default filters', async ({ page }) => {
+  const instructions = Array.from({ length: 205 }, (_, index) => `Instruction paragraph ${index + 1}.`).join('\n\n');
+  const w = await workspace({ 'AGENTS.md': instructions, 'CLAUDE.md': instructions });
+  const server = await serve({ ...w, user: false, trust: 'trusted', clients: ['codex', 'claude'] });
+  try {
+    await page.goto(server.url + '#view=compare');
+    await expect(page.locator('#comparison-blocks .instruction-block')).toHaveCount(100);
+    await page.getByRole('button', { name: 'Show 100 more paragraphs', exact: true }).click();
+    await expect(page.locator('#comparison-blocks .instruction-block')).toHaveCount(200);
+    await page.reload();
+    await expect(page.locator('#comparison-blocks .instruction-block')).toHaveCount(200);
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('comparison-expanded-paragraphs.html');
+    await (await downloading).saveAs(file);
+    await page.context().setOffline(true);
+    await page.goto(pathToFileURL(file).href);
+    await expect(page.locator('#comparison-blocks .instruction-block')).toHaveCount(200);
+    await page.getByRole('button', { name: 'Show 5 more paragraphs', exact: true }).click();
+    await expect(page.locator('#comparison-blocks .instruction-block')).toHaveCount(205);
+    await page.goBack();
+    await expect(page.locator('#comparison-blocks .instruction-block')).toHaveCount(200);
+    await page.context().setOffline(false);
+    await page.goto(server.url + '#view=compare&clients=unavailable,codex,codex&content=unsupported&differences=invalid&paragraphs=-100');
+    await expect(page.locator('#compare-clients button[aria-pressed="true"]')).toHaveText(['Codex']);
+    await expect(page.locator('#content-filter')).toHaveValue('all');
+    await expect(page.locator('#differences-only')).toBeChecked();
+    await expect(page.locator('#comparison-blocks .instruction-block')).toHaveCount(100);
+    await page.goto(server.url + '#view=compare&clients=unavailable&paragraphs=Infinity');
+    await expect(page.locator('#compare-clients button[aria-pressed="true"]')).toHaveText(['Codex', 'Claude Code']);
+    await expect(page.locator('#comparison-blocks .instruction-block')).toHaveCount(100);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('extension comparison exposes every active and conditional definition and status-only differences', async ({ page }) => {
   const userConfig = '[mcp_servers.fixture]\ncommand=' + JSON.stringify(process.execPath) + '\nargs=["user.js"]';
   const w = await workspace({ 'AGENTS.md': 'PROJECT', '.codex/config.toml': '[mcp_servers.fixture]\nargs=["project.js"]' }, {
