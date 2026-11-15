@@ -83,6 +83,7 @@
       $('detail-category').textContent = 'Clipboard';
       $('detail-body').replaceChildren(content);
       if (!$('detail-dialog').open) $('detail-dialog').showModal();
+      $('detail-dialog').scrollTop = 0;
       field.focus(); field.select();
     }
   }
@@ -333,6 +334,7 @@
     content.append(actions);
     $('detail-body').replaceChildren(content);
     if (!$('detail-dialog').open) $('detail-dialog').showModal();
+    $('detail-dialog').scrollTop = 0;
   }
   function renderFindings() {
     const groups = groupFindings();
@@ -598,8 +600,10 @@
     content.append(origins);
     const actions = node('div', undefined, 'dialog-actions');
     actions.append(button('Inspect source →', () => inspectSourceLocation(setting.location, client), 'button button-primary'), button('Copy value', () => copy(JSON.stringify(setting.value, null, 2))));
-    content.append(actions); $('detail-body').replaceChildren(content);
+    content.append(actions);
+    $('detail-body').replaceChildren(content);
     if (!$('detail-dialog').open) $('detail-dialog').showModal();
+    $('detail-dialog').scrollTop = 0;
   }
   function sourceClient(location, preferred) {
     const clients = report.clients.filter(client => client.decisions.some(source => source.path === location.path));
@@ -803,7 +807,10 @@
     }
     const actions = node('div', undefined, 'dialog-actions');
     actions.append(button('Inspect source →', () => inspectSourceLocation(extension.location, client), 'button button-primary'), button('Copy definition', () => copy(JSON.stringify(extension.config, null, 2))));
-    content.append(actions); $('detail-body').replaceChildren(content); if (!$('detail-dialog').open) $('detail-dialog').showModal();
+    content.append(actions);
+    $('detail-body').replaceChildren(content);
+    if (!$('detail-dialog').open) $('detail-dialog').showModal();
+    $('detail-dialog').scrollTop = 0;
   }
   function renderExtensions() {
     const kind = state.extensionKind;

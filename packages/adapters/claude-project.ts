@@ -35,10 +35,11 @@ async function projectStateRoot(ctx: Context): Promise<string> {
   }
   const shared = common.replace(/[\r\n]+$/, '');
   if (!shared) throw new Error('Empty shared Git directory pointer.');
-  const main = path.dirname(path.resolve(directory, shared));
+  const commonDirectory = path.resolve(directory, shared);
+  const projectDirectory = path.basename(commonDirectory) === '.git' ? path.dirname(commonDirectory) : commonDirectory;
   // Native Windows worktree detection retains the launch entry through short-path aliases.
   if (process.platform === 'win32' && root.toLowerCase() !== canonical.toLowerCase()) return project;
-  return process.platform === 'win32' ? slash(main) : realpath(main);
+  return process.platform === 'win32' ? slash(projectDirectory) : realpath(projectDirectory);
 }
 
 

@@ -16,6 +16,7 @@ export function terminal(report: Report, mode = 'scan'): string {
   report = redact(report);
   const extensionLines = (extension: Extension): string[] => [
     `  ${extension.kind} ${extension.name} [${extension.status}] ${JSON.stringify(extension.config)}  ← ${extension.location.path}:${extension.location.line}`,
+    `    ${extension.reason}`,
     ...extension.origins?.map(origin => `    ${origin.key} ← ${origin.location.path}:${origin.location.line}`) ?? [],
   ];
   const grouped = new Map<string, { item: Finding; clients: string[] }>();

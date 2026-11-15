@@ -8,7 +8,7 @@ import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { chmod, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
-import { html, portable } from '../packages/reporter/index.js';
+import { html, portable, terminal } from '../packages/reporter/index.js';
 import { claudeMetadata } from '../packages/adapters/claude.js';
 import { workspace } from './helpers.js';
 
@@ -324,11 +324,13 @@ test('Claude native local MCP registration selects the same project state as Sig
   const scenarios = [
     { name: 'logical project root' },
     { name: 'canonical project root', canonical: true },
+    { name: 'project with a separate Git directory', canonical: true, separateGitDir: true },
     { name: 'nested project session', nested: true },
     { name: 'non-Git nested session', nested: true, noGit: true },
     { name: 'wider inspection boundary', nested: true, wide: true },
     { name: 'logical linked worktree', nested: true, worktree: true },
     { name: 'canonical linked worktree', nested: true, worktree: true, canonical: true },
+    { name: 'linked worktree with a separate Git directory', nested: true, worktree: true, canonical: true, separateGitDir: true },
     { name: 'local server replaces user and pending project definitions', nested: true, scopes: true },
     { name: 'local server replaces user and approved project definitions', nested: true, scopes: true, approved: true },
   ];
@@ -338,7 +340,7 @@ test('Claude native local MCP registration selects the same project state as Sig
     const env = isolatedEnvironment(w.home);
     if (scenario.canonical) w.repo = await realpath(w.repo);
     if (scenario.noGit) await rm(path.join(w.repo, '.git'), { recursive: true });
-    else execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
+    else execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', ...(scenario.separateGitDir ? ['--separate-git-dir', path.join(w.root, 'metadata')] : []), w.repo], { env });
     if (scenario.worktree) {
       execFileSync('git', ['add', '.'], { cwd: w.repo, env });
       execFileSync('git', ['-c', 'user.name=Local MCP fixture', '-c', 'user.email=fixture@example.test', 'commit', '--quiet', '-m', 'Create the local MCP fixture'], { cwd: w.repo, env });
@@ -372,6 +374,7 @@ test('Claude native local MCP registration selects the same project state as Sig
     const local = definitions.find(extension => extension.location.key === `projects.${keys[0]}.mcpServers.fixture`);
     assert.ok(local, JSON.stringify({ scenario: scenario.name, directory, keys, actual: actual.text }));
     assert.equal(local.status, 'active');
+    for (const mode of ['explain', 'diff']) assert.ok(terminal(report, mode).includes(local.reason));
     assert.deepEqual(local.config.args, [serverFile]);
     assert.equal(local.location.key, `projects.${keys[0]}.mcpServers.fixture`);
     const command = local.origins?.find(origin => origin.key === 'command')?.location;

@@ -22,12 +22,13 @@ interface MemoryScenario {
   home?: Record<string, string>;
   directory?: string;
   approval?: boolean;
-  approvalScope?: 'project' | 'directory' | 'main';
+  approvalScope?: 'project' | 'directory' | 'main' | 'shared';
   approvalKey?: 'logical' | 'canonical' | 'native';
   readTarget?: boolean;
   noGit?: boolean;
   worktree?: boolean;
   canonicalPaths?: boolean;
+  separateGitDir?: boolean;
 }
 
 function blockText(block: any): string {
@@ -65,6 +66,16 @@ test('Claude instruction order and imports agree with the pinned native request'
     {
       name: 'canonical linked worktree state keys follow native project selection',
       directory: 'src', worktree: true, canonicalPaths: true, approval: true,
+      files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n' },
+    },
+    {
+      name: 'separate Git directory supplies the native worktree approval entry',
+      directory: 'src', worktree: true, canonicalPaths: true, separateGitDir: true, approval: true, approvalScope: 'shared',
+      files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n' },
+    },
+    {
+      name: 'separate Git directory keeps main-checkout approval outside its worktree entry',
+      directory: 'src', worktree: true, canonicalPaths: true, separateGitDir: true, approval: true, approvalScope: 'main',
       files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n', 'docs/policy.md': 'IMPORTED_INSTRUCTION\n' },
     },
     {
@@ -262,7 +273,7 @@ test('Claude instruction order and imports agree with the pinned native request'
     };
     const mainRepository = w.repo;
     if (scenario.noGit) await rm(path.join(w.repo, '.git'), { recursive: true });
-    else execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
+    else execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', ...(scenario.separateGitDir ? ['--separate-git-dir', path.join(w.root, 'metadata')] : []), w.repo], { env });
     if (scenario.worktree) {
       execFileSync('git', ['add', '.'], { cwd: w.repo, env });
       execFileSync('git', ['-c', 'user.name=Memory fixture', '-c', 'user.email=memory-fixture@example.test', 'commit', '--quiet', '-m', 'Create the isolated memory fixture'], { cwd: w.repo, env });
@@ -273,11 +284,12 @@ test('Claude instruction order and imports agree with the pinned native request'
     const directory = path.join(w.repo, scenario.directory ?? '.');
     const project = scenario.noGit ? await realpath(directory) : execFileSync('git', ['rev-parse', '--show-toplevel'], { env, cwd: directory, encoding: 'utf8' }).trim();
     const projects: Record<string, Record<string, unknown>> = {};
-    for (const location of [w.repo, project, directory, mainRepository, await realpath(mainRepository), await realpath(w.repo), await realpath(directory)]) {
+    const sharedDirectory = path.join(w.root, 'metadata');
+    for (const location of [w.repo, project, directory, mainRepository, await realpath(mainRepository), await realpath(w.repo), await realpath(directory), ...(scenario.separateGitDir ? [sharedDirectory, await realpath(sharedDirectory)] : [])]) {
       for (const key of [location, location.replaceAll('\\', '/')]) projects[key] = { hasTrustDialogAccepted: true };
     }
     if (scenario.approval !== undefined) {
-      const approvedDirectory = scenario.approvalScope === 'directory' ? directory : scenario.approvalScope === 'main' ? mainRepository : w.repo;
+      const approvedDirectory = scenario.approvalScope === 'directory' ? directory : scenario.approvalScope === 'main' ? mainRepository : scenario.approvalScope === 'shared' ? sharedDirectory : w.repo;
       const canonical = await realpath(approvedDirectory);
       const variants = [approvedDirectory, canonical, approvedDirectory.replaceAll('\\', '/'), canonical.replaceAll('\\', '/'), ...(scenario.approvalScope === undefined || scenario.approvalScope === 'project' ? [project] : [])];
       const explicitKeys = { logical: approvedDirectory, canonical, native: process.platform === 'win32' ? approvedDirectory.replaceAll('\\', '/') : canonical };

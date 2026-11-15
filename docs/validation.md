@@ -4,10 +4,16 @@
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 
-* Native CLI registration reproduced six missing-server cases before the correction. Nine local-scope registrations now compare the client-generated project key, chosen MCP server, field origins and portable output with the public scan. The cases cover logical/canonical paths, nested/non-Git sessions, wider inspection boundaries and linked worktrees.
+* Native CLI registration reproduced six missing-server cases before the correction. Eleven local-scope registrations now compare the client-generated project key, chosen MCP server, field origins and portable output with the public scan. The cases cover logical/canonical paths, nested/non-Git sessions, wider inspection boundaries, linked worktrees and separate Git directories.
 * A native case also reproduced a pending lower-scope project candidate surviving a known active local definition. The corrected replacement retains all overridden origins. Four invalid local declarations compare native user-server fallback with the public report.
 * SDK cases retain repository-only exclusion and report unresolvable Git metadata while preserving known user configuration. Native local-server probing, raw account-state withholding and portable re-export checks passed.
 * Desktop and phone flows inspect the selected local server, copy its redacted definition, navigate to its parsed private-state projection, export an offline report and refresh after removing/restoring the local entry.
+* The phone journey reproduced a close control scrolling out of view after copying a long definition. A sticky detail header keeps the close control visible, and reopening another detail starts at its heading. Focused modal, navigation and field-provenance checks passed.
+* A separate-Git-directory worktree reproduced an incorrect project key. The corrected shared-identity resolver retains the separate Git directory. Two additional native instruction scenarios verify the same approval selection, bringing instruction coverage to thirty-three scenarios and thirty-seven requests.
+
+* The 493-case core suite completed with 491 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. All 82 Chromium browser cases passed. Production dependency audit reported zero vulnerabilities.
+* An installed archive passed native CLI registration in a linked worktree, default read-only inspection, the explicit doctor probe, precedence, terminal output, redacted clipboard copying, desktop/phone refresh and offline export. The retained header stayed visible after copying a long definition.
+* A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,147 ms. Fixture creation warmed the filesystem cache.
 
 ## v0.3.29
 

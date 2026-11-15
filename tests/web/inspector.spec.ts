@@ -1933,8 +1933,12 @@ test('Claude local MCP state survives private source inspection, copying, refres
       const copied = JSON.parse(await page.evaluate(() => (window as any).copiedDefinition));
       expect(copied.args).toEqual(['--local']);
       expect(copied.env.LOCAL_SECRET).toBe('[REDACTED]');
+      await expect(page.getByRole('button', { name: 'Close details', exact: true })).toBeInViewport();
       expect(await page.locator('#detail-dialog').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       await page.screenshot({ path: test.info().outputPath(`claude-local-mcp-${viewport.width}.png`) });
+      await page.getByRole('button', { name: 'Close details', exact: true }).click();
+      await page.locator('.extension-row').filter({ has: page.locator('.status.shadowed') }).first().click();
+      await expect(page.getByRole('heading', { name: 'fixture', exact: true })).toBeInViewport();
       await page.getByRole('button', { name: 'Close details', exact: true }).click();
 
       const pending = page.waitForEvent('download');

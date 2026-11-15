@@ -3,9 +3,11 @@
 ## 0.3.30 — 2026-11-15
 
 * Discover Claude local MCP servers using the native saved project identity, including logical/canonical paths, nested and non-Git sessions, wider scan boundaries and linked worktrees.
-* Share project identity with external-import approval and preserve the selected identity throughout a scan.
+* Share project identity with external-import approval and preserve the selected identity throughout a scan. Match separate Git directories for linked-worktree MCP and import-approval keys.
 * Mark lower-scope user and project definitions as shadowed when a valid local server replaces them, including pending project candidates. Retain fallback after invalid local declarations.
 * Capture separate project-state paths for portable reports, retaining MCP field definitions and source lines while concealing the original checkout path.
+* Include extension loading reasons in terminal explanations and client comparisons.
+* Keep the detail dialog’s close control visible while inspecting long configurations, and open each new detail at its heading.
 * Verify native local-scope registration, explicit probes, desktop/phone refresh, copied definitions and private-state handling in offline reports.
 
 ## 0.3.29 — 2026-11-15

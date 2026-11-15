@@ -260,6 +260,7 @@ input[type='checkbox'] { accent-color: #788f5f; }
 dialog { border: 1px solid #e1e6d8; border-radius: 10px; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 60px); padding: 0; color: var(--ink); box-shadow: 0 24px 100px #27341f28; background: white; }
 dialog::backdrop { background: #252f2338; backdrop-filter: blur(3px); }
 .dialog-topline { display: flex; align-items: center; justify-content: space-between; padding: 13px 20px; background: #f9fbf5; border-bottom: 1px solid var(--line); color: #626b59; font-size: 12px; }
+#detail-dialog .dialog-topline { position: sticky; top: 0; z-index: 1; }
 .dialog-topline .icon-button { font-size: 21px; }
 .dialog-content { padding: 25px 28px 28px; }
 .dialog-content h2 { font-size: 20px; line-height: 1.4; font-weight: 500; letter-spacing: -.4px; color: #4e6a36; margin: 12px 0 20px; }
