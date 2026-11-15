@@ -11,6 +11,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
 * All 106 Chromium browser cases and seven focused WebKit flows passed. Automated WCAG AA checks passed. Desktop and phone comparison views received visual review. The example HTML, inspector capture and website comparison image were generated from the working interfaces.
 * The runtime package bundles JsDiff 9.0.0. Standalone reports embed its browser code and BSD 3-Clause notice in their CSP-hashed script and execute with networking disabled.
 
+* Linux, macOS and Windows verification passed for the released source. Anonymous download matched SHA-256 `c8b508f45b8146af64290c9f75f3b017c0826ccd0bb7efdbcc7545d50d9b6568` and its 1,564,338-byte size. The exact public archive passed empty-cache installation, installed-CLI HTML generation and desktop/phone offline line alignment, pair selection, unchanged context and report re-export with zero page errors. Fresh-cache public execution returned 0.3.38. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43738126087)
+
 ## v0.3.37
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
