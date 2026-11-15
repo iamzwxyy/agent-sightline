@@ -130,3 +130,43 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   const observed = JSON.parse(await readFile(path.join(w.repo, 'observed.json'), 'utf8'));
   assert.equal(await realpath(observed.cwd), await realpath(w.repo));
 });
+
+test('Claude local MCP validation retains user fallback and repository-only exclusion', async t => {
+  const w = await workspace();
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const project = process.platform === 'win32' ? w.repo.replaceAll('\\', '/') : await realpath(w.repo);
+  const state = {
+    mcpServers: { fixture: { command: process.execPath, args: ['--user'] } },
+    projects: { [project]: { mcpServers: { fixture: { command: process.execPath, args: false } } } },
+    account: { email: 'private-sdk-local-mcp@example.test' },
+  };
+  await writeFile(path.join(w.home, '.claude.json'), JSON.stringify(state, null, 2));
+  const report = await scan({ ...w, clients: ['claude'] });
+  const definitions = report.clients[0].extensions;
+  assert.equal(definitions.find(extension => extension.location.key === 'mcpServers.fixture')?.status, 'active');
+  assert.equal(definitions.find(extension => extension.location.key === `projects.${project}.mcpServers.fixture`)?.status, 'invalid');
+  assert.ok(report.findings.some(finding => finding.ruleId === 'mcp.args-type' && finding.related.some(location => location.key === 'mcpServers.fixture')));
+  assert.ok(!JSON.stringify(report).includes('private-sdk-local-mcp@example.test'));
+  const excluded = await scan({ ...w, clients: ['claude'], user: false });
+  assert.equal(excluded.clients[0].extensions.length, 0);
+});
+
+test('unreadable Claude local MCP identity retains known user configuration and diagnoses the missing selection', async t => {
+  const w = await workspace();
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const project = process.platform === 'win32' ? w.repo.replaceAll('\\', '/') : await realpath(w.repo);
+  await rm(path.join(w.repo, '.git'), { recursive: true });
+  await writeFile(path.join(w.repo, '.git'), 'gitdir: missing-metadata\n');
+  const stateFile = path.join(w.home, '.claude.json');
+  await writeFile(stateFile, JSON.stringify({
+    mcpServers: { global: { command: process.execPath } },
+    projects: { [project]: { mcpServers: { local: { command: process.execPath } } } },
+  }));
+  const report = await scan({ ...w, clients: ['claude'] });
+  assert.deepEqual(report.clients[0].extensions.map(extension => [extension.name, extension.status]), [['global', 'active']]);
+  assert.ok(report.findings.some(finding => finding.ruleId === 'claude.project-state' && finding.location.path === stateFile));
+
+  await writeFile(stateFile, JSON.stringify({ projects: { [project]: { hasTrustDialogAccepted: true } } }));
+  const ordinary = await scan({ ...w, clients: ['claude'] });
+  assert.ok(!ordinary.findings.some(finding => finding.ruleId === 'claude.project-state'));
+});

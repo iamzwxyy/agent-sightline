@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.30 — 2026-11-15
+
+* Discover Claude local MCP servers using the native saved project identity, including logical/canonical paths, nested and non-Git sessions, wider scan boundaries and linked worktrees.
+* Share project identity with external-import approval and preserve the selected identity throughout a scan.
+* Mark lower-scope user and project definitions as shadowed when a valid local server replaces them, including pending project candidates. Retain fallback after invalid local declarations.
+* Capture separate project-state paths for portable reports, retaining MCP field definitions and source lines while concealing the original checkout path.
+* Verify native local-scope registration, explicit probes, desktop/phone refresh, copied definitions and private-state handling in offline reports.
+
 ## 0.3.29 — 2026-11-15
 
 * Match Claude Code instruction order across personal rules, shared project files, per-directory rules, local files and AGENTS modes.

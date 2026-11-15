@@ -8,6 +8,7 @@ import { applyClaudePolicy, claudeSettingsSource, discoverClaudeManagedSettings 
 import { applyClaudeMcpPolicy, claudeExclusiveMcpLocation, claudeMcpSettingsSource } from './claude-mcp.js';
 import { probeMcp, validateExtensions } from '../core/extensions.js';
 import { resolveClaudeMemory } from './claude-memory.js';
+import { claudeProjectStateRoot } from './claude-project.js';
 
 export const claudeMetadata: AdapterMetadata = {
   id: 'claude', name: 'Claude Code', maturity: 'verified', ruleVersion: '2.1.322', verifiedOn: '2026-11-15',
@@ -125,7 +126,17 @@ const claudeAdapter = adapter(claudeMetadata, discover, async ctx => {
       projectDecision.status = 'active'; projectDecision.reason = 'Project MCP definitions are inspected with their individual approval and validation states.';
     }
   }
-  if (globalMcp) mcp(e, globalMcp, globalMcp.data.projects?.[ctx.repo]?.mcpServers, `projects.${ctx.repo}.mcpServers`, ordinaryMcpStatus);
+  if (globalMcp && !globalMcp.invalid && Object.values(globalMcp.data.projects ?? {}).some(project => plainObject(project) && project.mcpServers !== undefined)) {
+    try {
+      const project = await claudeProjectStateRoot(ctx);
+      const start = e.extensions.length;
+      mcp(e, globalMcp, globalMcp.data.projects?.[project]?.mcpServers, `projects.${project}.mcpServers`, ordinaryMcpStatus);
+      for (const local of e.extensions.slice(start)) if (local.status === 'active') local.reason = 'Local MCP server configured for this project in ~/.claude.json.';
+    } catch {
+      ctx.options.signal?.throwIfAborted();
+      if (ordinaryMcpStatus === 'active') e.findings.push(finding('claude.project-state', 'warn', locate(globalMcp), 'Local MCP project state cannot be resolved.', 'The selected Git directory pointer or shared-worktree metadata could not be inspected.', 'Repair the Git metadata and rerun the inspection.', 'claude'));
+    }
+  }
   sessionEnvironments.set(ctx, applyClaudeMcpPolicy(e, ctx, layers).live);
   await skills(e, ctx, [...(ctx.options.user !== false ? [path.join(ctx.claudeHome, 'skills')] : []), ...ctx.dirs.map(d => path.join(d, '.claude/skills'))], 'first');
   for (const x of e.extensions.filter(x => x.kind === 'skill')) if (['synced', 'anthropic-skills'].includes(x.name)) { x.status = 'ignored'; x.reason = 'Reserved Claude skill directory name.'; }

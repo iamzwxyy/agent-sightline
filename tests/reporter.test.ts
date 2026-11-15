@@ -176,7 +176,8 @@ test('portable Claude project MCP origins conceal repository paths and preserve 
   t.after(() => rm(w.root, { recursive: true, force: true }));
   const repo = await realpath(w.repo);
   const neighbor = repo + '.mcpServers.neighbor';
-  await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ projects: { [repo]: { mcpServers: {
+  const project = process.platform === 'win32' ? repo.replaceAll('\\', '/') : repo;
+  await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ projects: { [project]: { mcpServers: {
     fixture: { command: 'missing-source-fixture', env: { API_TOKEN: 'private-origin-sentinel' } },
   } } } }, null, 2));
   await writeFile(path.join(w.home, '.codex/config.toml'), `[projects.${JSON.stringify(neighbor)}]\ntrust_level="trusted"\n`);

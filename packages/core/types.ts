@@ -74,6 +74,7 @@ export interface ScanOptions {
 export interface Context {
   repo: string; target: string; directory: string; home: string; codexHome: string;
   claudeHome: string; copilotHome: string; dirs: string[]; sources: Source[];
+  claudeProjectRoot?: string;
   codexSkillPaths?: Set<string>;
   codexSkillIncompleteRoots?: Set<string>;
   findings: Finding[]; options: ScanOptions; env: NodeJS.ProcessEnv;

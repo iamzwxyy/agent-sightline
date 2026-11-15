@@ -15,6 +15,7 @@ export async function collectPathMappings(ctx: Context, configuration: unknown[]
   const roots: { path: string; canonical: string; replacement: string }[] = [];
   const directories = [[ctx.repo, '<repo>'], [ctx.home, '~']];
   if (ctx.options.user !== false) directories.push([ctx.codexHome, '<codex-home>'], [ctx.claudeHome, '<claude-home>'], [ctx.copilotHome, '<copilot-home>']);
+  if (ctx.claudeProjectRoot) directories.push([ctx.claudeProjectRoot, '<claude-project>']);
   for (const [directory, fallback] of directories) {
     const canonical = await resolve(directory) ?? directory;
     const parent = roots.find(root => within(root.canonical, canonical));
@@ -27,6 +28,8 @@ export async function collectPathMappings(ctx: Context, configuration: unknown[]
     if (!mappings.has(root.canonical)) mappings.set(root.canonical, root.replacement);
   };
   remember(roots[0]);
+  const claudeProject = roots.find(root => root.path === ctx.claudeProjectRoot);
+  if (claudeProject) remember(claudeProject);
   for (const source of ctx.sources) {
     const canonical = source.canonicalPath;
     if (!canonical || roots.some(root => within(root.canonical, canonical))) continue;

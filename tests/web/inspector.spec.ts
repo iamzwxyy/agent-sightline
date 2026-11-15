@@ -1899,6 +1899,82 @@ test('Claude transport diagnosis follows source correction, refresh and explicit
   } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 
+test('Claude local MCP state survives private source inspection, copying, refresh and portable reports', async ({ page }) => {
+  const w = await workspace({
+    'src/file.ts': '',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: ['--project'] } } }),
+  });
+  const project = process.platform === 'win32' ? w.repo.replaceAll('\\', '/') : await realpath(w.repo);
+  const saveLocal = async (enabled: boolean) => writeFile(path.join(w.home, '.claude.json'), JSON.stringify({
+    mcpServers: { fixture: { command: process.execPath, args: ['--user'] } },
+    projects: { [project]: { mcpServers: enabled ? { fixture: {
+      command: process.execPath, args: ['--local'], env: { LOCAL_SECRET: 'browser-local-mcp-private-value' },
+    } } : {} } },
+    account: { email: 'browser-local-mcp-private@example.test' },
+  }, null, 2));
+  await saveLocal(true);
+  const server = await serve({ ...w, clients: ['claude'], target: 'src/file.ts' });
+  try {
+    await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: {
+      writeText: async (text: string) => { (window as any).copiedDefinition = text; },
+    }, configurable: true }));
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await saveLocal(true);
+      await page.goto(server.url + '#view=extensions');
+      await page.reload();
+      await expect(page.locator('.extension-row .status.active')).toHaveCount(1);
+      await expect(page.locator('.extension-row .status.shadowed')).toHaveCount(2);
+      await page.locator('.extension-row').filter({ has: page.locator('.status.active') }).click();
+      await expect(page.locator('#detail-dialog')).toContainText('Local MCP server configured for this project');
+      await expect(page.locator('#detail-dialog')).toContainText('--local');
+      await expect(page.locator('.extension-origins').getByRole('button', { name: /^command ·/ })).toContainText('~/.claude.json:');
+      await page.getByRole('button', { name: 'Copy definition', exact: true }).click();
+      const copied = JSON.parse(await page.evaluate(() => (window as any).copiedDefinition));
+      expect(copied.args).toEqual(['--local']);
+      expect(copied.env.LOCAL_SECRET).toBe('[REDACTED]');
+      expect(await page.locator('#detail-dialog').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await page.screenshot({ path: test.info().outputPath(`claude-local-mcp-${viewport.width}.png`) });
+      await page.getByRole('button', { name: 'Close details', exact: true }).click();
+
+      const pending = page.waitForEvent('download');
+      await page.getByRole('button', { name: /Export report/ }).click();
+      const file = test.info().outputPath(`claude-local-mcp-${viewport.width}.html`);
+      await (await pending).saveAs(file);
+      const content = await readFile(file, 'utf8');
+      for (const value of [w.repo, await realpath(w.repo), w.home, await realpath(w.home), 'browser-local-mcp-private-value', 'browser-local-mcp-private@example.test']) {
+        expect(content).not.toContain(JSON.stringify(value).slice(1, -1));
+      }
+      await page.context().setOffline(true);
+      await page.goto(pathToFileURL(file).href);
+      await expect(page.locator('.extension-row .status.active')).toHaveCount(1);
+      await expect(page.locator('.extension-row .status.shadowed')).toHaveCount(2);
+      await page.locator('.extension-row').filter({ has: page.locator('.status.active') }).click();
+      await expect(page.locator('#detail-dialog')).toContainText('--local');
+      await page.locator('.extension-origins').getByRole('button', { name: /^command ·/ }).click();
+      await expect(page.locator('#source-title')).toContainText('.claude.json');
+      await expect(page.locator('.code-view')).toHaveAttribute('aria-label', 'Parsed configuration');
+      await expect(page.locator('.code-view')).toContainText('--local');
+      await expect(page.locator('.code-view')).not.toContainText('browser-local-mcp-private@example.test');
+      await expect(page.locator('.code-view')).not.toContainText('browser-local-mcp-private-value');
+      await expect(page.locator('.code-line.highlight')).toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+      await page.context().setOffline(false);
+      await page.goto(server.url + '#view=extensions');
+      await saveLocal(false);
+      await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+      await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+      await expect(page.locator('.extension-row')).toHaveCount(2);
+      await expect(page.locator('.extension-row .status.active')).toHaveCount(1);
+      await saveLocal(true);
+      await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+      await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+      await expect(page.locator('.extension-row .status.shadowed')).toHaveCount(2);
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('Claude ignored MCP fields remain marked and inspectable in live and portable reports', async ({ page }) => {
   const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: {
     remote: { type: 'http', url: 'https://example.test/mcp', command: 'ignored-browser-command', env: { UNUSED: 'browser-ignored-private-sentinel' } },

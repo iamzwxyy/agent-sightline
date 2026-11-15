@@ -8,6 +8,7 @@ import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { chmod, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
+import { html, portable } from '../packages/reporter/index.js';
 import { claudeMetadata } from '../packages/adapters/claude.js';
 import { workspace } from './helpers.js';
 
@@ -319,6 +320,83 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   console.log(JSON.stringify({jsonrpc:'2.0',id:request.id,result}));
 });`;
 
+test('Claude native local MCP registration selects the same project state as Sightline', { timeout: 240000 }, async t => {
+  const scenarios = [
+    { name: 'logical project root' },
+    { name: 'canonical project root', canonical: true },
+    { name: 'nested project session', nested: true },
+    { name: 'non-Git nested session', nested: true, noGit: true },
+    { name: 'wider inspection boundary', nested: true, wide: true },
+    { name: 'logical linked worktree', nested: true, worktree: true },
+    { name: 'canonical linked worktree', nested: true, worktree: true, canonical: true },
+    { name: 'local server replaces user and pending project definitions', nested: true, scopes: true },
+    { name: 'local server replaces user and approved project definitions', nested: true, scopes: true, approved: true },
+  ];
+  for (const scenario of scenarios) await t.test(scenario.name, async scenarioTest => {
+    const w = await workspace({ 'server.mjs': fixtureServer, 'src/file.ts': 'export {};\n' });
+    scenarioTest.after(() => rm(w.root, { recursive: true, force: true }));
+    const env = isolatedEnvironment(w.home);
+    if (scenario.canonical) w.repo = await realpath(w.repo);
+    if (scenario.noGit) await rm(path.join(w.repo, '.git'), { recursive: true });
+    else execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
+    if (scenario.worktree) {
+      execFileSync('git', ['add', '.'], { cwd: w.repo, env });
+      execFileSync('git', ['-c', 'user.name=Local MCP fixture', '-c', 'user.email=fixture@example.test', 'commit', '--quiet', '-m', 'Create the local MCP fixture'], { cwd: w.repo, env });
+      const linked = path.join(scenario.canonical ? await realpath(w.root) : w.root, 'linked');
+      execFileSync('git', ['worktree', 'add', '--quiet', '-b', 'local-mcp-fixture', linked], { cwd: w.repo, env });
+      w.repo = linked;
+    }
+    const directory = scenario.nested ? path.join(w.repo, 'src') : w.repo;
+    const serverFile = path.join(w.repo, 'server.mjs');
+    execFileSync(runtime, ['mcp', 'add', '--scope', 'local', '--transport', 'stdio', 'fixture', '--', process.execPath, serverFile], { cwd: directory, env, stdio: 'pipe' });
+    const stateFile = path.join(w.home, '.claude.json');
+    const state = JSON.parse(await readFile(stateFile, 'utf8'));
+    const keys = Object.keys(state.projects).filter(key => state.projects[key].mcpServers?.fixture);
+    assert.equal(keys.length, 1);
+    if (scenario.scopes) {
+      state.mcpServers = { fixture: { command: process.execPath, args: [serverFile, '--user'] } };
+      await writeFile(path.join(w.repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: [serverFile, '--project'] } } }));
+      if (scenario.approved) {
+        await mkdir(path.join(w.home, '.claude'), { recursive: true });
+        await writeFile(path.join(w.home, '.claude/settings.json'), '{"enableAllProjectMcpServers":true}');
+      }
+    }
+    state.account = { email: 'private-local-mcp-state@example.test' };
+    await writeFile(stateFile, JSON.stringify(state, null, 2));
+    const actual = readServer(directory, env);
+    assert.equal(actual.status, 0, actual.text);
+    assert.match(actual.text, /Scope: Local config/);
+    assert.match(actual.text, /Connected/);
+    const report = await scan({ ...w, repo: scenario.wide ? w.root : w.repo, target: scenario.wide ? 'repo/src/file.ts' : scenario.nested ? 'src/file.ts' : '.', env, clients: ['claude'] });
+    const definitions = report.clients[0].extensions.filter(extension => extension.kind === 'mcp' && extension.name === 'fixture');
+    const local = definitions.find(extension => extension.location.key === `projects.${keys[0]}.mcpServers.fixture`);
+    assert.ok(local, JSON.stringify({ scenario: scenario.name, directory, keys, actual: actual.text }));
+    assert.equal(local.status, 'active');
+    assert.deepEqual(local.config.args, [serverFile]);
+    assert.equal(local.location.key, `projects.${keys[0]}.mcpServers.fixture`);
+    const command = local.origins?.find(origin => origin.key === 'command')?.location;
+    assert.ok(command);
+    assert.ok((await readFile(stateFile, 'utf8')).split('\n')[command.line - 1].includes('"command"'));
+    if (scenario.scopes) {
+      assert.equal(definitions.length, 3);
+      assert.ok(definitions.filter(extension => extension !== local).every(extension => extension.status === 'shadowed'));
+    }
+    assert.ok(!JSON.stringify(report).includes('private-local-mcp-state@example.test'));
+    const snapshot = portable(JSON.parse(JSON.stringify(report)));
+    assert.deepEqual(portable(snapshot), snapshot);
+    for (const exported of [JSON.stringify(snapshot), html(report)]) {
+      for (const privateRoot of [w.root, await realpath(w.root)]) {
+        assert.ok(!exported.includes(JSON.stringify(privateRoot).slice(1, -1)), 'Local MCP export contains its original checkout or home path.');
+      }
+      assert.ok(!exported.includes('private-local-mcp-state@example.test'));
+    }
+    if (scenario.name === 'logical project root') {
+      const probed = await scan({ ...w, env, clients: ['claude'], probe: true });
+      assert.ok(probed.findings.some(finding => finding.ruleId === 'probe.mcp-ready'));
+    }
+  });
+});
+
 test('Claude personal MCP approval retains its scope inside a wider inspection boundary', { timeout: 30000 }, async t => {
   const w = await workspace({ 'server.mjs': fixtureServer }, { '.claude/settings.json': '{"enableAllProjectMcpServers":true}' });
   t.after(() => rm(w.root, { recursive: true, force: true }));
@@ -391,12 +469,13 @@ test('Claude native stdio directory behavior and empty remote endpoints agree wi
   assert.ok(!snapshot.findings.some(finding => finding.severity === 'error'));
 });
 
-test('Claude native scope precedence keeps the user server when an approved project definition is invalid', { timeout: 15000 }, async t => {
+test('Claude native scope precedence keeps the user server when a project or local definition is invalid', { timeout: 60000 }, async t => {
   const w = await workspace({ '.mcp.json': '{}', 'server.mjs': fixtureServer }, { '.claude/settings.json': '{"enableAllProjectMcpServers":true}', '.claude.json': '{}' });
   t.after(() => rm(w.root, { recursive: true, force: true }));
   const env = isolatedEnvironment(w.home);
   await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: [path.join(w.repo, 'server.mjs')] } } }));
-  for (const config of [{ type: 'sdk', name: 'fixture' }, { url: 'https://example.invalid/mcp' }, { command: process.execPath, args: false }, { command: process.execPath, env: false }]) {
+  const invalid = [{ type: 'sdk', name: 'fixture' }, { url: 'https://example.invalid/mcp' }, { command: process.execPath, args: false }, { command: process.execPath, env: false }];
+  for (const config of invalid) {
     await writeFile(path.join(w.repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: config } }));
     const actual = readServer(w.repo, env);
     assert.equal(actual.status, 0, actual.text);
@@ -408,6 +487,22 @@ test('Claude native scope precedence keeps the user server when an approved proj
     assert.match(extensions.find(extension => extension.status === 'active')!.reason, /structural validation/);
     assert.equal(extensions.find(extension => extension.location.path === path.join(w.repo, '.mcp.json'))?.status, 'invalid');
     assert.ok(report.findings.some(finding => finding.severity === 'error' && finding.related.some(location => location.path === path.join(w.home, '.claude.json'))));
+  }
+  await writeFile(path.join(w.repo, '.mcp.json'), '{}');
+  const project = process.platform === 'win32' ? w.repo.replaceAll('\\', '/') : await realpath(w.repo);
+  for (const config of invalid) {
+    await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({
+      mcpServers: { fixture: { command: process.execPath, args: [path.join(w.repo, 'server.mjs')] } },
+      projects: { [project]: { mcpServers: { fixture: config } } },
+    }));
+    const actual = readServer(w.repo, env);
+    assert.equal(actual.status, 0, actual.text);
+    assert.match(actual.text, /Scope: User config/);
+    assert.match(actual.text, /Connected/);
+    const report = await scan({ ...w, env, clients: ['claude'] });
+    assert.equal(report.clients[0].extensions.find(extension => extension.location.key === 'mcpServers.fixture')?.status, 'active');
+    assert.equal(report.clients[0].extensions.find(extension => extension.location.key === `projects.${project}.mcpServers.fixture`)?.status, 'invalid');
+    assert.ok(report.findings.some(finding => finding.severity === 'error' && finding.related.some(location => location.key === 'mcpServers.fixture')));
   }
 });
 

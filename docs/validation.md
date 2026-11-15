@@ -1,5 +1,14 @@
 # Release validation
 
+## v0.3.30
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
+
+* Native CLI registration reproduced six missing-server cases before the correction. Nine local-scope registrations now compare the client-generated project key, chosen MCP server, field origins and portable output with the public scan. The cases cover logical/canonical paths, nested/non-Git sessions, wider inspection boundaries and linked worktrees.
+* A native case also reproduced a pending lower-scope project candidate surviving a known active local definition. The corrected replacement retains all overridden origins. Four invalid local declarations compare native user-server fallback with the public report.
+* SDK cases retain repository-only exclusion and report unresolvable Git metadata while preserving known user configuration. Native local-server probing, raw account-state withholding and portable re-export checks passed.
+* Desktop and phone flows inspect the selected local server, copy its redacted definition, navigate to its parsed private-state projection, export an offline report and refresh after removing/restoring the local entry.
+
 ## v0.3.29
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.

@@ -53,8 +53,9 @@ export function mcp(e: Effective, s: Source, servers: unknown, key: string, stat
   if (status === 'ignored' && !plainObject(servers)) return;
   if (!plainObject(servers)) { e.findings.push(finding('mcp.servers-type', 'error', locate(s, key), 'MCP servers must be an object keyed by server name.', 'The server collection cannot be resolved from this value.', 'Use an object containing named server definitions.', e.client)); return; }
   for (const [name, data] of Object.entries(servers)) {
-    const previousStatuses = merge && status === 'conditional' ? ['active', 'conditional'] : ['active'];
-    const old = e.extensions.findLast(x => x.kind === 'mcp' && x.name === name && previousStatuses.includes(x.status));
+    const previousStatuses = e.client === 'claude' || merge && status === 'conditional' ? ['active', 'conditional'] : ['active'];
+    const candidates = e.extensions.filter(x => x.kind === 'mcp' && x.name === name && previousStatuses.includes(x.status));
+    const old = candidates.at(-1);
     const inherited = merge && old && ['active', 'conditional'].includes(status) ? old : undefined;
     const config = plainObject(data) ? (inherited ? mergeTables(inherited.config, data) : data) : { _invalid: true };
     const reason = status === 'conditional' ? 'Workspace trust or server approval is required.' : inherited ? 'Server fields merge across applicable configuration layers.' : 'Discovered in this client’s MCP configuration.';
@@ -69,8 +70,12 @@ export function mcp(e: Effective, s: Source, servers: unknown, key: string, stat
       }
       extension.status = 'invalid'; extension.reason = errors.at(-1)!.why; e.findings.push(...errors);
     } else if (old && status === 'active') {
-      old.status = 'shadowed'; old.reason = 'Higher-priority server configuration with the same name.';
-      e.findings.push(finding('mcp.redefined', 'warn', locate(s, `${key}.${name}`), `MCP server "${name}" is defined in multiple layers.`, merge ? 'Codex merges server fields; the final command may come from a different layer than its arguments.' : 'The higher-priority definition replaces the whole server entry.', 'Keep one definition or inspect the effective server below.', e.client, [old.location]));
+      const replaced = e.client === 'claude' ? candidates : [old];
+      for (const previous of replaced) {
+        previous.status = 'shadowed';
+        previous.reason = 'Higher-priority server configuration with the same name.';
+      }
+      e.findings.push(finding('mcp.redefined', 'warn', locate(s, `${key}.${name}`), `MCP server "${name}" is defined in multiple layers.`, merge ? 'Codex merges server fields; the final command may come from a different layer than its arguments.' : 'The higher-priority definition replaces the whole server entry.', 'Keep one definition or inspect the effective server below.', e.client, replaced.map(previous => previous.location)));
     } else if (merge && old?.status === 'conditional' && status === 'conditional') {
       old.status = 'shadowed'; old.reason = 'A closer conditional layer includes these fields in its merged server.';
     }

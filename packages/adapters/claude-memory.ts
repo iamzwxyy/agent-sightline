@@ -1,51 +1,14 @@
 import path from 'node:path';
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { realpath } from 'node:fs/promises';
 import type { Context, Effective, Location, Source, Status } from '../core/types.js';
-import { findRepositoryRoot } from '../core/discovery.js';
 import { finding, locate, matches, slash, stripComments, within } from '../core/utils.js';
 import { addInstruction, decision, effectiveValue, imports, pathPatterns, rootOf } from './common.js';
+import { claudeProjectStateRoot } from './claude-project.js';
 
 interface Contribution {
   status: Status;
   reason: string;
   importedFrom?: Location;
-}
-
-async function projectStateRoot(ctx: Context): Promise<string> {
-  const discovered = await findRepositoryRoot(ctx.directory, ctx.options.signal);
-  const canonical = await realpath(discovered);
-  const root = process.platform === 'win32' ? discovered : canonical;
-  const project = process.platform === 'win32' ? slash(root) : root;
-  const marker = path.join(root, '.git');
-  const markerInfo = await stat(marker).catch(error => {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-    throw error;
-  });
-  if (!markerInfo?.isFile()) return project;
-  if (markerInfo.size > 2 * 1024 * 1024) throw new Error('Git metadata exceeds the inspection limit.');
-  const pointer = await readFile(marker, { encoding: 'utf8', signal: ctx.options.signal });
-  if (!pointer.startsWith('gitdir: ')) throw new Error('Invalid Git directory pointer.');
-  const target = pointer.slice(8).replace(/[\r\n]+$/, '');
-  if (!target) throw new Error('Empty Git directory pointer.');
-  const directory = path.resolve(root, target);
-  if (!(await stat(directory)).isDirectory()) throw new Error('Git directory pointer requires a directory.');
-  const commonFile = path.join(directory, 'commondir');
-  let common: string;
-  try {
-    const info = await stat(commonFile);
-    if (info.size > 2 * 1024 * 1024) throw new Error('Git metadata exceeds the inspection limit.');
-    common = await readFile(commonFile, { encoding: 'utf8', signal: ctx.options.signal });
-  } catch (error) {
-    ctx.options.signal?.throwIfAborted();
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return project;
-    throw error;
-  }
-  const shared = common.replace(/[\r\n]+$/, '');
-  if (!shared) throw new Error('Empty shared Git directory pointer.');
-  const main = path.dirname(path.resolve(directory, shared));
-  // Native Windows worktree detection retains the launch entry through short-path aliases.
-  if (process.platform === 'win32' && root.toLowerCase() !== canonical.toLowerCase()) return project;
-  return process.platform === 'win32' ? slash(main) : realpath(main);
 }
 
 export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: string, state?: Source): Promise<void> {
@@ -59,7 +22,7 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
     approval = {};
     if (!state || state.invalid) return approval;
     try {
-      const projectKey = await projectStateRoot(ctx);
+      const projectKey = await claudeProjectStateRoot(ctx);
       if (Object.hasOwn(state.data.projects ?? {}, projectKey)) {
         approval.approved = state.data.projects[projectKey]?.hasClaudeMdExternalIncludesApproved;
         const origin = locate(state, `projects.${projectKey}.hasClaudeMdExternalIncludesApproved`);
