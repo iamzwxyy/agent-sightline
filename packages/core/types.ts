@@ -56,7 +56,7 @@ export interface InstructionBlock {
 }
 export interface Report {
   schemaVersion: '1.0'; tool: { name: string; version: string };
-  inputs?: { codexProfile?: string };
+  inputs?: { codexProfile?: string; sessionDirectory?: string };
   discovery?: Discovery;
   pathMappings?: { path: string; replacement: string }[];
   repository: string; target: string; sessionDirectory: string;
@@ -67,13 +67,14 @@ export interface Report {
 }
 export interface ScanOptions {
   repo?: string; target?: string; clients?: ClientId[]; home?: string; user?: boolean;
+  sessionDirectory?: string;
   codexProfile?: string;
   trust?: 'auto' | 'trusted' | 'untrusted'; system?: boolean;
   env?: NodeJS.ProcessEnv; maxFiles?: number; maxUserFiles?: number;
   signal?: AbortSignal;
 }
 export interface Context {
-  repo: string; target: string; directory: string; home: string; codexHome: string;
+  repo: string; target: string; directory: string; targetDirectory?: string; home: string; codexHome: string;
   claudeHome: string; copilotHome: string; geminiHome: string; dirs: string[]; sources: Source[];
   claudeProjectRoot?: string;
   geminiTrustRoot?: string;

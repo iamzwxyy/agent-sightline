@@ -293,6 +293,18 @@ test('Codex user-only settings retain their scope inside a wider inspection boun
   assert.equal(report.sources.find(source => source.path === path.join(w.home, '.codex/config.toml'))?.scope, 'user');
 });
 
+test('Codex relative and empty configuration homes agree with native startup', { timeout: 60000 }, async t => {
+  const w = await workspace({ 'docs/config-home/config.toml': 'model="relative-home-model"\n[analytics]\nenabled=false\n', 'src/file.ts': '' }, { '.codex/config.toml': 'model="fallback-home-model"\n[analytics]\nenabled=false\n' });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  for (const home of ['config-home', '']) {
+    const env = { ...isolatedEnvironment(w.home), CODEX_HOME: home };
+    const native = await readRuntime(path.join(w.repo, 'docs'), env);
+    const report = JSON.parse(execFileSync(process.execPath, ['--import', import.meta.resolve('tsx'), path.resolve('packages/cli/index.ts'), 'explain', 'src/file.ts', '--repo', w.repo, '--session-dir', 'docs', '--client', 'codex', '--json'], { cwd: w.root, env, encoding: 'utf8', timeout: 30000 }));
+    assert.equal(report.clients[0].settings.find((setting: any) => setting.key === 'model' && setting.status === 'active')?.value, native.config.model);
+    assert.equal(native.config.model, home ? 'relative-home-model' : 'fallback-home-model');
+  }
+});
+
 for (const fixture of cases) test(`Codex runtime configuration matches Sightline for ${fixture.name}`, { timeout: 30000 }, async t => {
   const w = await workspace(fixture.files);
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
@@ -414,11 +426,19 @@ test('Codex native instruction requests match inheritance, selection and byte bu
     userFiles?: Record<string, string>;
     config?: string;
     cwd?: string;
+    target?: string;
+    sessionDirectory?: string;
     profile?: string;
     trust?: 'untrusted';
     directories?: string[];
     expected: string;
   }[] = [
+    {
+      name: 'an explicit root session keeps nested target instructions outside startup',
+      cwd: '.', target: 'src/example.ts', sessionDirectory: '.',
+      files: { 'AGENTS.md': 'ROOT\n', 'src/AGENTS.md': 'NESTED\n' },
+      expected: 'GLOBAL' + separator + 'ROOT\n',
+    },
     {
       name: 'global trimming and root-to-session newline preservation',
       files: { 'AGENTS.md': 'ROOT\r\n', 'src/AGENTS.md': 'NESTED\n' },
@@ -616,7 +636,7 @@ ${trust}`;
       nativeInstructions = text.slice(text.indexOf(marker) + marker.length, -'\n</INSTRUCTIONS>'.length);
     }
     assert.equal(nativeInstructions, fixture.expected, 'The native fixture produced unexpected instructions.');
-    const report = await scan({ repo, home, env, target: cwd + '/example.ts', clients: ['codex'], codexProfile: fixture.profile });
+    const report = await scan({ repo, home, env, target: fixture.target ?? cwd + '/example.ts', sessionDirectory: fixture.sessionDirectory, clients: ['codex'], codexProfile: fixture.profile });
     assert.equal(report.clients[0].instructions, nativeInstructions);
     assert.equal(report.clients[0].instructionBytes, Buffer.byteLength(nativeInstructions));
   });

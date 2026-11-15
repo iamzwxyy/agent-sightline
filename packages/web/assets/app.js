@@ -49,7 +49,11 @@
     return element;
   };
   const short = (value, repository = report.repository) => value.startsWith(repository) ? value.slice(repository.length).replace(/^[/\\]/, '').replace(/\\/g, '/') || '.' : value.replace(/\\/g, '/');
-  const initialTarget = short(report.target);
+  const initialParameters = new URLSearchParams(location.search);
+  const initialTarget = initialParameters.get('target');
+  const initialSession = initialParameters.get('session');
+  let selectedTarget = initialTarget;
+  let selectedSession = initialSession;
   const basename = value => value.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'Workspace';
   const selectedClient = () => report.clients.find(client => client.client === state.client) ?? report.clients[0];
   const statusNames = { active: 'Loaded', conditional: 'Conditional', shadowed: 'Shadowed', ignored: 'Not loaded', truncated: 'Truncated', invalid: 'Invalid' };
@@ -1038,6 +1042,14 @@
     $('extension-list').replaceChildren(extensions.length ? list : empty('No extensions in this view', 'Choose another type or client to see its discovered definitions.'));
   }
   function renderScope() {
+    const directory = short(report.sessionDirectory);
+    $('session-button').textContent = `Starts in ${directory}`;
+    $('session-button').title = `Agent starting directory ${directory}`;
+    $('session-current').textContent = directory;
+    $('session-mode').textContent = report.inputs?.sessionDirectory === undefined ? 'Follows the target directory.' : 'Kept when you select another target.';
+    $('session-form').hidden = !live;
+    $('session-directory').placeholder = directory;
+    $('session-reset').hidden = report.inputs?.sessionDirectory === undefined;
     const notes = [...report.assumptions];
     if (report.discovery) {
       const entryUnit = report.discovery.repositoryEntries === 1 ? 'entry' : 'entries';
@@ -1107,28 +1119,37 @@
     else if (errors || warnings) content.push(button('Review findings', () => $('review-findings').click(), 'text-button'));
     $('refresh-summary').replaceChildren(...content);
   }
-  async function refresh(target = short(report.target), fromHistory = false) {
+  async function refresh(target = selectedTarget, fromHistory = false, session = selectedSession) {
     if (!live) return;
     const request = ++state.request;
     scanController?.abort(); scanController = new AbortController();
     $('refresh-summary').replaceChildren();
     $('error').hidden = true; $('inspect').disabled = true; $('refresh').disabled = true;
+    $('session-error').hidden = true; $('session-apply').disabled = true; $('session-reset').disabled = true;
     $('scan-status').classList.remove('failed', 'partial'); $('scan-status').classList.add('scanning');
     $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', 'Inspecting…'));
     let succeeded = false;
     try {
-      const query = new URLSearchParams({ target, trust: $('trust').value, profile: $('codex-profile').value.trim(), include: 'html' });
+      const query = new URLSearchParams({ trust: $('trust').value, profile: $('codex-profile').value.trim(), include: 'html' });
+      if (target !== null) query.set('target', target);
+      if (session !== null) query.set('session', session);
       const response = await fetch(`/api/scan?${query}`, { signal: scanController.signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       if (request !== state.request) return;
       report = data.report;
+      selectedTarget = target;
+      selectedSession = session;
       exportDocument = data.html;
       renderRefreshSummary();
       readLocation();
       if (fromHistory) clearExcludingSourceSearch();
       const address = new URL(location.href);
-      address.searchParams.set('target', short(report.target)); address.searchParams.set('trust', $('trust').value); address.searchParams.set('profile', report.inputs?.codexProfile ?? '');
+      if (target === null) address.searchParams.delete('target');
+      else address.searchParams.set('target', target);
+      if (session === null) address.searchParams.delete('session');
+      else address.searchParams.set('session', session);
+      address.searchParams.set('trust', $('trust').value); address.searchParams.set('profile', report.inputs?.codexProfile ?? '');
       history.replaceState(null, '', address);
       render();
       succeeded = true;
@@ -1137,9 +1158,11 @@
     } finally {
       if (request === state.request) {
         $('inspect').disabled = false; $('refresh').disabled = false;
+        $('session-apply').disabled = false; $('session-reset').disabled = false;
         renderScanStatus(succeeded);
       }
     }
+    return succeeded;
   }
   document.querySelectorAll('[data-view]').forEach(element => { element.onclick = () => navigate(element.dataset.view); });
   document.querySelector('.brand').onclick = event => { event.preventDefault(); navigate('overview'); };
@@ -1194,6 +1217,22 @@
     if (document.body.classList.contains('nav-open')) setNavigationOpen(false);
     $('scope-dialog').showModal();
   };
+  $('session-button').onclick = () => {
+    $('session-error').hidden = true;
+    $('session-directory').value = '';
+    $('scope-dialog').showModal();
+    if (live) $('session-directory').focus();
+  };
+  async function changeSession(session) {
+    if (await refresh(selectedTarget, false, session)) $('scope-dialog').close();
+    else if (!$('error').hidden) { $('session-error').textContent = $('error').textContent; $('session-error').hidden = false; }
+  }
+  $('session-form').onsubmit = event => {
+    event.preventDefault();
+    const directory = $('session-directory').value.trim();
+    if (directory) void changeSession(directory);
+  };
+  $('session-reset').onclick = () => void changeSession('');
   $('help-button').onclick = () => $('help-dialog').showModal();
   $('target-form').onsubmit = event => { event.preventDefault(); closeTargetPicker(); void refresh($('target').value.trim() || '.'); };
   $('target').onfocus = () => searchTargetFiles(true);
@@ -1300,9 +1339,10 @@
     if (live) {
       const params = new URLSearchParams(location.search);
       const target = params.get('target') ?? initialTarget;
+      const session = params.get('session') ?? initialSession;
       const trust = params.get('trust') ?? initialTrust;
       const profile = params.get('profile') ?? initialProfile;
-      if (target !== short(report.target) || trust !== $('trust').value || profile !== (report.inputs?.codexProfile ?? '')) { $('trust').value = trust; $('codex-profile').value = profile; void refresh(target, true); return; }
+      if (target !== selectedTarget || session !== selectedSession || trust !== $('trust').value || profile !== (report.inputs?.codexProfile ?? '')) { $('trust').value = trust; $('codex-profile').value = profile; void refresh(target, true, session); return; }
     }
     clearExcludingSourceSearch();
     render();

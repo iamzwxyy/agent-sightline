@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.41 — 2026-11-16
+
+* Choose the agent starting directory independently of the inspected target with --session-dir and the local scan-scope controls.
+* Retain the selected directory through target changes, refresh, browser history, standalone export and offline re-export. Restore automatic target-directory selection from the same dialog.
+* Match native Codex startup instructions and Copilot rule/MCP discovery with a fixed nested target. Model Claude descendant instruction loading, startup/on-demand rule order and sibling-target exclusion using native scripted requests.
+* Resolve relative configuration-home overrides from the modeled native working directory and use client defaults for empty values. Select the custom Claude state file under CLAUDE_CONFIG_DIR.
+* Preserve input field names when private configuration values coincide with those names. Keep live request paths available when displayed diagnostic paths are redacted.
+
 ## 0.3.40 — 2026-11-16
 
 * Conceal private numeric and TOML date/time values when copied into instructions, comparisons and report text.

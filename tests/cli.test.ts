@@ -331,6 +331,45 @@ test('explicit CLI repository boundaries retain their own relative target paths'
     assert.equal(report.target, args[0] === 'explain' ? path.join(directory, 'a.ts') : directory);
   }
 });
+
+test('CLI starting directories resolve from the invocation or explicit repository boundary', async t => {
+  const w = await workspace({ 'AGENTS.md': 'Root instructions.', 'src/AGENTS.md': 'Nested instructions.', 'src/file.ts': '' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const repo = await realpath(w.repo);
+  const flags = ['--client', 'codex', '--no-user', '--trust', 'trusted', '--json'];
+  for (const args of [
+    ['explain', 'file.ts', '--session-dir', '..', ...flags],
+    ['explain', 'src/file.ts', '--repo', repo, '--session-dir', '.', ...flags],
+  ]) {
+    const result = run(args, path.join(repo, 'src'));
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.sessionDirectory, repo);
+    assert.equal(report.target, path.join(repo, 'src/file.ts'));
+    assert.equal(report.clients[0].instructions, 'Root instructions.');
+  }
+  const invalid = run(['--session-dir', 'src/file.ts', ...flags], repo);
+  assert.equal(invalid.status, 2);
+  assert.ok(invalid.stderr.includes('Session directory must be an existing directory.'));
+});
+
+test('implicit UI startup keeps its configured directory after repository normalization', { timeout: 15000 }, async t => {
+  const w = await workspace({ 'src/AGENTS.md': 'Starting-directory instructions.', 'docs/file.ts': '' });
+  const repo = await realpath(w.repo);
+  const child = spawn(process.execPath, ['--import', import.meta.resolve('tsx'), cli, 'ui', '--no-open', '--session-dir', '.', '--client', 'codex', '--no-user', '--trust', 'trusted'], { cwd: path.join(repo, 'src'), stdio: ['ignore', 'pipe', 'pipe'] });
+  const closed = once(child, 'close');
+  t.after(async () => { child.kill(); await closed; await rm(w.root, { recursive: true, force: true, maxRetries: 5 }); });
+  const url = await new Promise<string>((resolve, reject) => {
+    let output = '';
+    const timer = setTimeout(() => reject(new Error('UI startup timed out.')), 10000);
+    child.stdout.on('data', chunk => { output += chunk; const match = output.match(/http:\/\/127\.0\.0\.1:\d+/); if (match) { clearTimeout(timer); resolve(match[0]); } });
+    child.once('error', error => { clearTimeout(timer); reject(error); });
+    child.once('close', () => { clearTimeout(timer); reject(new Error('UI exited before startup.')); });
+  });
+  const report = await (await fetch(url + '/api/scan?target=docs/file.ts')).json();
+  assert.equal(report.sessionDirectory, path.join(repo, 'src'));
+  assert.equal(report.clients[0].instructions, 'Starting-directory instructions.');
+});
 test('CLI explain/diff/adapters/help/version and options after commands', async t => {
   const w = await workspace({ 'src/a.ts': '', 'AGENTS.md': 'shared' }); t.after(() => rm(w.root, { recursive: true, force: true }));
   const e = run(['explain', 'src/a.ts', '--client', 'codex', '--no-user', '--trust', 'trusted'], w.repo); assert.equal(e.status, 0); assert.ok(e.stdout.includes('Effective instructions')); assert.ok(e.stdout.includes('AGENTS.md:1'));

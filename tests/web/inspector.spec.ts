@@ -15,6 +15,106 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('starting-directory selection survives targets, history, refresh and portable re-export', async ({ page }) => {
+  const w = await workspace({
+    'AGENTS.md': 'Root instructions.', 'src/AGENTS.md': 'Nested instructions.', 'docs/AGENTS.md': 'Docs instructions.',
+    'src/file.ts': '', 'docs/file.ts': '',
+  });
+  const server = await serve({ ...w, target: 'src/file.ts', user: false, clients: ['codex'], trust: 'trusted' });
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const selectDirectory = async (directory: string) => {
+    await page.locator('#session-button').click();
+    await page.getByLabel('Change starting directory', { exact: true }).fill(directory);
+    await page.getByRole('button', { name: 'Apply directory', exact: true }).click();
+    await expect(page.locator('#scope-dialog')).not.toBeVisible();
+  };
+  try {
+    await page.goto(server.url);
+    await expect(page.locator('#session-button')).toHaveText('Starts in src');
+    await page.getByRole('button', { name: 'Inspect Codex instructions', exact: true }).click();
+    await selectDirectory('.');
+    await expect(page.locator('#sources')).not.toContainText('src/AGENTS.md');
+    await expect(page.locator('#session-button')).toHaveText('Starts in .');
+    await page.getByRole('button', { name: 'Compare clients', exact: true }).click();
+    await selectDirectory('docs');
+    await expect(page.locator('#session-button')).toHaveText('Starts in docs');
+    await page.goBack();
+    await expect(page.locator('#session-button')).toHaveText('Starts in .');
+    await page.goForward();
+    await expect(page.locator('#session-button')).toHaveText('Starts in docs');
+    await page.reload();
+    await expect(page.locator('#session-button')).toHaveText('Starts in docs');
+    await page.locator('#session-button').click();
+    await page.getByLabel('Change starting directory', { exact: true }).fill('missing');
+    await page.getByRole('button', { name: 'Apply directory', exact: true }).click();
+    await expect(page.locator('#session-error')).toContainText('existing starting directory');
+    await expect(page.locator('#session-current')).toHaveText('docs');
+    await page.getByRole('button', { name: 'Use target directory', exact: true }).click();
+    await expect(page.locator('#scope-dialog')).not.toBeVisible();
+    await expect(page.locator('#session-button')).toHaveText('Starts in src');
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await selectDirectory('.');
+      await page.locator('#target').fill('docs/file.ts');
+      await page.locator('#inspect').click();
+      await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+      await expect(page.locator('#session-button')).toHaveText('Starts in .');
+      await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+      await expect(page.locator('#refresh-summary')).toContainText('Refresh complete.');
+      await page.locator('#session-button').click();
+      await expect(page.locator('#session-mode')).toHaveText('Kept when you select another target.');
+      await page.screenshot({ path: test.info().outputPath(`starting-directory-${viewport.width}.png`), fullPage: true });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.getByRole('button', { name: 'Close scan details', exact: true }).click();
+      const downloading = page.waitForEvent('download');
+      await page.locator('#export').click();
+      const file = test.info().outputPath(`starting-directory-${viewport.width}.html`);
+      await (await downloading).saveAs(file);
+      const exported = await readFile(file, 'utf8');
+      expect(exported).not.toContain(w.repo);
+      expect(exported).not.toContain(w.home);
+      const captured = JSON.parse(exported.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
+      expect(captured.inputs.sessionDirectory).toBe('<repo>');
+      expect(captured.target).toBe('<repo>/docs/file.ts');
+      await page.context().setOffline(true);
+      await page.goto(pathToFileURL(file).href);
+      await expect(page.locator('#session-button')).toHaveText('Starts in .');
+      await page.locator('#session-button').click();
+      await expect(page.locator('#session-form')).not.toBeVisible();
+      await expect(page.locator('#session-current')).toHaveText('.');
+      await page.getByRole('button', { name: 'Close scan details', exact: true }).click();
+      const reexporting = page.waitForEvent('download');
+      await page.locator('#export').click();
+      const reexported = await readFile((await (await reexporting).path())!, 'utf8');
+      expect(JSON.parse(reexported.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1])).toEqual(captured);
+      await page.context().setOffline(false);
+      await page.goto(server.url);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('starting-directory rescans keep request paths when displayed paths are redacted', async ({ page }) => {
+  const w = await workspace({ 'src/file.ts': '', 'src/AGENTS.md': 'Nested instructions.' });
+  await writeFile(path.join(w.repo, '.mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { DIRECTORY: path.join(w.repo, 'src'), TARGET: 'src/file.ts' } } } }));
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url + '?target=src/file.ts&session=src');
+    await expect(page.locator('#session-button')).toContainText('[REDACTED]');
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const scanning = page.waitForResponse(response => new URL(response.url()).pathname === '/api/scan');
+      await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+      const response = await scanning;
+      expect(response.status()).toBe(200);
+      expect(new URL(response.url()).searchParams.get('session')).toBe('src');
+      expect(new URL(response.url()).searchParams.get('target')).toBe('src/file.ts');
+      await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+      await page.reload();
+    }
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('line comparison locates a changed instruction and retains context and source navigation online and offline', async ({ page }) => {
   const w = await workspace({
     'AGENTS.md': '# Project\nRun npm test.\nKeep changes focused.',

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import type { Context, Effective, Location, Source, Status } from '../core/types.js';
-import { finding, locate, matches, slash, stripComments, within } from '../core/utils.js';
+import { finding, locate, matches, parents, slash, stripComments, within } from '../core/utils.js';
 import { addInstruction, decision, effectiveValue, imports, pathPatterns, rootOf } from './common.js';
 import { claudeProjectStateRoot } from './claude-project.js';
 
@@ -36,6 +36,7 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
     return approval;
   };
   const sessionDirectory = await realpath(ctx.directory);
+  const targetInSession = within(sessionDirectory, await realpath(ctx.targetDirectory ?? ctx.directory));
   const expanded = new Set<string>();
   const scopedRules: { source: Source; patterns: string[]; contribution: Contribution }[] = [];
 
@@ -108,35 +109,50 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
       else await expandSource(source, { status: 'active', reason: 'Rule discovered in the user/project rules directory.' });
     }
   };
+  const applyScopedRules = (rules: typeof scopedRules) => {
+    for (const { source, patterns, contribution } of rules) {
+      if (!targetInSession) {
+        decision(e, source, 'ignored', 'Target is outside the session starting directory. Claude does not load on-demand instructions for this file.', '', contribution.importedFrom);
+        continue;
+      }
+      const baseDir = source.scope === 'user' ? ctx.directory : rootOf(source, '.claude');
+      if (!matches(slash(path.relative(baseDir, ctx.target)), patterns, true)) {
+        decision(e, source, 'ignored', 'paths frontmatter does not match the target file.', '', contribution.importedFrom);
+        continue;
+      }
+      const conditional = source.body.length > 40000;
+      if (conditional) e.findings.push(finding('claude.conditional-truncation', 'warn', locate(source), 'Path-scoped rule may be truncated by the model-specific character limit.', '2.1.309+ uses 40,000 characters for 200K context and larger limits for 1M context.', 'Shorten the rule or verify the session context limit.', 'claude'));
+      addInstruction(e, source, conditional ? 'On-demand rule exceeds the 200K-context per-file character limit; exact truncation depends on model/context size.' : contribution.reason + ' Its paths frontmatter matches the opened target file after startup instructions load.', stripComments(source.body), conditional ? 'conditional' : contribution.status);
+      if (contribution.importedFrom) e.decisions.at(-1)!.importedFrom = contribution.importedFrom;
+    }
+  };
   for (const source of ctx.sources.filter(source => source.kind === 'instructions' && (source.scope === 'system' || source.path === path.join(ctx.claudeHome, 'CLAUDE.md')) && source.owners.includes('claude'))) {
     if (mode !== 'managed-only' || source.scope === 'system') await expandSource(source, { status: 'active', reason: source.scope === 'system' ? 'Managed instruction source.' : 'User instructions for every project.' });
     else decision(e, source, 'ignored', 'Project instruction mode is managed-only.');
   }
   await loadRules();
-  for (const directory of ctx.dirs) {
+  const targetDirectories = targetInSession ? parents(ctx.repo, ctx.targetDirectory ?? ctx.directory) : [];
+  const directories = [...ctx.dirs, ...targetDirectories.filter(directory => !ctx.dirs.includes(directory))];
+  let startupRuleCount = scopedRules.length;
+  for (const directory of directories) {
+    const onDemand = !ctx.dirs.includes(directory);
     for (const name of ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', '.claude/AGENTS.md']) {
-      if (name === 'CLAUDE.local.md') await loadRules(directory);
+      if (name === 'CLAUDE.local.md' && !onDemand) await loadRules(directory);
       const source = ctx.sources.find(source => source.path === path.join(directory, name));
       if (!source) continue;
       const agent = name.includes('AGENTS.md');
-      if (mode === 'managed-only' || agent && !useAgents) {
-        decision(e, source, 'ignored', agent ? 'AGENTS.md is disabled by the instruction mode or an ancestor CLAUDE.md/CLAUDE.local.md.' : 'Project instruction mode is managed-only.');
+      if (mode === 'managed-only' || agent && (!useAgents || onDemand)) {
+        decision(e, source, 'ignored', mode === 'managed-only' ? 'Project instruction mode is managed-only.' : onDemand ? 'AGENTS.md discovery follows the session starting directory chain.' : 'AGENTS.md is disabled by the instruction mode or an ancestor CLAUDE.md/CLAUDE.local.md.');
         continue;
       }
       if (excluded(source)) { decision(e, source, 'ignored', 'Excluded by claudeMdExcludes.'); continue; }
-      await expandSource(source, { status: 'active', reason: 'Instruction file in the target directory’s ancestor chain.' });
+      await expandSource(source, { status: 'active', reason: onDemand ? 'Instruction discovered when the target is opened after startup.' : 'Instruction file in the session starting directory’s ancestor chain.' });
     }
+    if (onDemand) {
+      await loadRules(directory);
+      applyScopedRules(scopedRules.splice(startupRuleCount));
+    } else startupRuleCount = scopedRules.length;
   }
-  for (const { source, patterns, contribution } of scopedRules) {
-    const baseDir = source.scope === 'user' ? ctx.directory : rootOf(source, '.claude');
-    if (!matches(slash(path.relative(baseDir, ctx.target)), patterns, true)) {
-      decision(e, source, 'ignored', 'paths frontmatter does not match the target file.', '', contribution.importedFrom);
-      continue;
-    }
-    const conditional = source.body.length > 40000;
-    if (conditional) e.findings.push(finding('claude.conditional-truncation', 'warn', locate(source), 'Path-scoped rule may be truncated by the model-specific character limit.', '2.1.309+ uses 40,000 characters for 200K context and larger limits for 1M context.', 'Shorten the rule or verify the session context limit.', 'claude'));
-    addInstruction(e, source, conditional ? 'On-demand rule exceeds the 200K-context per-file character limit; exact truncation depends on model/context size.' : contribution.reason + ' Its paths frontmatter matches the opened target file after startup instructions load.', stripComments(source.body), conditional ? 'conditional' : contribution.status);
-    if (contribution.importedFrom) e.decisions.at(-1)!.importedFrom = contribution.importedFrom;
-  }
-  e.notes.push(`Project instruction mode: ${mode}. AGENTS.md fallback: ${useAgents ? 'enabled' : 'disabled'}.`, 'User rules precede project instructions. Unconditional rules load before local instruction files at each directory level. Matching path-scoped rules follow startup instructions.', 'Project external-import approval uses the native project identity in ~/.claude.json. Linked worktrees use the shared Git project identity. A standard .git directory selects the main checkout, and a separate Git directory supplies its own key. Windows launch aliases that differ from the canonical path retain their own entry. Windows project keys use forward slashes. Pending approval stays conditional, and saved rejection skips the import.', 'Ancestors outside --repo, session source switches, accounts, plugins and managed cloud policies are outside this static report.');
+  applyScopedRules(scopedRules);
+  e.notes.push(`Project instruction mode: ${mode}. AGENTS.md fallback: ${useAgents ? 'enabled' : 'disabled'}.`, 'User rules precede project instructions. Startup rules load before local instruction files. Descendant instructions load when a target inside the starting directory is opened, with unconditional rules after local files. Newly discovered scoped rules precede matching startup scoped rules. Targets outside the starting directory add no on-demand instructions.', 'Project external-import approval uses the native project identity in the selected .claude.json state file. Linked worktrees use the shared Git project identity. A standard .git directory selects the main checkout, and a separate Git directory supplies its own key. Windows launch aliases that differ from the canonical path retain their own entry. Windows project keys use forward slashes. Pending approval stays conditional, and saved rejection skips the import.', 'Ancestors outside --repo, session source switches, accounts, plugins and managed cloud policies are outside this static report.');
 }

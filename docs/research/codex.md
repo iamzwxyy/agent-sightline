@@ -76,3 +76,7 @@ The cases cover global trimming, CRLF and trailing-newline preservation, root/ne
 `npm run test:codex` runs these instruction requests alongside configuration reads and Skill inventory comparisons. All twenty-one bodies matched the pinned native client after the Unicode whitespace correction. Five added cases reproduced earlier differences in global override selection and project budget consumption.
 
 Codex uses Rust str::trim for global trimming and instruction emptiness. Its Unicode White_Space classification retains U+FEFF BYTE ORDER MARK and removes U+0085 NEXT LINE. The earlier JavaScript trim classification reversed those two decisions. Sightline now uses the native classification for Codex global selection, accumulated content and project budget accounting. The native requests verify leading/global BOM content, BOM-only global overrides, next-line-only global fallback and project budget effects for both characters. Empty-source notices explain that loading and override effects follow each client's rules. [Rust trimming contract](https://doc.rust-lang.org/std/primitive.str.html#method.trim)
+
+## Independent starting directory
+
+Native comparisons retain a nested target while changing the starting directory. Startup configuration and instruction discovery follow the starting location. Relative and empty configuration-home overrides are compared with the pinned client and the public CLI launched from a different process directory. Empty overrides use the default user configuration location.

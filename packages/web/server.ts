@@ -9,8 +9,8 @@ import { redact } from '../core/redact.js';
 import { searchTargets } from './targets.js';
 
 export async function serve(options: ScanOptions, port = 0): Promise<{ url: string; close: () => Promise<void> }> {
-  const { repo, target } = await makeContext(options);
-  options = { ...options, repo, target };
+  const { repo, target, directory } = await makeContext(options);
+  options = { ...options, repo, target, sessionDirectory: options.sessionDirectory === undefined ? undefined : directory };
   await scan(options);
   const server = createServer(async (req, res) => {
     const address = server.address() as AddressInfo;
@@ -24,7 +24,7 @@ export async function serve(options: ScanOptions, port = 0): Promise<{ url: stri
     res.once('close', () => controller.abort());
     try {
       if (url.pathname === '/') {
-        const report = await scan({ ...options, target: url.searchParams.get('target') ?? options.target, trust: requestedTrust(url, options.trust), codexProfile: requestedProfile(url, options.codexProfile), signal });
+        const report = await scan({ ...options, target: url.searchParams.get('target') ?? options.target, sessionDirectory: requestedSession(url, options.sessionDirectory), trust: requestedTrust(url, options.trust), codexProfile: requestedProfile(url, options.codexProfile), signal });
         res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(html(report, { live: true, portable: false }));
       }
       else if (url.pathname === '/demo/') {
@@ -32,15 +32,15 @@ export async function serve(options: ScanOptions, port = 0): Promise<{ url: stri
         res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(html(report));
       }
       else if (url.pathname === '/api/scan') {
-        const target = url.searchParams.get('target') ?? '.';
+        const target = url.searchParams.get('target') ?? options.target ?? '.';
         if (target.length > 2048) throw new Error('Target path is too long.');
         const trust = requestedTrust(url, options.trust);
-        const report = await scan({ ...options, target, trust, codexProfile: requestedProfile(url, options.codexProfile), signal });
+        const report = await scan({ ...options, target, trust, sessionDirectory: requestedSession(url, options.sessionDirectory), codexProfile: requestedProfile(url, options.codexProfile), signal });
         res.setHeader('Content-Type', 'application/json');
         if (url.searchParams.get('include') === 'html') res.end(JSON.stringify({ report: redact(report), html: html(report) }));
         else res.end(json(report));
       } else if (url.pathname === '/api/export') {
-        const report = await scan({ ...options, trust: requestedTrust(url, options.trust), target: url.searchParams.get('target') ?? options.target, codexProfile: requestedProfile(url, options.codexProfile), signal });
+        const report = await scan({ ...options, trust: requestedTrust(url, options.trust), target: url.searchParams.get('target') ?? options.target, sessionDirectory: requestedSession(url, options.sessionDirectory), codexProfile: requestedProfile(url, options.codexProfile), signal });
         res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Content-Disposition', 'attachment; filename="agent-sightline-report.html"'); res.end(html(report));
       } else if (url.pathname === '/api/targets') {
         const query = url.searchParams.get('q') ?? '';
@@ -52,13 +52,19 @@ export async function serve(options: ScanOptions, port = 0): Promise<{ url: stri
       } else { res.writeHead(404); res.end('Not found.'); }
     } catch {
       if (res.destroyed) return;
-      const error = url.pathname === '/api/targets' ? 'Cannot search repository files. Use up to 2048 characters and a result limit from 1 to 1500.' : 'Cannot inspect target or profile. Choose a path inside the repository with an existing parent directory. Profile names use letters, numbers, hyphens or underscores and require Codex user configuration.';
+      const error = url.pathname === '/api/targets' ? 'Cannot search repository files. Use up to 2048 characters and a result limit from 1 to 1500.' : 'Cannot inspect target, starting directory or profile. Choose a path inside the repository with an existing parent directory. Choose an existing starting directory inside the repository. Profile names use letters, numbers, hyphens or underscores and require Codex user configuration.';
       res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error }));
     }
   });
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', () => resolve()); });
   const address = server.address() as AddressInfo;
   return { url: `http://127.0.0.1:${address.port}`, close: () => new Promise((resolve, reject) => { server.close(e => e ? reject(e) : resolve()); server.closeAllConnections(); }) };
+}
+
+function requestedSession(url: URL, fallback: ScanOptions['sessionDirectory']): ScanOptions['sessionDirectory'] {
+  const value = url.searchParams.get('session');
+  if (value !== null && value.length > 2048) throw new Error('Starting directory path is too long.');
+  return value === null ? fallback : value || undefined;
 }
 
 function requestedProfile(url: URL, fallback: ScanOptions['codexProfile']): ScanOptions['codexProfile'] {

@@ -8,10 +8,10 @@ import { applyClaudePolicy, claudeSettingsSource, discoverClaudeManagedSettings 
 import { applyClaudeMcpPolicy, claudeExclusiveMcpLocation, claudeMcpSettingsSource } from './claude-mcp.js';
 import { probeMcp, validateExtensions } from '../core/extensions.js';
 import { resolveClaudeMemory } from './claude-memory.js';
-import { claudeProjectStateRoot } from './claude-project.js';
+import { claudeProjectStateRoot, claudeStatePath } from './claude-project.js';
 
 export const claudeMetadata: AdapterMetadata = {
-  id: 'claude', name: 'Claude Code', maturity: 'verified', ruleVersion: '2.1.322', verifiedOn: '2026-11-15',
+  id: 'claude', name: 'Claude Code', maturity: 'verified', ruleVersion: '2.1.322', verifiedOn: '2026-11-16',
   evidence: ['https://code.claude.com/docs/en/memory', 'https://code.claude.com/docs/en/settings', 'https://code.claude.com/docs/en/mcp', 'https://code.claude.com/docs/en/skills', 'https://code.claude.com/docs/en/permissions', 'https://code.claude.com/docs/en/hooks', 'https://code.claude.com/docs/en/managed-settings', 'https://code.claude.com/docs/en/settings-reference', 'https://code.claude.com/docs/en/managed-mcp'],
   limitations: [
     'Repository boundary excludes filesystem ancestors outside --repo; they may contribute instructions.',
@@ -25,7 +25,7 @@ export const claudeMetadata: AdapterMetadata = {
 async function discover(ctx: Context): Promise<Source[]> {
   if (ctx.options.user !== false) {
     for (const [n, kind] of [['settings.json', 'settings'], ['CLAUDE.md', 'instructions']] as const) await ctx.read(path.join(ctx.claudeHome, n), 'claude', kind, 'user');
-    await ctx.read(path.join(ctx.home, '.claude.json'), 'claude', 'mcp', 'user');
+    await ctx.read(claudeStatePath(ctx), 'claude', 'mcp', 'user');
     await readUserTree(ctx, path.join(ctx.claudeHome, 'rules'), 'claude', 'rules', '.md');
     await readUserTree(ctx, path.join(ctx.claudeHome, 'skills'), 'claude', 'skill', 'SKILL.md');
   }
@@ -92,7 +92,7 @@ const claudeAdapter = adapter(claudeMetadata, discover, async ctx => {
     hooks(e, s, s.data.hooks, 'active'); permissions(e, s, 'active', { status: grantStatus, reason: grantReason }, s.permissionLocations);
   }
   const mode = layers.find(source => source.path === user?.path && !source.invalid)?.data.pluginConfigs?.['cc-plugin-agents-md@builtin']?.options?.instructionFiles ?? 'claude-md-or-agents-md';
-  const globalMcp = ctx.options.user !== false ? ctx.sources.find(s => s.path === path.join(ctx.home, '.claude.json')) : undefined;
+  const globalMcp = ctx.options.user !== false ? ctx.sources.find(s => s.path === claudeStatePath(ctx)) : undefined;
   await resolveClaudeMemory(e, ctx, mode, globalMcp);
   const exclusiveMcp = claudeExclusiveMcpLocation(ctx);
   const ordinaryMcpStatus = exclusiveMcp ? 'ignored' : 'active';

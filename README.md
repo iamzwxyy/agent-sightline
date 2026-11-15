@@ -7,18 +7,18 @@ One file. Several agents. Different instructions. Sightline shows every discover
 Open a terminal in your project folder and run one command to inspect your repository in the browser.
 
 ```sh
-npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.40/agent-sightline-0.3.40.tgz ui
+npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.41/agent-sightline-0.3.41.tgz ui
 ```
 
 For repeated use, install the CLI. The bundled demo provides a sample workspace with intentional configuration problems.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.40/agent-sightline-0.3.40.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.41/agent-sightline-0.3.41.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.40.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.41.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -30,7 +30,7 @@ agent-sightline explain src/payments/refund.ts --client codex --trust trusted
 agent-sightline diff src/payments/refund.ts --clients codex,claude,copilot --trust trusted
 ```
 
-Targets can be source files that do not yet exist if their parent directory exists. The explanation models a fresh session launched in the target’s directory and opening that file; it does not claim to observe an already-running agent.
+Targets can be source files that do not yet exist if their parent directory exists. The explanation models a fresh session launched in the selected starting directory, which defaults to the target’s directory, and opening that file; it does not claim to observe an already-running agent.
 
 The first terminal summary lists loaded instruction sources, effective bytes, conditional sources and truncation for each detected client. In the browser overview, choose **Inspect conditional loading** to open the source and its loading requirements.
 
@@ -45,6 +45,8 @@ Syntax and configuration findings follow each client's target discovery scope. F
 * **Deterministic findings:** invalid formats/duplicate keys, override selection, missing/circular/repeated imports, unmatched globs, byte truncation, MCP drift and missing commands/env/cwd, skill conflicts and proven deny/ask permission masking.
 * **Comparison:** exact paragraphs grouped by receiving client, original source ranges and repeated loading occurrences, plus extension definitions for each client.
 * **Shareable output:** terminal, stable JSON and a redacted standalone HTML inspector, plus CI finding thresholds.
+
+Model an agent launched from the repository root while inspecting a nested file with `agent-sightline explain src/payments/refund.ts --session-dir . --client codex --trust trusted`. The local inspector also lets you choose the starting directory, keep it while changing targets and restore automatic target-directory selection.
 
 Select the same Codex profile used in your agent session with `agent-sightline explain src/payments/refund.ts --client codex --profile review --trust trusted`. This loads `$CODEX_HOME/review.config.toml` after user defaults and before project settings, with winning and replaced source lines. The browser inspector also supports selecting and clearing profiles.
 
@@ -125,7 +127,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.3.40.tgz
+npm install -g ./agent-sightline-0.3.41.tgz
 agent-sightline demo
 ```
 

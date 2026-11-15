@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { AdapterMetadata, ClientId, Context, Source } from '../core/types.js';
 import { readUserTree } from '../core/discovery.js';
-import { cmp, finding, locate, matches, slash, within } from '../core/utils.js';
+import { cmp, finding, locate, matches, parents, slash, within } from '../core/utils.js';
 import { adapter, addInstruction, base, decision, finish, mcp, pathPatterns, rootOf, settings } from './common.js';
 export { gemini, geminiMetadata } from './gemini.js';
 
@@ -21,11 +21,12 @@ async function discover(ctx: Context, id: ClientId): Promise<Source[]> {
 }
 export const cursor = adapter(cursorMetadata, ctx => discover(ctx, 'cursor'), async ctx => {
   const e = await base(cursorMetadata, ctx);
-  for (const d of ctx.dirs) {
+  const directories = parents(ctx.repo, ctx.targetDirectory ?? ctx.directory);
+  for (const d of directories) {
     const s = ctx.sources.find(s => s.path === path.join(d, 'AGENTS.md')); if (s) addInstruction(e, s, 'AGENTS.md applies to this directory and its children.');
   }
   for (const s of ctx.sources.filter(s => s.kind === 'rules' && s.owners.includes('cursor')).sort((a, b) => cmp(a.path, b.path))) {
-    if (!ctx.dirs.includes(rootOf(s, '.cursor'))) continue;
+    if (!directories.includes(rootOf(s, '.cursor'))) continue;
     if (!s.path.endsWith('.mdc')) { decision(e, s, 'ignored', 'Cursor project rules require .mdc extension.'); e.findings.push(finding('cursor.rule-extension', 'warn', locate(s), 'Cursor ignores a plain .md project rule.', 'The project rules loader requires .mdc.', 'Rename to .mdc and add frontmatter, or use AGENTS.md.', 'cursor')); continue; }
     if (s.data.alwaysApply !== undefined && typeof s.data.alwaysApply !== 'boolean') e.findings.push(finding('cursor.frontmatter-type', 'error', locate(s, 'alwaysApply'), 'alwaysApply must be boolean.', 'Quoted booleans do not select the always-apply rule type.', 'Use alwaysApply: true or false.', 'cursor'));
     const patterns = pathPatterns(e, s, 'globs');

@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.41
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
+
+* Independent starting-directory fixtures cover root, nested and sibling startup with a fixed target, default target-directory behavior, invalid and escaping paths, input metadata and portable paths. The implicit CLI UI fixture retains its selected directory after Git-root normalization.
+* Forty-two native Claude instruction scenarios capture startup and post-Read requests. They compare ordered instruction markers and canonical file lists, including multiple descendant levels, startup/on-demand local-file and rule order, nested AGENTS exclusion, sibling-target behavior and personal rule bases. Native Codex startup requests and Copilot rule/MCP inventories retain a fixed nested target while changing the starting directory.
+* Native Codex, Claude and Copilot comparisons cover relative and empty configuration-home overrides. Public CLI checks launch from a different process directory. The custom Claude state file withholds account-state previews.
+* The 599-case core suite completed with 597 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The installed package smoke check verifies the independent starting directory for all three primary clients and its portable input metadata. Production dependency audit reported zero vulnerabilities.
+* All 109 Chromium browser cases and three focused WebKit flows passed. Desktop and phone starting-directory controls passed automated WCAG AA checks and visual review. Browser journeys cover directory selection, invalid inputs, target changes, Back/Forward, reload, refresh, displayed-path redaction, standalone export and offline re-export.
+
 ## v0.3.40
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

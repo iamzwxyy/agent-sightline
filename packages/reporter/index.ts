@@ -35,7 +35,7 @@ export function terminal(report: Report, mode = 'scan'): string {
   const summaryFindings = mode === 'scan' ? groups.map(group => group.item) : report.findings;
   const counts = { error: 0, warn: 0, info: 0 };
   for (const finding of summaryFindings) counts[finding.severity]++;
-  const lines = ['Agent Sightline', '────────────────────────────────────────────────────────', `Repository: ${report.repository}`, `Target:     ${report.target}`, ''];
+  const lines = ['Agent Sightline', '────────────────────────────────────────────────────────', `Repository: ${report.repository}`, `Target:     ${report.target}`, `Starts in:  ${report.sessionDirectory}`, ''];
   if (report.inputs?.codexProfile) lines.push(`Codex profile: ${report.inputs.codexProfile}`, '');
   const detected = report.clients.filter(c => c.detected);
   const clientNames = detected.map(client => client.metadata.name + (client.metadata.maturity === 'experimental' ? ' (experimental)' : ''));

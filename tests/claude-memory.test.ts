@@ -21,6 +21,8 @@ interface MemoryScenario {
   files: Record<string, string>;
   home?: Record<string, string>;
   directory?: string;
+  sessionDirectory?: string;
+  target?: string;
   approval?: boolean;
   approvalScope?: 'project' | 'directory' | 'main' | 'shared';
   approvalKey?: 'logical' | 'canonical' | 'native';
@@ -43,6 +45,66 @@ function blockText(block: any): string {
 test('Claude instruction order and imports agree with the pinned native request', { timeout: 240000 }, async t => {
   assert.equal(require(platformPackage + '/package.json').version, claudeMetadata.ruleVersion);
   const scenarios: MemoryScenario[] = [
+    {
+      name: 'root session reads nested instructions after startup', directory: '.', sessionDirectory: '.', readTarget: true,
+      files: {
+        'CLAUDE.md': 'ROOT_INSTRUCTION\n@docs/policy.md\n',
+        'docs/policy.md': 'IMPORTED_INSTRUCTION\n',
+        'src/CLAUDE.md': 'CHILD_INSTRUCTION\n',
+        'src/.claude/CLAUDE.md': 'CHILD_DOT_INSTRUCTION\n',
+        'src/CLAUDE.local.md': 'CHILD_LOCAL_INSTRUCTION\n',
+        'src/.claude/rules/all.md': 'CHILD_RULE_INSTRUCTION\n',
+        'src/.claude/rules/ts.md': '---\npaths: ["**/*.ts"]\n---\nCHILD_SCOPED_INSTRUCTION\n',
+        '.claude/rules/scoped.md': '---\npaths: ["src/**/*.ts"]\n---\nROOT_SCOPED_INSTRUCTION\n',
+      },
+    },
+    {
+      name: 'root session loads several nested instruction and scoped-rule levels', directory: '.', sessionDirectory: '.', target: 'src/deep/file.ts', readTarget: true,
+      files: {
+        'CLAUDE.md': 'ROOT_INSTRUCTION\n',
+        'src/CLAUDE.md': 'CHILD_INSTRUCTION\n',
+        'src/.claude/rules/scoped.md': '---\npaths: ["**/*.ts"]\n---\nCHILD_SCOPED_INSTRUCTION\n',
+        'src/deep/CLAUDE.md': 'DEEP_INSTRUCTION\n',
+        'src/deep/.claude/rules/scoped.md': '---\npaths: ["**/*.ts"]\n---\nDEEP_SCOPED_INSTRUCTION\n',
+        'src/deep/file.ts': 'export {};\n',
+        '.claude/rules/scoped.md': '---\npaths: ["src/**/*.ts"]\n---\nROOT_SCOPED_INSTRUCTION\n',
+      },
+    },
+    {
+      name: 'root Claude instructions and nested AGENTS after reading a target', directory: '.', sessionDirectory: '.', readTarget: true,
+      files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', 'src/AGENTS.md': 'CHILD_AGENT_INSTRUCTION\n' },
+    },
+    {
+      name: 'startup AGENTS fallback precedes nested Claude instructions', directory: '.', sessionDirectory: '.', readTarget: true,
+      files: { 'AGENTS.md': 'ROOT_AGENT_INSTRUCTION\n', 'src/CLAUDE.md': 'CHILD_INSTRUCTION\n', 'src/AGENTS.md': 'CHILD_AGENT_INSTRUCTION\n' },
+    },
+    {
+      name: 'root AGENTS and nested AGENTS after reading a target', directory: '.', sessionDirectory: '.', readTarget: true,
+      files: { 'AGENTS.md': 'ROOT_AGENT_INSTRUCTION\n', 'src/AGENTS.md': 'CHILD_AGENT_INSTRUCTION\n' },
+    },
+    {
+      name: 'combined mode keeps nested on-demand instruction discovery', directory: '.', sessionDirectory: '.', readTarget: true,
+      home: { '.claude/settings.json': '{"pluginConfigs":{"cc-plugin-agents-md@builtin":{"options":{"instructionFiles":"claude-md-and-agents-md"}}}}' },
+      files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', 'AGENTS.md': 'ROOT_AGENT_INSTRUCTION\n', 'src/CLAUDE.md': 'CHILD_INSTRUCTION\n', 'src/AGENTS.md': 'CHILD_AGENT_INSTRUCTION\n' },
+    },
+    {
+      name: 'a sibling session reads target instructions with its startup context', directory: 'docs', sessionDirectory: 'docs', readTarget: true,
+      files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', 'docs/CLAUDE.md': 'SESSION_INSTRUCTION\n', 'src/CLAUDE.md': 'CHILD_INSTRUCTION\n' },
+    },
+    {
+      name: 'personal rule paths use the starting session location', directory: 'src', sessionDirectory: 'src', readTarget: true,
+      home: { '.claude/rules/scoped.md': '---\npaths: ["src/**/*.ts"]\n---\nPERSONAL_SCOPED_INSTRUCTION\n' },
+      files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n' },
+    },
+    {
+      name: 'sibling session scoped rules distinguish their target-relative bases', directory: 'docs', sessionDirectory: 'docs', readTarget: true,
+      home: { '.claude/rules/scoped.md': '---\npaths: ["../src/**/*.ts"]\n---\nPERSONAL_SCOPED_INSTRUCTION\n' },
+      files: {
+        'CLAUDE.md': 'ROOT_INSTRUCTION\n', 'docs/CLAUDE.md': 'SESSION_INSTRUCTION\n',
+        'docs/.claude/rules/relative.md': '---\npaths: ["../src/**/*.ts"]\n---\nRELATIVE_SCOPED_INSTRUCTION\n',
+        'docs/.claude/rules/repository.md': '---\npaths: ["src/**/*.ts"]\n---\nREPOSITORY_SCOPED_INSTRUCTION\n',
+      },
+    },
     {
       name: 'native project path spelling selects saved import approval',
       directory: 'src', approval: true, approvalKey: 'native',
@@ -298,8 +360,8 @@ test('Claude instruction order and imports agree with the pinned native request'
     }
     await writeFile(path.join(w.home, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true, projects, account: { email: 'private-state-sentinel@example.test' } }));
     requests = [];
-    readPath = scenario.readTarget ? path.join(w.repo, 'src/file.ts') : undefined;
-    const child = spawn(runtime, ['-p', 'Run the isolated fixture.', '--output-format', 'json', '--no-session-persistence', '--strict-mcp-config', '--tools', readPath ? 'Read' : '', '--system-prompt', 'Fixture system.'], { env, cwd: directory, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    readPath = scenario.readTarget ? path.join(w.repo, scenario.target ?? 'src/file.ts') : undefined;
+    const child = spawn(runtime, ['-p', 'Run the isolated fixture.', '--output-format', 'json', '--no-session-persistence', '--strict-mcp-config', '--tools', readPath ? 'Read' : '', '--allowedTools', 'Read', '--system-prompt', 'Fixture system.'], { env, cwd: directory, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let output = '', errors = '';
     child.stdout.on('data', chunk => { output += chunk; });
     child.stderr.on('data', chunk => { errors += chunk; });
@@ -314,7 +376,7 @@ test('Claude instruction order and imports agree with the pinned native request'
         assert.ok(!startup.includes('SCOPED_INSTRUCTION'));
       }
       const memory = requests.at(-1).messages.filter((message: any) => message.role === 'user').flatMap((message: any) => message.content).map(blockText).join('\n');
-      const report = await scan({ ...w, target: scenario.directory ? 'src/file.ts' : '.', clients: ['claude'], trust: 'trusted' });
+      const report = await scan({ ...w, target: scenario.target ?? (scenario.directory ? 'src/file.ts' : '.'), sessionDirectory: scenario.sessionDirectory, clients: ['claude'], trust: 'trusted' });
       assert.ok(!JSON.stringify(report).includes('private-state-sentinel@example.test'));
       const nativeState = JSON.parse(await readFile(path.join(w.home, '.claude.json'), 'utf8'));
       const nativeMessages = requests.at(-1).messages;

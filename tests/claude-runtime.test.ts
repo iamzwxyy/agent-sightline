@@ -42,6 +42,26 @@ test('the MCP conformance checks use the pinned Claude binary', async t => {
   assert.equal(execFileSync(runtime, ['--version'], { env: isolatedEnvironment(w.home), encoding: 'utf8' }).trim(), claudeMetadata.ruleVersion + ' (Claude Code)');
 });
 
+test('Claude relative and empty configuration homes select the native personal state file', async t => {
+  const w = await workspace({
+    'docs/config-home/.claude.json': '{"mcpServers":{"fixture":{"type":"http","url":"http://127.0.0.1:1/relative"}},"account":{"email":"custom-home-private-sentinel"}}',
+    'src/file.ts': '',
+  }, { '.claude.json': '{"mcpServers":{"fixture":{"type":"http","url":"http://127.0.0.1:1/fallback"}}}' });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  for (const home of ['config-home', '']) {
+    const env = { ...isolatedEnvironment(w.home), CLAUDE_CONFIG_DIR: home };
+    const native = readServer(path.join(w.repo, 'docs'), env);
+    assert.equal(native.status, 0, native.text);
+    const reportText = execFileSync(process.execPath, ['--import', import.meta.resolve('tsx'), path.resolve('packages/cli/index.ts'), 'explain', 'src/file.ts', '--repo', w.repo, '--session-dir', 'docs', '--client', 'claude', '--json'], { cwd: w.root, env, encoding: 'utf8', timeout: 30000 });
+    const report = JSON.parse(reportText);
+    const server = report.clients[0].extensions.find((extension: any) => extension.name === 'fixture' && extension.status === 'active');
+    assert.equal(server?.config.url, 'http://127.0.0.1:1/' + (home ? 'relative' : 'fallback'));
+    assert.ok(native.text.includes(server.config.url));
+    assert.ok(!reportText.includes('custom-home-private-sentinel'));
+    assert.equal(report.sources.find((source: any) => path.basename(source.path) === '.claude.json').preview, undefined);
+  }
+});
+
 interface PolicyScenario {
   name: string; user: Record<string, unknown>; project?: Record<string, unknown>; local?: Record<string, unknown>;
   allowed: boolean; trusted?: boolean; tracked?: boolean; status?: string; rule?: string; removed?: boolean;

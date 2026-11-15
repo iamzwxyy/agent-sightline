@@ -85,6 +85,19 @@ h3 { font-size: 14px; font-weight: 600; }
 .text-button { color: #5f6b54; font-size: 12px; padding: 5px 0; display: inline-flex; gap: 10px; align-items: center; }
 .text-button:hover { color: var(--accent); }
 .target-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; padding: 17px 35px; border-bottom: 1px solid var(--line); }
+.session-button { max-width: 240px; padding: 7px 0; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.session-button:hover { color: var(--ink); }
+.session-scope { margin-top: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.session-path { margin: 8px 0 4px; font-family: var(--mono); overflow-wrap: anywhere; }
+#session-mode, #session-help { color: var(--muted); font-size: 12px; }
+#session-form { margin-top: 16px; }
+#session-form label { display: block; margin-bottom: 6px; }
+#session-directory { width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 5px; background: var(--canvas); font-size: 16px; }
+#session-help { margin-top: 6px; }
+#session-form .dialog-actions { flex-wrap: wrap; }
+#session-form .button { min-height: 44px; }
+#session-error { margin-top: 12px; padding: 10px; }
+@media (max-width: 760px) { .session-button { max-width: 100%; min-height: 44px; } }
 #profile-form { display: flex; align-items: center; gap: 8px; color: #626b59; font-size: 12px; }
 #codex-profile { width: 120px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; font-size: 12px; }
 #target-form { position: relative; display: flex; align-items: center; gap: 10px; border: 1px solid #dfe2d9; border-radius: 5px; height: 34px; flex: 1; min-width: 0; max-width: 740px; padding: 0 6px 0 11px; background: #fdfdfc; }

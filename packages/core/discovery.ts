@@ -98,18 +98,26 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
   try { if ((await stat(target)).isDirectory()) directory = target; } catch { if (!path.extname(target) && options.target?.endsWith('/')) directory = target; }
   // A not-yet-created source file is a valid target, but its parent must exist.
   if (!(await stat(directory)).isDirectory()) throw new Error('Target parent directory does not exist. Choose an existing directory.');
+  const targetDirectory = directory;
+  if (options.sessionDirectory !== undefined) {
+    directory = path.resolve(options.repo === undefined ? cwd : repo, options.sessionDirectory);
+    if (!within(repo, directory)) throw new Error('Session directory must be inside --repo. Choose a repository-relative directory.');
+    const info = await stat(directory).catch(() => undefined);
+    if (!info?.isDirectory()) throw new Error('Session directory must be an existing directory.');
+    if (!within(await realpath(repo), await realpath(directory))) throw new Error('Session directory must resolve inside --repo. Choose a repository-relative directory.');
+  }
   const env = options.env ?? process.env;
   const home = path.resolve(options.home ?? os.homedir());
+  const workingDirectory = process.platform === 'win32' ? directory : await realpath(directory);
   let geminiHome = path.join(home, '.gemini');
   if (!options.home && env.GEMINI_CLI_HOME) {
-    const workingDirectory = process.platform === 'win32' ? directory : await realpath(directory);
     geminiHome = path.resolve(workingDirectory, env.GEMINI_CLI_HOME, '.gemini');
   }
   const ctx: Context = {
-    repo, target, directory, home, env, options, discovery, dirs: parents(repo, directory), sources: [], findings: [],
-    codexHome: options.home ? path.join(home, '.codex') : path.resolve(env.CODEX_HOME ?? path.join(home, '.codex')),
-    claudeHome: options.home ? path.join(home, '.claude') : path.resolve(env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude')),
-    copilotHome: options.home ? path.join(home, '.copilot') : path.resolve(env.COPILOT_HOME ?? path.join(home, '.copilot')),
+    repo, target, directory, targetDirectory, home, env, options, discovery, dirs: parents(repo, directory), sources: [], findings: [],
+    codexHome: !options.home && env.CODEX_HOME ? path.resolve(workingDirectory, env.CODEX_HOME) : path.join(home, '.codex'),
+    claudeHome: !options.home && env.CLAUDE_CONFIG_DIR ? path.resolve(workingDirectory, env.CLAUDE_CONFIG_DIR) : path.join(home, '.claude'),
+    copilotHome: !options.home && env.COPILOT_HOME ? path.resolve(workingDirectory, env.COPILOT_HOME) : path.join(home, '.copilot'),
     geminiHome,
     read: async () => null,
   };

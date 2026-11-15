@@ -57,6 +57,33 @@ test('profile selection and clearing survive local scans, reloads and portable e
   assert.equal((await fetch(server.url + '/api/scan?profile=..%2Fprivate')).status, 400);
 });
 
+test('starting-directory selection, fallback and clearing survive server scans, reloads and exports', async t => {
+  const w = await workspace({ 'AGENTS.md': 'Root instructions.', 'src/AGENTS.md': 'Nested instructions.', 'src/a.ts': '', 'docs/a.ts': '' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const server = await serve({ ...w, target: 'src/a.ts', sessionDirectory: '.', clients: ['codex'], user: false, trust: 'trusted' });
+  t.after(server.close);
+  const initial = await (await fetch(server.url + '/api/scan')).json();
+  assert.equal(initial.sessionDirectory, w.repo);
+  assert.equal(initial.target, path.join(w.repo, 'src/a.ts'));
+  assert.equal(initial.clients[0].instructions, 'Root instructions.');
+  const automatic = await (await fetch(server.url + '/api/scan?session=')).json();
+  assert.equal(automatic.inputs?.sessionDirectory, undefined);
+  assert.equal(automatic.sessionDirectory, path.join(w.repo, 'src'));
+  assert.ok(automatic.clients[0].instructions.includes('Nested instructions.'));
+  const sibling = await (await fetch(server.url + '/api/scan?target=docs/a.ts&session=src')).json();
+  assert.equal(sibling.sessionDirectory, path.join(w.repo, 'src'));
+  assert.ok(sibling.clients[0].instructions.includes('Nested instructions.'));
+  for (const route of ['/?target=docs/a.ts&session=src', '/api/export?target=docs/a.ts&session=src']) {
+    const content = await (await fetch(server.url + route)).text();
+    const report = JSON.parse(content.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
+    assert.equal(report.inputs.sessionDirectory, route.startsWith('/api/export') ? '<repo>/src' : path.join(w.repo, 'src'));
+    assert.ok(report.clients[0].instructions.includes('Nested instructions.'));
+  }
+  for (const session of ['missing', 'src/a.ts', '..', 'x'.repeat(2049)]) {
+    assert.equal((await fetch(server.url + '/api/scan?' + new URLSearchParams({ session }))).status, 400);
+  }
+});
+
 test('scan responses can pair their report with a portable HTML snapshot from the same inspection', async t => {
   const w = await workspace({ 'CLAUDE.md': 'Instructions before editing.\nAPI_KEY=private-export-sentinel' });
   t.after(() => rm(w.root, { recursive: true, force: true }));

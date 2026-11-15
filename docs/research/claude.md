@@ -64,7 +64,7 @@ A native MCP health check verifies personal enableAllProjectMcpServers while the
 
 ## Native instruction requests
 
-Thirty-three isolated scenarios run Claude Code 2.1.322 against a loopback scripted Messages API. The scenarios capture thirty-seven requests and check the fixed completion, request count, empty permission-denial lists, ordered instruction markers and canonical file paths against the public scan. Target-opening scenarios issue a Read call and compare the next request, while checking that path-scoped bodies were absent from the initial request.
+Isolated scenarios run Claude Code 2.1.322 against a loopback scripted Messages API. The scenarios capture startup and post-Read requests and check the fixed completion, request count, empty permission-denial lists, ordered instruction markers and canonical file paths against the public scan. Target-opening scenarios issue a Read call and compare the next request, while checking that path-scoped bodies were absent from the initial request.
 
 The matrix covers personal/project rules, per-directory local files, AGENTS fallback and combined/managed-only modes, recursive imports, rule imports, empty path lists, unmatched scoped parents and imported files with their own path metadata. Scoped-rule imports appear in startup discovery, and matching parent bodies arrive after the target is opened.
 
@@ -73,3 +73,9 @@ Project imports resolving outside the session directory use hasClaudeMdExternalI
 Conditional or rejected imports can later load through an unconditional rule-discovery path. The account-state preview stays withheld, and the captured private-state marker is absent from the public report. Run npm run test:claude to reproduce the instruction and existing MCP/permission comparisons.
 
 Linked-worktree identity also has a primary public report. The pinned local comparison verifies the behavior used here. [Claude Code issue 89460](https://github.com/anthropics/claude-code/issues/89460)
+
+## Independent starting directory
+
+Native request comparisons launch at the repository root with a nested target, and in a sibling directory with an explicitly permitted Read. Descendant CLAUDE.md, .claude/CLAUDE.md and CLAUDE.local.md load on demand. On-demand unconditional rules follow the local file, and matching newly discovered scoped rules precede scoped rules discovered at startup. Startup rules retain their rules-before-local order. Nested AGENTS files stay outside on-demand loading, including combined instruction mode. Reading a target outside the starting directory adds no on-demand instructions or scoped-rule bodies.
+
+Relative and empty CLAUDE_CONFIG_DIR values have isolated native MCP comparisons. A custom directory contains both user settings and the selected .claude.json state file. Empty values select the ordinary OS-home locations. CLI comparisons launch from a different process directory with an explicit --session-dir and withhold account-state previews.

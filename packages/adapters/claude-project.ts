@@ -4,6 +4,10 @@ import type { Context } from '../core/types.js';
 import { findRepositoryRoot } from '../core/discovery.js';
 import { slash } from '../core/utils.js';
 
+export function claudeStatePath(ctx: Context): string {
+  return path.join(!ctx.options.home && ctx.env.CLAUDE_CONFIG_DIR ? ctx.claudeHome : ctx.home, '.claude.json');
+}
+
 async function projectStateRoot(ctx: Context): Promise<string> {
   const discovered = await findRepositoryRoot(ctx.directory, ctx.options.signal);
   const canonical = await realpath(discovered);

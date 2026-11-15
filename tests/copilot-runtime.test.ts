@@ -435,12 +435,47 @@ test('Copilot native shared-rule inventory keeps root and cwd sources with their
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
   const env = isolatedEnvironment(w.home);
   execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
-  const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'instruction', 'list', '--json'], { cwd: path.join(w.repo, 'src/deep'), env, encoding: 'utf8', timeout: 30000 }));
-  assert.deepEqual(native.map((entry: any) => entry.label).sort(), ['all.md', 'local.md', 'ts.md']);
-  assert.deepEqual(native.find((entry: any) => entry.label === 'ts.md').applyTo, ['src/**/*.ts']);
-  const report = await scan({ ...w, clients: ['copilot'], target: 'src/deep/refund.ts' });
-  assert.equal(report.clients[0].decisions.filter(decision => decision.kind === 'rules' && decision.status === 'active').length, native.length);
-  assert.ok(report.clients[0].instructions.includes('Root TypeScript rule.'));
-  assert.ok(report.clients[0].instructions.includes('Current-directory rule.'));
-  assert.ok(!report.clients[0].instructions.includes('Intermediate rule'));
+  for (const sessionDirectory of ['.', 'src', 'src/deep']) {
+    const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'instruction', 'list', '--json'], { cwd: path.join(w.repo, sessionDirectory), env, encoding: 'utf8', timeout: 30000 }));
+    const expected = ['all.md', 'ts.md', ...sessionDirectory === 'src/deep' ? ['local.md'] : sessionDirectory === 'src' ? ['intermediate.md'] : []];
+    assert.deepEqual(native.map((entry: any) => entry.label).sort(), expected.sort());
+    assert.deepEqual(native.find((entry: any) => entry.label === 'ts.md').applyTo, ['src/**/*.ts']);
+    const report = await scan({ ...w, clients: ['copilot'], target: 'src/deep/refund.ts', sessionDirectory });
+    assert.deepEqual(report.clients[0].decisions.filter(decision => decision.kind === 'rules' && decision.status === 'active').map(decision => path.basename(decision.path)).sort(), expected.sort());
+    assert.ok(report.clients[0].instructions.includes('Root TypeScript rule.'));
+  }
+});
+
+test('Copilot workspace MCP selection follows the starting directory with a fixed nested target', async t => {
+  const w = await workspace({
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', args: ['--root-fixture'] } } }),
+    'src/.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', args: ['--nested-fixture'] } } }),
+    'src/file.ts': '',
+  }, { '.copilot/config.json': '{}' });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  const env = isolatedEnvironment(w.home);
+  execFileSync('git', ['-c', 'init.templateDir=', 'init', '--quiet', w.repo], { env });
+  await writeFile(path.join(w.home, '.copilot/config.json'), JSON.stringify({ trustedFolders: [await realpath(w.repo)] }));
+  for (const sessionDirectory of ['.', 'src']) {
+    const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd: path.join(w.repo, sessionDirectory), env, encoding: 'utf8', timeout: 30000 }));
+    const report = await scan({ ...w, target: 'src/file.ts', sessionDirectory, clients: ['copilot'] });
+    const server = report.clients[0].extensions.find(extension => extension.name === 'fixture' && extension.status === 'active');
+    assert.deepEqual(server?.config.args, native.mcpServers.fixture.args);
+  }
+});
+
+test('Copilot relative and empty configuration homes agree with native startup', async t => {
+  const w = await workspace({
+    'docs/config-home/mcp-config.json': '{"mcpServers":{"relative":{"command":"node","args":[]}}}',
+    'src/file.ts': '',
+  }, { '.copilot/mcp-config.json': '{"mcpServers":{"fallback":{"command":"node","args":[]}}}' });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  for (const home of ['config-home', '']) {
+    const env = { ...isolatedEnvironment(w.home), COPILOT_HOME: home };
+    const native = JSON.parse(execFileSync(process.execPath, [runtime, '--no-auto-update', 'mcp', 'list', '--json'], { cwd: path.join(w.repo, 'docs'), env, encoding: 'utf8', timeout: 30000 }));
+    const report = JSON.parse(execFileSync(process.execPath, ['--import', import.meta.resolve('tsx'), path.resolve('packages/cli/index.ts'), 'explain', 'src/file.ts', '--repo', w.repo, '--session-dir', 'docs', '--client', 'copilot', '--json'], { cwd: w.root, env, encoding: 'utf8', timeout: 30000 }));
+    const name = home ? 'relative' : 'fallback';
+    assert.equal(native.mcpServers[name].enabled, true);
+    assert.equal(report.clients[0].extensions.find((extension: any) => extension.name === name)?.status, 'active');
+  }
 });

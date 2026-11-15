@@ -20,6 +20,7 @@ const failOn = (s: string): Severity | 'none' => s === 'none' ? s : severity(s);
 program.name('agent-sightline').description('See what your coding agent actually sees. Local, read-only configuration diagnostics.')
   .version(VERSION).argument('[repository]', 'inspection boundary (default: nearest Git root or current directory)')
   .option('--repo <directory>', 'inspection boundary / repository directory')
+  .option('--session-dir <directory>', 'Agent starting directory (default: target directory)')
   .option('--client <client>', 'inspect one client', client)
   .option('--clients <list>', 'comma-separated client IDs')
   .option('--profile <name>', 'inspect Codex with $CODEX_HOME/<name>.config.toml')
@@ -37,7 +38,7 @@ program.name('agent-sightline').description('See what your coding agent actually
   .option('--probe', 'doctor only: launch local stdio MCP servers and test initialize/tools-list')
   .option('--port <port>', 'ui only: loopback port; 0 chooses a free port', '0')
   .option('--no-open', 'ui only: print URL without opening the browser')
-  .addHelpText('after', '\nExamples:\n  agent-sightline\n  agent-sightline examples/broken-agent-config --no-user\n  agent-sightline explain src/payments/refund.ts --client codex --trust trusted\n  agent-sightline diff src/payments/refund.ts --clients codex,claude,copilot\n  agent-sightline report --format html --output report.html\n  agent-sightline ci --no-user --fail-on warn --json\n  agent-sightline ui --no-open\n\nExit codes: 0 success; 1 finding threshold reached; 2 input/inspection error.\nInterruptions use 130 for SIGINT and 143 for SIGTERM.\nEnvironment values are redacted. No client, hook or MCP process runs unless doctor --probe is supplied.');
+  .addHelpText('after', '\nExamples:\n  agent-sightline\n  agent-sightline examples/broken-agent-config --no-user\n  agent-sightline explain src/payments/refund.ts --client codex --trust trusted\n  agent-sightline explain src/payments/refund.ts --session-dir . --client codex\n  agent-sightline diff src/payments/refund.ts --clients codex,claude,copilot\n  agent-sightline report --format html --output report.html\n  agent-sightline ci --no-user --fail-on warn --json\n  agent-sightline ui --no-open\n\nExit codes: 0 success; 1 finding threshold reached; 2 input/inspection error.\nInterruptions use 130 for SIGINT and 143 for SIGTERM.\nEnvironment values are redacted. No client, hook or MCP process runs unless doctor --probe is supplied.');
 
 function options(target?: string, repository?: string): ScanOptions & { probe?: boolean } {
   const o = program.opts();
@@ -45,7 +46,7 @@ function options(target?: string, repository?: string): ScanOptions & { probe?: 
   if (o.client && o.clients) throw new Error('Use either --client or --clients.');
   const clients = o.client ? [o.client] : o.clients ? [...new Set(String(o.clients).split(',').map(x => client(x.trim())))] : undefined;
   const repo = o.repo ?? repository;
-  return { repo: repo === undefined ? undefined : path.resolve(repo), target, clients, user: o.user, home: o.home ? path.resolve(o.home) : undefined, trust: o.trust, system: o.system, probe: o.probe, codexProfile: o.profile, maxFiles: o.maxEntries, maxUserFiles: o.maxUserFiles };
+  return { repo: repo === undefined ? undefined : path.resolve(repo), target, sessionDirectory: o.sessionDir, clients, user: o.user, home: o.home ? path.resolve(o.home) : undefined, trust: o.trust, system: o.system, probe: o.probe, codexProfile: o.profile, maxFiles: o.maxEntries, maxUserFiles: o.maxUserFiles };
 }
 async function atomic(file: string, content: string): Promise<void> {
   const destination = path.resolve(file);
