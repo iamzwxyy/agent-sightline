@@ -9,6 +9,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
 * The 577-case core suite completed with 575 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. Installed-CLI smoke checks retain field diagnostics while concealing case-variant private values and malformed sibling TOML copies. Production dependency audit reported zero vulnerabilities.
 * All 107 Chromium browser cases and two focused WebKit flows passed. Desktop and phone journeys cover live rescan, source inspection, effective text, comparison, standalone export and offline re-export. Automated WCAG AA checks passed.
 
+* Tagged Linux, macOS and Windows verification jobs passed for the exact release source. A source-run Windows Copilot native subprocess exceeded its 30-second startup budget. The tagged Windows job passed on the identical source. Anonymous download matched SHA-256 `399531daeeb17c4796db024377dd31fedf925461bb3ff8f7b11e0906d382b1c0` and its 1,564,742-byte size. The public archive passed empty-cache installation, installed-CLI privacy and retained diagnostics, desktop/phone source inspection, comparison and offline export/re-export with zero page errors. [Tagged cross-platform verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43746796911)
+
 ## v0.3.38
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
