@@ -11,6 +11,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
 
 * Tagged Linux, macOS and Windows verification jobs passed for the exact release source. A source-run Windows Copilot native subprocess exceeded its 30-second startup budget. The tagged Windows job passed on the identical source. Anonymous download matched SHA-256 `399531daeeb17c4796db024377dd31fedf925461bb3ff8f7b11e0906d382b1c0` and its 1,564,742-byte size. The public archive passed empty-cache installation, installed-CLI privacy and retained diagnostics, desktop/phone source inspection, comparison and offline export/re-export with zero page errors. [Tagged cross-platform verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43746796911)
 
+* The source-run Windows job passed on retry. A later main-run Windows job reached the trust group's four-minute total limit after 23 sequential native scenarios, with package extraction adding several seconds per scenario. The group budget now scales with the fixture count and the 30-second native-command limit. All 27 trust scenarios passed locally, along with lint and strict TypeScript.
+
 ## v0.3.38
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

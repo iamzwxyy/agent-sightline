@@ -311,7 +311,8 @@ test('Copilot native workspace MCP inventory follows trustedFolders and disabled
   }
 });
 
-test('Copilot native persisted trust uses canonical boundaries, declared alias order and complete typed lists', { timeout: 240000 }, async t => {
+// Each fixture launches an isolated native process with a 30-second limit.
+test('Copilot native persisted trust uses canonical boundaries, declared alias order and complete typed lists', { timeout: trustCases.length * 30000 }, async t => {
   for (const fixture of trustCases) await t.test(fixture.name, async scenario => {
     const w = await trustWorkspace();
     scenario.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
