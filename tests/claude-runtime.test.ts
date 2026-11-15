@@ -336,7 +336,7 @@ test('Claude native local MCP registration selects the same project state as Sig
   ];
   for (const scenario of scenarios) await t.test(scenario.name, async scenarioTest => {
     const w = await workspace({ 'server.mjs': fixtureServer, 'src/file.ts': 'export {};\n' });
-    scenarioTest.after(() => rm(w.root, { recursive: true, force: true }));
+    scenarioTest.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
     const env = isolatedEnvironment(w.home);
     if (scenario.canonical) w.repo = await realpath(w.repo);
     if (scenario.noGit) await rm(path.join(w.repo, '.git'), { recursive: true });

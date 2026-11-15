@@ -259,7 +259,7 @@ test('Claude instruction order and imports agree with the pinned native request'
   });
   for (const scenario of scenarios) await t.test(scenario.name, async scenarioTest => {
     const w = await workspace({ 'src/file.ts': 'export {};\n', ...scenario.files }, scenario.home);
-    scenarioTest.after(() => rm(w.root, { recursive: true, force: true }));
+    scenarioTest.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
     if (scenario.canonicalPaths || scenario.readTarget && process.platform === 'win32') {
       w.repo = await realpath(w.repo);
     }

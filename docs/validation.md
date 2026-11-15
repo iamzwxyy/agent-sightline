@@ -17,6 +17,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 
 * Windows, macOS and Linux verification passed for the released source commit. Anonymous download matched the recorded SHA-256 and 1,401,708-byte size, followed by a fresh empty-cache installation, native local MCP registration, explicit probing and desktop/phone inspection/export. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43664154998)
 
+* The initial main verification hit transient Windows EBUSY locks while removing the Claude worktree and Codex Skill fixtures. These cleanups and the local-MCP fixture now use the existing five-retry Node rm policy. The focused 51-case local run passed. [Initial main verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43666461917)
+
 ## v0.3.29
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.

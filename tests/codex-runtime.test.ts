@@ -344,7 +344,7 @@ for (const fixture of cases) test(`Codex runtime configuration matches Sightline
 test('Codex native skill inventory follows directory links, canonical aliases and disable selectors', async t => {
   const skill = (name: string) => `---\nname: sightline-native-link-${name}\ndescription: Native linked skill fixture.\n---\nInvoke this body explicitly.\n`;
   const w = await workspace({ 'AGENTS.md': 'Project instructions.' });
-  t.after(() => rm(w.root, { recursive: true, force: true }));
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
   const catalog = path.join(w.root, 'skill-catalog');
   for (const name of ['repo', 'user', 'compat', 'file']) {
     const directory = path.join(catalog, name);
