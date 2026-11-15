@@ -10,6 +10,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
 * The 599-case core suite completed with 597 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The installed package smoke check verifies the independent starting directory for all three primary clients and its portable input metadata. Production dependency audit reported zero vulnerabilities.
 * All 109 Chromium browser cases and three focused WebKit flows passed. Desktop and phone starting-directory controls passed automated WCAG AA checks and visual review. Browser journeys cover directory selection, invalid inputs, target changes, Back/Forward, reload, refresh, displayed-path redaction, standalone export and offline re-export.
 
+* Linux, macOS and Windows verification jobs passed for the exact release source. Anonymous GitHub download matched SHA-256 `2b288d970a15738c3af50e79cb7dff6fcdc24108b9ad564ebbdba7c02da9a5e1` and its 1,579,124-byte size. The exact public archive passed empty-cache installation, installed CLI starting-directory checks, desktop/phone live selection, reload, refresh and offline export/re-export with zero page errors. The local project-path website build distributed the same bytes and passed its guide, comparison and offline-report checks. [Tagged cross-platform verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43765983987)
+
 ## v0.3.40
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
