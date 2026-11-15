@@ -14,6 +14,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 
 * Windows, macOS and Linux verification passed for the released source commit. Linux Firefox completed with 78 passes and three browser-gated skips. Anonymous download matched the recorded SHA-256 and 1,400,178-byte size, followed by a fresh empty-cache installation and the desktop/phone worktree approval journey. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43655388399)
 
+* The first tag verification attempt hit 90-second aggregate timeouts in the 31-scenario memory matrix and 40-scenario MCP-policy matrix on macOS. Main now uses the existing long-matrix 240-second budget for both. The focused 73-case local rerun passed. [Tag verification history](https://github.com/iamzwxyy/agent-sightline/actions/runs/43656221942)
+
 ## v0.3.28 candidate
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.

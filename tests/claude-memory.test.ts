@@ -39,7 +39,7 @@ function blockText(block: any): string {
   return '';
 }
 
-test('Claude instruction order and imports agree with the pinned native request', { timeout: 90000 }, async t => {
+test('Claude instruction order and imports agree with the pinned native request', { timeout: 240000 }, async t => {
   assert.equal(require(platformPackage + '/package.json').version, claudeMetadata.ruleVersion);
   const scenarios: MemoryScenario[] = [
     {

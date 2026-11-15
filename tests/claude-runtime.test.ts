@@ -428,7 +428,7 @@ test('Claude native MCP loading leaves malformed sibling project configuration o
   assert.ok(sibling.findings.some(finding => finding.ruleId === 'parse.json'));
 });
 
-test('Claude native MCP policy matching agrees with public scans and explicit probes', { timeout: 90000 }, async t => {
+test('Claude native MCP policy matching agrees with public scans and explicit probes', { timeout: 240000 }, async t => {
   const w = await workspace({ '.mcp.json': '{}', '.claude/settings.json': '{}', 'server.mjs': fixtureServer }, { '.claude/settings.json': '{}' });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
   const env = { ...isolatedEnvironment(w.home), SIGHTLINE_POLICY_COMMAND: process.execPath, SIGHTLINE_POLICY_HOST: '127.0.0.1', SIGHTLINE_POLICY_PORT: '1', SIGHTLINE_POLICY_WILDCARD: '*', SIGHTLINE_POLICY_PATH: 'api/Mcp:2', SIGHTLINE_POLICY_PARENT: '../Mcp' };
