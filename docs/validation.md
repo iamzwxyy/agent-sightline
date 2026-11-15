@@ -8,6 +8,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 * The 569-case core suite completed with 567 passes and two platform-gated skips. All 76 Gemini startup/import cases passed. Lint, strict TypeScript, build and empty-cache offline installation passed. The installed CLI verifies alias discovery, selected trust, concealed previews and private JSON/HTML output. Production dependency audit reported zero vulnerabilities.
 * All 91 Chromium browser cases and five focused Gemini WebKit flows passed. Desktop and phone journeys inspect an aliased trust file, refresh approval/rejection, export the selected source and reopen its portable report offline. The phone source view received visual review.
 
+* Linux, macOS and Windows verification passed for the implementation. Anonymous download matched SHA-256 `1f1677e8a073f7cc237e1caee4c5416473f09e7a767b1417174ff44cd784d2ed` and its 1,418,860-byte size. The exact public archive passed empty-cache offline installation, aliased duplicate trust, escaped imports, selected-rule provenance and JSON/terminal/HTML privacy checks. Fresh-cache public execution returned 0.3.34. [Verified implementation](https://github.com/iamzwxyy/agent-sightline/actions/runs/43706443678)
+
 ## v0.3.33
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
