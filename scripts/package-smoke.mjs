@@ -59,6 +59,19 @@ try {
     const exported = readFileSync(geminiFile, 'utf8');
     if (JSON.stringify(saved).includes('installed-gemini-unrelated-private-project') || exported.includes('installed-gemini-unrelated-private-project') || exported.includes(JSON.stringify(geminiHome).slice(1, -1))) throw new Error('Installed Gemini trust report exposed private state.');
   }
+  mkdirSync(path.join(geminiRepo, 'src'));
+  writeFileSync(path.join(geminiRepo, 'src/file.ts'), '');
+  for (const target of ['.', 'src/file.ts']) {
+    const directory = target === '.' ? geminiRepo : path.join(geminiRepo, 'src');
+    const env = { ...geminiEnvironment, GEMINI_CLI_HOME: path.relative(directory, geminiHome) };
+    const relativeArgs = ['explain', target, '--repo', geminiRepo, '--client', 'gemini', '--trust', 'trusted'];
+    const relative = JSON.parse(execFileSync(process.execPath, [cli, ...relativeArgs, '--json'], { encoding: 'utf8', env }));
+    const expectedGlobal = target === '.' ? 'GEMINI_TEAM_GLOBAL' : 'GEMINI_PERSONAL';
+    if (!relative.clients[0].instructions.includes(expectedGlobal) || !relative.clients[0].instructions.includes('GEMINI_FIRST')) throw new Error('Installed Gemini relative home did not follow the ' + target + ' session directory.');
+    execFileSync(process.execPath, [cli, ...relativeArgs, '--format', 'html', '--output', geminiFile], { env });
+    const exported = readFileSync(geminiFile, 'utf8');
+    if (exported.includes(JSON.stringify(geminiHome).slice(1, -1)) || exported.includes(geminiHome.replaceAll('\\', '/'))) throw new Error('Installed Gemini relative home exposed its private path.');
+  }
   const claudeHookRepo = path.join(temp, 'claude-hook-repository');
   const claudeHookHome = path.join(temp, 'claude-hook-home');
   mkdirSync(path.join(claudeHookRepo, '.claude'), { recursive: true });

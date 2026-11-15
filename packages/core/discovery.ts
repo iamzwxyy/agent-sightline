@@ -100,12 +100,17 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
   if (!(await stat(directory)).isDirectory()) throw new Error('Target parent directory does not exist. Choose an existing directory.');
   const env = options.env ?? process.env;
   const home = path.resolve(options.home ?? os.homedir());
+  let geminiHome = path.join(home, '.gemini');
+  if (!options.home && env.GEMINI_CLI_HOME) {
+    const workingDirectory = process.platform === 'win32' ? directory : await realpath(directory);
+    geminiHome = path.resolve(workingDirectory, env.GEMINI_CLI_HOME, '.gemini');
+  }
   const ctx: Context = {
     repo, target, directory, home, env, options, discovery, dirs: parents(repo, directory), sources: [], findings: [],
     codexHome: options.home ? path.join(home, '.codex') : path.resolve(env.CODEX_HOME ?? path.join(home, '.codex')),
     claudeHome: options.home ? path.join(home, '.claude') : path.resolve(env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude')),
     copilotHome: options.home ? path.join(home, '.copilot') : path.resolve(env.COPILOT_HOME ?? path.join(home, '.copilot')),
-    geminiHome: path.resolve(options.home ? home : env.GEMINI_CLI_HOME ?? home, '.gemini'),
+    geminiHome,
     read: async () => null,
   };
   ctx.read = async (file, owner, kind, scope, readOptions) => {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.33 — 2026-11-15
+
+* Resolve relative GEMINI_CLI_HOME values from the modeled session's native working directory, including nested targets and configuration homes inside or outside the repository.
+* Use the OS home when GEMINI_CLI_HOME is empty. Explicit inspection homes select their configured location.
+* Compare resolved instruction text and settings with the published Gemini startup modules and the ordinary CLI entry point.
+* Verify target changes, refresh, copied effective text, private portable reports and offline installation for relative configuration homes.
+
 ## 0.3.32 — 2026-11-15
 
 * Resolve Gemini persisted workspace trust, parent inheritance and canonical aliases using executable comparisons with the published 0.68.0 startup modules.

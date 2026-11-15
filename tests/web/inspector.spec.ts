@@ -15,6 +15,56 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('relative Gemini homes follow the selected session through target changes, refresh and offline export', async ({ page }) => {
+  const secret = 'browser-relative-gemini-home-private';
+  const settings = JSON.stringify({ security: { folderTrust: { enabled: false } }, mcpServers: { fixture: { command: process.execPath, env: { NORMAL: secret } } } });
+  const w = await workspace({
+    'GEMINI.md': 'PROJECT_INSTRUCTION', 'src/file.ts': '',
+    'context-home/.gemini/settings.json': settings,
+    'context-home/.gemini/GEMINI.md': 'ROOT_HOME_INSTRUCTION\n' + secret,
+    'src/context-home/.gemini/settings.json': settings,
+    'src/context-home/.gemini/GEMINI.md': 'NESTED_HOME_INSTRUCTION\n' + secret,
+  });
+  const options = { repo: w.repo, clients: ['gemini'] as const, env: { PATH: process.env.PATH, GEMINI_CLI_HOME: './context-home' } };
+  const server = await serve(options);
+  try {
+    await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: {
+      writeText: async (text: string) => { (window as any).copiedInstructions = text; },
+    }, configurable: true }));
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await writeFile(path.join(w.repo, 'src/context-home/.gemini/GEMINI.md'), 'NESTED_HOME_INSTRUCTION\n' + secret);
+      await page.goto(server.url + '#view=effective&client=gemini&text=effective');
+      await expect(page.locator('#effective-document .effective-text')).toContainText('ROOT_HOME_INSTRUCTION');
+      await page.locator('#target').fill('src/file.ts');
+      await page.locator('#inspect').click();
+      await expect(page.locator('#effective-document .effective-text')).toContainText('NESTED_HOME_INSTRUCTION');
+      await expect(page.locator('#effective-document .effective-text')).not.toContainText('ROOT_HOME_INSTRUCTION');
+      await writeFile(path.join(w.repo, 'src/context-home/.gemini/GEMINI.md'), 'REFRESHED_HOME_INSTRUCTION\n' + secret);
+      await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+      await expect(page.locator('#effective-document .effective-text')).toContainText('REFRESHED_HOME_INSTRUCTION');
+      const text = await page.locator('#effective-document .effective-text').textContent();
+      expect(text).not.toContain(secret);
+      await page.getByRole('button', { name: 'Copy effective text', exact: true }).click();
+      expect(await page.evaluate(() => (window as any).copiedInstructions)).toBe(text);
+      const pending = page.waitForEvent('download');
+      await page.getByRole('button', { name: /Export report/ }).click();
+      const file = test.info().outputPath(`gemini-relative-home-${viewport.width}.html`);
+      await (await pending).saveAs(file);
+      const exported = await readFile(file, 'utf8');
+      expect(exported).not.toContain(secret);
+      expect(exported).not.toContain(JSON.stringify(w.root).slice(1, -1));
+      const portableText = portable(await scan({ ...options, target: 'src/file.ts' })).clients[0].instructions;
+      await page.context().setOffline(true);
+      await page.goto(pathToFileURL(file).href);
+      expect(await page.locator('#effective-document .effective-text').textContent()).toBe(portableText);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: test.info().outputPath(`gemini-relative-home-${viewport.width}.png`) });
+      await page.context().setOffline(false);
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true, maxRetries: 5 }); }
+});
+
 test('Gemini saved workspace trust refreshes custom context, clipboard and private portable reports', async ({ page }) => {
   const w = await workspace({
     'GEMINI.md': 'DEFAULT_PROJECT_INSTRUCTION',

@@ -7,18 +7,18 @@ One file. Several agents. Different instructions. Sightline shows every discover
 Open a terminal in your project folder and run one command to inspect your repository in the browser.
 
 ```sh
-npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.32/agent-sightline-0.3.32.tgz ui
+npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.33/agent-sightline-0.3.33.tgz ui
 ```
 
 For repeated use, install the CLI. The bundled demo provides a sample workspace with intentional configuration problems.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.32/agent-sightline-0.3.32.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.33/agent-sightline-0.3.33.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.32.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.33.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -87,7 +87,7 @@ Copilot settings folds, registered personal aliases, file loading and value type
 
 Gemini tree and flat context imports are compared with the published 0.68.0 import processor in thirty-one isolated executions. The checks cover insertion order, repeated references, cycles, code regions, five-level tree expansion, longer flat chains, path validation, aliases and memory boundary markers. Each literal source segment retains its line and column, including imports of configuration files as text.
 
-Gemini startup comparisons also execute the published settings, trust and memory modules. Saved folder decisions, parent inheritance, competing canonical aliases, process-environment overrides, custom configuration homes and JSON loading are covered. Pending approval keeps current global context active and shows trusted project contributions as conditional. Saved rejection excludes project contributions. Bare custom context filenames retain the native GEMINI.md fallback. Raw trust-state previews and unrelated project entries stay private. IDE trust, system settings, additional directories, extensions, hooks, skills and policy retain experimental scope. Run `npx tsx --test tests/gemini-memory.test.ts tests/gemini-startup.test.ts` to reproduce the comparisons.
+Gemini startup comparisons also execute the published settings, trust and memory modules. Saved folder decisions, parent inheritance, competing canonical aliases, process-environment overrides, absolute and relative configuration homes, empty-home fallback and JSON loading are covered. Pending approval keeps current global context active and shows trusted project contributions as conditional. Saved rejection excludes project contributions. Bare custom context filenames retain the native GEMINI.md fallback. Raw trust-state previews and unrelated project entries stay private. IDE trust, system settings, additional directories, extensions, hooks, skills and policy retain experimental scope. Run `npx tsx --test tests/gemini-memory.test.ts tests/gemini-startup.test.ts` to reproduce the comparisons.
 
 Rules and known limits are visible through `agent-sightline adapters` and the [evidence ledgers](docs/research/). “Fixture-verified” means the recorded official contracts have executable fixtures; it is not an authenticated live-client conformance claim. Copilot CLI rules differ from VS Code/code review/cloud agent rules.
 
@@ -115,7 +115,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.3.32.tgz
+npm install -g ./agent-sightline-0.3.33.tgz
 agent-sightline demo
 ```
 

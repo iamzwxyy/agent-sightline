@@ -18,6 +18,10 @@ const coreModule = pathToFileURL(path.join(runtime, 'bundle/chunk-2OHBIZ5H.js'))
 
 function nativeStartup(repo: string, home: string, env: NodeJS.ProcessEnv = {}) {
   const script = `
+    const os = await import('node:os');
+    const { syncBuiltinESMExports } = await import('node:module');
+    os.default.homedir = () => process.argv[2];
+    syncBuiltinESMExports();
     const cli = await import(${JSON.stringify(cliModule)});
     const core = await import(${JSON.stringify(coreModule)});
     const repo = process.argv[1];
@@ -25,7 +29,7 @@ function nativeStartup(repo: string, home: string, env: NodeJS.ProcessEnv = {}) 
     if (settings.merged.context.fileName) core.setGeminiMdFilename(settings.merged.context.fileName);
     else core.resetGeminiMdFilename();
     const memory = new core.MemoryContextManager({
-      storage: { getProjectMemoryDir: () => process.env.GEMINI_CLI_HOME + '/absent-project-memory' },
+      storage: { getProjectMemoryDir: () => process.argv[2] + '/absent-project-memory' },
       isTrustedFolder: () => settings.isTrusted,
       getExtensionLoader: () => ({ getExtensions: () => [] }),
       getWorkspaceContext: () => ({ getDirectories: () => new Set([repo]) }),
@@ -35,6 +39,7 @@ function nativeStartup(repo: string, home: string, env: NodeJS.ProcessEnv = {}) 
     });
     await memory.refresh();
     console.log('NATIVE_RESULT ' + JSON.stringify({
+      directory: process.cwd(),
       trusted: settings.isTrusted,
       trustDecision: cli.isWorkspaceTrusted(settings.merged, repo),
       trustFeature: settings.merged.security.folderTrust.enabled,
@@ -44,7 +49,7 @@ function nativeStartup(repo: string, home: string, env: NodeJS.ProcessEnv = {}) 
       loadedPaths: [...memory.getLoadedPaths()],
     }));
   `;
-  const output = execFileSync(process.execPath, ['--input-type=module', '-e', script, repo], {
+  const output = execFileSync(process.execPath, ['--input-type=module', '-e', script, repo, home], {
     cwd: repo, timeout: 20000, encoding: 'utf8',
     env: {
       PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TMP: process.env.TMP, TEMP: process.env.TEMP, TMPDIR: process.env.TMPDIR,
@@ -232,6 +237,52 @@ test('Gemini uses GEMINI_CLI_HOME and the explicit inspection home selects its o
   assert.ok(!JSON.stringify(portable(report)).includes(w.root));
   const selected = await scan({ ...w, clients: ['gemini'], env });
   assert.equal(selected.clients[0].instructions, nativeStartup(w.repo, w.home).instructions);
+});
+
+for (const fixture of [
+  { name: 'a project root with an external home', target: '.', inside: false },
+  { name: 'a nested session with an external home', target: 'src/file.ts', inside: false },
+  { name: 'a nested session with an internal home', target: 'src/file.ts', inside: true },
+]) test(`relative Gemini configuration homes match native startup for ${fixture.name}`, async t => {
+  const w = await workspace({ 'GEMINI.md': 'PROJECT_INSTRUCTION', 'src/file.ts': '' });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  const directory = fixture.target === '.' ? w.repo : path.join(w.repo, 'src');
+  const custom = path.join(fixture.inside ? directory : w.root, 'configured-home');
+  await mkdir(path.join(custom, '.gemini'), { recursive: true });
+  await writeFile(path.join(custom, '.gemini/GEMINI.md'), 'RELATIVE_HOME_INSTRUCTION');
+  await writeFile(path.join(custom, '.gemini/settings.json'), '{"model":{"name":"relative-home-model"},"security":{"folderTrust":{"enabled":false}}}');
+  const env = { PATH: process.env.PATH, GEMINI_CLI_HOME: path.relative(directory, custom) };
+  const native = nativeStartup(directory, w.home, env);
+  assert.ok(native.instructions.includes('RELATIVE_HOME_INSTRUCTION'));
+  const report = await scan({ repo: w.repo, target: fixture.target, clients: ['gemini'], env });
+  assert.equal(report.clients[0].instructions, native.instructions);
+  assert.equal(report.clients[0].settings.find(setting => setting.key === 'model.name')?.value, 'relative-home-model');
+  const settingsPath = path.resolve(native.directory, env.GEMINI_CLI_HOME, '.gemini/settings.json');
+  assert.ok(report.sources.some(source => source.path === settingsPath && source.scope === 'user'));
+  const exported = html(report);
+  for (const directory of [w.root, w.repo, custom]) {
+    assert.ok(!exported.includes(JSON.stringify(directory).slice(1, -1)));
+    assert.ok(!exported.includes(directory.replaceAll('\\', '/')));
+  }
+  const cli = JSON.parse(execFileSync(process.execPath, [
+    '--import', import.meta.resolve('tsx'), path.resolve('packages/cli/index.ts'),
+    'explain', fixture.target, '--repo', w.repo, '--client', 'gemini', '--trust', 'trusted', '--json',
+  ], { cwd: w.repo, encoding: 'utf8', env: { ...process.env, ...env } }));
+  assert.equal(cli.clients[0].instructions, native.instructions);
+});
+
+test('empty Gemini configuration homes fall back to the native OS home', async t => {
+  const w = await workspace({ 'GEMINI.md': 'PROJECT_INSTRUCTION' }, {
+    '.gemini/GEMINI.md': 'OS_HOME_INSTRUCTION',
+    '.gemini/settings.json': '{"security":{"folderTrust":{"enabled":false}}}',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  t.mock.method(os, 'homedir', () => w.home);
+  const env = { PATH: process.env.PATH, GEMINI_CLI_HOME: '' };
+  const native = nativeStartup(w.repo, w.home, env);
+  const report = await scan({ repo: w.repo, clients: ['gemini'], env });
+  assert.equal(report.clients[0].instructions, native.instructions);
+  assert.ok(report.sources.some(source => source.path === path.join(w.home, '.gemini/settings.json') && source.scope === 'user'));
 });
 
 test('Gemini repository-only inspections exclude saved trust and explicit trust resolves the isolated project', async t => {

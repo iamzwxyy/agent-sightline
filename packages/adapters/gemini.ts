@@ -13,6 +13,7 @@ export const geminiMetadata: AdapterMetadata = {
     'https://geminicli.com/docs/cli/trusted-folders/',
     'https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/cli/src/config/settings.ts',
     'https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/core/src/utils/trust.ts',
+    'https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/core/src/utils/paths.ts',
     'https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/core/src/utils/memoryImportProcessor.ts',
   ],
   limitations: [

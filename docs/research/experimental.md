@@ -18,6 +18,8 @@ Before approval, active context uses user settings and global memory. Conditiona
 
 Settings and trust files accept comments, reject trailing commas and retain the last duplicate key with a warning. Bare custom context filenames are trimmed and deduplicated, with GEMINI.md retained. Trust reports expose the selected rule's file and line. Raw state previews and unrelated folder entries are withheld, and portable exports replace the selected trust root.
 
+Configuration-home comparisons cover relative GEMINI_CLI_HOME values from project-root and nested sessions, with homes inside and outside the repository. Native Node working-directory semantics determine their base path. The comparisons include the normal CLI entry point. An empty environment value uses the OS home. Native fallback fixtures isolate os.homedir before importing the published modules. Explicit inspection homes select their own configuration. [Versioned path utilities](https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/core/src/utils/paths.ts)
+
 ## Gemini import evidence
 
 `fixtures/upstream/gemini-0.68.0` contains the published `memoryImportProcessor.js`, its `paths.js` and `debugLogger.js` dependencies, and the package's Apache 2.0 license. The modules use Node built-ins. Their byte hashes are checked before the comparisons in `tests/gemini-memory.test.ts`. The downloaded package has SHA-256 `e5c9e297c721acdf89df21012ac88603a846cdb71bcc714950fe251d0d3ac025`. [Published package](https://registry.npmjs.org/@google/gemini-cli-core/-/gemini-cli-core-0.68.0.tgz)

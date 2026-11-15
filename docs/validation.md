@@ -1,5 +1,14 @@
 # Release validation
 
+## v0.3.33 candidate
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
+
+* Three native comparisons reproduced missing configuration and context when GEMINI_CLI_HOME was relative. Resolved homes now follow the native session working directory. Project-root and nested sessions cover homes inside and outside the repository, including macOS canonical working-directory paths. Each case also invokes the ordinary CLI entry point.
+* An additional native comparison verifies empty-home fallback. The native fixture isolates the OS home before importing the published modules and keeps project-memory lookups within its temporary home. All 69 Gemini startup/import cases passed.
+* The 562-case core suite completed with 560 passes and two platform-gated skips. Lint, strict TypeScript and build passed. Empty-cache offline installation checks relative homes for root and nested targets, their applicable global context and private portable output. Production dependency audit reported zero vulnerabilities.
+* All 90 Chromium browser cases passed. Four focused Gemini and all twelve website cases passed in WebKit. Desktop and phone flows select a nested target, refresh changed context, copy redacted effective text and reopen the matching report offline. The phone report received visual review.
+
 ## v0.3.32
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
