@@ -11,6 +11,7 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 * A Windows-style checkout reproduced byte changes in all four pristine upstream fixture files under automatic CRLF conversion. A scoped Git attribute now retains their original bytes. The same checkout comparison then passed for all four files.
 * A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,396 ms. Fixture creation warmed the filesystem cache.
 * Initial Windows verification exposed a broken-link `stat` error where the published processor reaches `open`. Import preflight now inspects the link entry before reproducing native reads. Portable-path assertions also accept Windows separators. [Initial verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43678857496)
+* Windows, macOS and Linux verification passed for the released source. Linux Firefox completed with 83 passes and three browser-gated skips. The anonymous release download matched SHA-256 `ae9e57ffa58507b6a05fee2f4e44f417e29b63598ec36d5d1964ba8b4e183f6f` and its 1,410,785-byte size, followed by a fresh empty-cache installation and desktop/phone import, privacy, clipboard, refresh and offline-report checks. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43679582616)
 
 ## Website interaction update, 2026-11-15
 
