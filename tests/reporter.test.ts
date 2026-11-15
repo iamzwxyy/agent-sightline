@@ -96,6 +96,65 @@ test('terminal renders unique related source locations and gives an empty worksp
   assert.ok(empty.includes('agent-sightline demo'));
 });
 
+test('terminal first scans distinguish loaded, conditional and truncated instructions', async t => {
+  const w = await workspace({ 'AGENTS.md': 'PROJECT INSTRUCTION' }, {
+    '.codex/AGENTS.md': 'GLOBAL', '.codex/config.toml': 'project_doc_max_bytes=8',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  for (const trust of ['auto', 'trusted', 'untrusted'] as const) {
+    const report = await scan({ ...w, clients: ['codex'], trust });
+    const output = terminal(report);
+    assert.ok(output.includes('Instruction loading'));
+    if (trust === 'auto') {
+      assert.equal(report.findings.length, 0);
+      assert.match(output, /OpenAI Codex CLI\s+1 loaded · 6 bytes · 1 conditional/);
+      assert.ok(output.includes('Conditional sources await trust, approval or other loading conditions.'));
+    } else if (trust === 'trusted') {
+      assert.match(output, /OpenAI Codex CLI\s+2 loaded · 37 bytes · 1 truncated/);
+      assert.ok(!output.includes('Conditional sources await'));
+    } else {
+      assert.match(output, /OpenAI Codex CLI\s+1 loaded · 6 bytes\n/);
+      assert.ok(!output.includes('Conditional sources await'));
+    }
+  }
+});
+
+test('terminal instruction counts retain unique sources across repeated Gemini segments', async t => {
+  const w = await workspace({ 'GEMINI.md': 'BEGIN\n@./shared.md\nMIDDLE\n@./shared.md\nEND', 'shared.md': 'SHARED' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['gemini'], user: false, trust: 'trusted' });
+  assert.ok(report.clients[0].decisions.filter(source => source.status === 'active' && source.kind === 'instructions').length > 2);
+  const output = terminal(report);
+  assert.match(output, /Gemini CLI\s+2 loaded · \d+ bytes/);
+  assert.ok(output.includes('Inspect a target: agent-sightline explain <file> --client gemini'));
+});
+
+test('terminal loading counts exclude instruction sources with an exhausted byte budget', async t => {
+  const w = await workspace({
+    'AGENTS.md': 'ROOT INSTRUCTIONS', 'src/AGENTS.md': 'NESTED INSTRUCTIONS', 'src/a.ts': '',
+  }, { '.codex/config.toml': 'project_doc_max_bytes=4' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, target: 'src/a.ts', clients: ['codex'], trust: 'trusted' });
+  const exhausted = report.clients[0].decisions.find(source => source.path === path.join(w.repo, 'src/AGENTS.md'));
+  assert.equal(exhausted?.status, 'truncated');
+  assert.equal(exhausted?.loadedBytes, 0);
+  assert.match(terminal(report), /OpenAI Codex CLI\s+1 loaded · \d+ bytes · 2 truncated/);
+});
+
+test('terminal loading counts preserve distinct sources after private path redaction', async t => {
+  const w = await workspace({
+    '.claude/rules/first-label.md': 'First guidance.', '.claude/rules/second-label.md': 'Second guidance.',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, env: { FIRST: 'first-label', SECOND: 'second-label' } } } }),
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['claude'], user: false, trust: 'trusted' });
+  const rules = report.clients[0].decisions.filter(source => source.kind === 'rules' && source.status === 'active');
+  assert.equal(rules.length, 2);
+  assert.equal(new Set(rules.map(source => source.path)).size, 1);
+  assert.equal(new Set(rules.map(source => source.sourceId)).size, 2);
+  assert.match(terminal(report), /Claude Code\s+2 loaded · \d+ bytes/);
+});
+
 test('portable reports replace JSON-escaped Windows and POSIX repository paths', () => {
   for (const repository of ['D:\\projects\\checkout', 'C:\\Users\\example\\checkout', '/tmp/quoted"project', '/tmp/back\\slash-project', '/tmp/ending\\']) {
     const filename = repository + '/instructions.md';

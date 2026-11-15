@@ -13,6 +13,8 @@
 | `adapters --json` | Rule evidence/version/limitations |
 | `version` / `--version` | Package version |
 
+The first terminal summary shows each detected client's unique loaded instruction sources, effective instruction bytes, conditional sources and truncation. Conditional sources await trust, approval or another loading condition. Use `explain` to inspect their source and reason. Repeated source segments share one source count, and exhausted byte budgets retain their truncation count.
+
 Implicit scans select the nearest enclosing Git root while keeping the current directory as the default target and session directory. Relative `explain` and `diff` targets resolve from the current directory. Git worktree `.git` files and nested repositories are recognized. A directory with no Git ancestor uses itself as the inspection boundary. An explicit `--repo` or positional repository selects the boundary and resolves relative targets from that directory. SDK calls with an omitted `ScanOptions.repo` use the same discovery behavior. The browser retains its selected boundary through target changes and reloads.
 
 Common flags: `--repo`, `--client` or `--clients`, `--profile` (Codex), `--no-user`, `--home` (isolated synthetic home), `--trust auto|trusted|untrusted`, `--system`, `--json`, `--format terminal|json|html`, `--severity error|warn|info`, `--fail-on error|warn|info|none`, `--output`.

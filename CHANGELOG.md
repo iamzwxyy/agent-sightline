@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.35 — 2026-11-15
+
+* Show loaded instruction sources, effective bytes, conditional sources and truncation in the first terminal summary.
+* Count distinct instruction sources across repeated imports and source segments, preserving their identities after private path redaction and their zero-budget truncation counts.
+* Surface conditional loading near the browser overview heading with a source count and a direct source-inspection action.
+* Retain the selected repeated occurrence, source focus and portable navigation when inspecting conditional loading. Refresh instruction counts after changing inspection trust.
+* Label client detection for installed executables and discovered configuration. Use the detected client in the terminal's next inspection command.
+
 ## 0.3.34 — 2026-11-15
 
 * Withhold raw private-state previews through captured canonical directory aliases.

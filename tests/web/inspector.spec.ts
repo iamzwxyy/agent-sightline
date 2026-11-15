@@ -15,6 +15,114 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('first scans explain conditional instruction loading through trust changes and offline export', async ({ page }) => {
+  const w = await workspace({
+    'AGENTS.md': 'PROJECT_INSTRUCTION', '.codex/config.toml': 'model="fixture-model"',
+  }, { '.codex/AGENTS.md': 'GLOBAL_INSTRUCTION' });
+  const server = await serve({ ...w, clients: ['codex'] });
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await writeFile(path.join(w.repo, 'AGENTS.md'), 'PROJECT_INSTRUCTION');
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await expect(page.locator('#overview-heading')).toHaveText('No configuration issues found.');
+      await expect(page.locator('#client-overview')).toContainText('1 loaded instruction source');
+      await expect(page.locator('#client-overview')).toContainText('1 conditional');
+      const inspect = page.getByRole('button', { name: 'Inspect conditional loading', exact: true });
+      await expect(inspect).toBeVisible();
+      await expect(inspect).toBeInViewport();
+      expect((await inspect.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+      await page.screenshot({ path: test.info().outputPath(`first-loading-overview-${viewport.width}.png`), fullPage: true });
+      await inspect.click();
+      await expect(page.locator('#source-title')).toHaveText('AGENTS.md');
+      await expect(page.locator('#source-title')).toBeFocused();
+      await expect(page.locator('#source-status')).toHaveText('Conditional');
+      await expect(page.locator('#why')).toContainText('Project trust is unknown');
+      const pending = page.waitForEvent('download');
+      await page.getByRole('button', { name: /Export report/ }).click();
+      const file = test.info().outputPath(`first-loading-${viewport.width}.html`);
+      await (await pending).saveAs(file);
+      await page.context().setOffline(true);
+      await page.goto(pathToFileURL(file).href + '#view=overview');
+      await page.getByRole('button', { name: 'Inspect conditional loading', exact: true }).click();
+      await expect(page.locator('#source-title')).toHaveText('AGENTS.md');
+      await expect(page.locator('#source-status')).toHaveText('Conditional');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.context().setOffline(false);
+      await page.goto(server.url);
+      await page.locator('#trust').selectOption('trusted');
+      await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+      await expect(page.locator('#client-overview')).toContainText('2 loaded instruction sources');
+      await expect(page.locator('#trust-notice')).toBeHidden();
+      await page.locator('#trust').selectOption('untrusted');
+      await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+      await expect(page.locator('#client-overview')).toContainText('1 loaded instruction source');
+      await expect(page.locator('#trust-notice')).toBeHidden();
+      expect(await readFile(path.join(w.repo, 'AGENTS.md'), 'utf8')).toBe('PROJECT_INSTRUCTION');
+      await rm(path.join(w.repo, 'AGENTS.md'));
+      await page.locator('#trust').selectOption('auto');
+      await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+      await page.getByRole('button', { name: 'Inspect conditional loading', exact: true }).click();
+      await expect(page.locator('#source-title')).toHaveText('.codex/config.toml');
+      await expect(page.locator('#source-status')).toHaveText('Conditional');
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('conditional loading opens the correct repeated Gemini source occurrence', async ({ page }) => {
+  const w = await workspace({
+    'GEMINI.md': 'PROJECT', '.gemini/settings.json': '{"context":{"importFormat":"flat"}}',
+  }, { '.gemini/GEMINI.md': 'GLOBAL\n@./shared.md\nMIDDLE\n@./shared.md\nEND', '.gemini/shared.md': 'SHARED' });
+  const options = { ...w, clients: ['gemini'] as const };
+  const report = await scan(options);
+  const entries = [...report.clients[0].decisions].sort((left, right) => (left.order ?? Infinity) - (right.order ?? Infinity));
+  const conditional = entries.find(source => source.status === 'conditional' && source.kind === 'instructions')!;
+  const occurrence = entries.filter(source => source.path === conditional.path).indexOf(conditional) + 1;
+  expect(occurrence).toBeGreaterThan(1);
+  const server = await serve(options);
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await expect(page.locator('#client-overview')).toContainText('2 loaded instruction sources');
+      await page.getByRole('button', { name: 'Inspect conditional loading', exact: true }).click();
+      await expect(page.locator('#source-status')).toHaveText('Conditional');
+      expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe(String(occurrence));
+      const pending = page.waitForEvent('download');
+      await page.getByRole('button', { name: /Export report/ }).click();
+      const file = test.info().outputPath(`conditional-occurrence-${viewport.width}.html`);
+      await (await pending).saveAs(file);
+      await page.context().setOffline(true);
+      await page.goto(pathToFileURL(file).href + '#view=overview');
+      await page.getByRole('button', { name: 'Inspect conditional loading', exact: true }).click();
+      await expect(page.locator('#source-status')).toHaveText('Conditional');
+      expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe(String(occurrence));
+      await page.context().setOffline(false);
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('first-scan loading counts preserve distinct private source identities online and offline', async ({ page }) => {
+  const w = await workspace({
+    '.claude/rules/first-label.md': 'First guidance.', '.claude/rules/second-label.md': 'Second guidance.',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, env: { FIRST: 'first-label', SECOND: 'second-label' } } } }),
+  });
+  const server = await serve({ ...w, clients: ['claude'], user: false, trust: 'trusted' });
+  try {
+    await page.goto(server.url);
+    await expect(page.locator('#client-overview')).toContainText('2 loaded instruction sources');
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('first-loading-private-paths.html');
+    await (await pending).saveAs(file);
+    for (const value of ['first-label', 'second-label']) expect(await readFile(file, 'utf8')).not.toContain(value);
+    await page.context().setOffline(true);
+    await page.goto(pathToFileURL(file).href);
+    await expect(page.locator('#client-overview')).toContainText('2 loaded instruction sources');
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('relative Gemini homes follow the selected session through target changes, refresh and offline export', async ({ page }) => {
   const secret = 'browser-relative-gemini-home-private';
   const settings = JSON.stringify({ security: { folderTrust: { enabled: false } }, mcpServers: { fixture: { command: process.execPath, env: { NORMAL: secret } } } });

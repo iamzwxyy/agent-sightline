@@ -1,5 +1,14 @@
 # Release validation
 
+## v0.3.35
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
+
+* A zero-finding first scan reproduced an omitted loading condition for project AGENTS.md. The first terminal summary now exposes loaded instructions, effective bytes, conditional sources and truncation. Four reporter cases cover trust changes, repeated Gemini segments, exhausted budgets and distinct source identities after private path redaction. A normal CLI-entry regression preserves the original conditional scan and user files.
+* The 574-case core suite completed with 572 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The installed CLI checks both pending and trusted Gemini summaries, unique source counts and its client-specific next inspection command. Production dependency audit reported zero vulnerabilities.
+* All 94 Chromium browser cases and three focused WebKit flows passed. Desktop and phone checks verify a first-viewport conditional-loading action, keyboard focus, source selection, trust refresh and offline report navigation. Repeated Gemini source occurrences and distinct source IDs with redacted paths retain their counts and selected decisions. Automated WCAG AA checks reported zero violations, and the phone overview received visual review.
+* README terminal and inspector screenshots and the example HTML report were regenerated through the repository's capture script and reviewed.
+
 ## v0.3.34
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.

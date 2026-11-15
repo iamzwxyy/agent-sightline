@@ -40,6 +40,18 @@ export function terminal(report: Report, mode = 'scan'): string {
   lines.push(`Clients:    ${clientNames.join(', ') || '(no compatible configuration found)'}`, '');
   lines.push(`${detected.length} compatible clients · ${report.sources.length} sources · ${summaryFindings.length} findings`, `Errors ${counts.error} · Warnings ${counts.warn} · Info ${counts.info}`, '');
   if (report.discovery?.complete === false) lines.push('Configuration discovery is incomplete.', 'Use --severity warn to review skipped locations and discovery limits.', '');
+  if (mode === 'scan' && detected.length) {
+    lines.push('Instruction loading');
+    for (const client of detected) {
+      const instructions = client.decisions.filter(source => ['instructions', 'rules'].includes(source.kind));
+      const loaded = new Set(instructions.filter(source => source.status === 'active' || source.status === 'truncated' && source.loadedBytes > 0).map(source => source.sourceId)).size;
+      const conditional = new Set(instructions.filter(source => source.status === 'conditional').map(source => source.sourceId)).size;
+      const truncated = new Set(instructions.filter(source => source.status === 'truncated').map(source => source.sourceId)).size;
+      lines.push(`  ${client.metadata.name.padEnd(20)} ${loaded} loaded · ${client.instructionBytes} bytes${conditional ? ` · ${conditional} conditional` : ''}${truncated ? ` · ${truncated} truncated` : ''}`);
+    }
+    if (report.clients.some(client => client.decisions.some(source => source.status === 'conditional'))) lines.push('Conditional sources await trust, approval or other loading conditions. Use explain to inspect their reasons.');
+    lines.push('');
+  }
   if (mode === 'explain') for (const e of report.clients) {
     lines.push(`${e.metadata.name} · ${e.metadata.maturity} rules ${e.metadata.ruleVersion}`, '');
     for (const d of e.decisions.sort((a, b) => (a.order ?? 999999) - (b.order ?? 999999))) {
@@ -78,7 +90,7 @@ export function terminal(report: Report, mode = 'scan'): string {
   }
   if (mode === 'scan' && groups.length > findings.length) lines.push(`Showing ${findings.length} of ${groups.length} distinct findings. Use --json or explain to inspect the rest.`, '');
   if (mode === 'scan' && report.findings.length > groups.length) lines.push('Identical findings at the same source are grouped across clients.', '');
-  if (mode === 'scan') lines.push('Inspect a target: agent-sightline explain <file> --client codex', 'Compare clients:  agent-sightline diff <file> --clients codex,claude,copilot', 'Browse locally:   agent-sightline ui', '');
+  if (mode === 'scan') lines.push(`Inspect a target: agent-sightline explain <file> --client ${detected[0]?.client ?? 'codex'}`, 'Compare clients:  agent-sightline diff <file> --clients codex,claude,copilot', 'Browse locally:   agent-sightline ui', '');
   lines.push('Local · read-only · no model calls · no telemetry');
   return redactText(lines.join('\n')) + '\n';
 }

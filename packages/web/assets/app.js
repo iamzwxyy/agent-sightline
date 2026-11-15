@@ -282,7 +282,7 @@
         $('source-search').value = '';
         navigate('effective');
       } },
-      { label: 'Clients configured', value: detected.length, note: 'With versioned loading rules', action: () => navigate('compare') },
+      { label: 'Clients detected', value: detected.length, note: 'Installed or with configuration', action: () => navigate('compare') },
     ];
     $('stats').replaceChildren(...stats.map(stat => {
       const element = button('', stat.action, `stat ${stat.className ?? ''}`);
@@ -300,14 +300,20 @@
       }, 'client-card');
       const heading = node('div', undefined, 'client-card-heading');
       heading.append(avatar(client.client), node('h3', names[client.client]), node('span', '↗', 'row-arrow'));
-      const loaded = client.decisions.filter(source => ['active', 'truncated'].includes(source.status) && ['rules', 'instructions'].includes(source.kind));
-      const conditional = client.decisions.filter(source => source.status === 'conditional').length;
-      element.append(heading, node('p', `${loaded.length} instruction sources · ~${client.estimatedTokens.toLocaleString()} tokens${conditional ? ` · ${conditional} conditional` : ''}`), node('div', loaded.map(source => basename(source.path)).join(' → ') || 'No instructions loaded', 'chain-preview'));
+      const loaded = client.decisions.filter(source => (source.status === 'active' || source.status === 'truncated' && source.loadedBytes > 0) && ['rules', 'instructions'].includes(source.kind));
+      const conditional = client.decisions.filter(source => source.status === 'conditional' && ['rules', 'instructions'].includes(source.kind));
+      const loadedPaths = [...new Map(loaded.map(source => [source.sourceId, source.path])).values()];
+      const conditionalPaths = [...new Map(conditional.map(source => [source.sourceId, source.path])).values()];
+      const chain = loadedPaths.map(basename).join(' → ') || (conditionalPaths.length ? conditionalPaths.map(basename).join(' → ') + ' (conditional)' : 'No instructions loaded');
+      element.append(heading, node('p', `${loadedPaths.length} loaded instruction ${loadedPaths.length === 1 ? 'source' : 'sources'} · ~${client.estimatedTokens.toLocaleString()} tokens${conditionalPaths.length ? ` · ${conditionalPaths.length} conditional` : ''}`), node('div', chain, 'chain-preview'));
       return element;
     }));
-    const conditional = report.clients.some(client => client.decisions.some(source => source.status === 'conditional'));
-    $('trust-notice').hidden = !conditional;
-    $('trust-notice').replaceChildren(node('span', 'Some loading decisions depend on trust, approval, session conditions or discovery coverage. '), button('Review scan assumptions', () => $('scope-dialog').showModal(), 'text-button'));
+    const conditional = report.clients.flatMap(client => sourceEntries(client).filter(entry => entry.source.status === 'conditional').map(entry => ({ ...entry, client: client.client })));
+    const pending = conditional.find(entry => ['instructions', 'rules'].includes(entry.source.kind)) ?? conditional[0];
+    const conditionalCount = new Set(conditional.map(entry => entry.source.sourceId)).size;
+    $('trust-notice').hidden = !pending;
+    $('trust-notice').replaceChildren();
+    if (pending) $('trust-notice').append(node('span', `${conditionalCount} ${conditionalCount === 1 ? 'source has' : 'sources have'} conditional loading decisions. `), button('Inspect conditional loading', () => inspectSourceLocation({ path: pending.source.path, line: pending.source.line }, pending.client, pending.occurrence), 'text-button'));
   }
   function showFinding(finding) {
     $('detail-category').textContent = finding.ruleId;

@@ -158,8 +158,8 @@ button.stat:hover { background: #fafbf8; }
 .client-card-heading .row-arrow { color: #626b59; }
 .client-card p { margin: 17px 0 8px; color: #626b59; font-size: 12px; }
 .client-card .chain-preview { font: 11px var(--mono); color: #626b59; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.context-note { font-size: 13px; color: #626b59; padding: 17px 0 0; line-height: 1.8; }
-.context-note button { color: #5f6b54; text-decoration: underline; text-underline-offset: 3px; font-size: 13px; }
+.context-note { font-size: 13px; color: #626b59; margin: 0 0 22px; line-height: 1.8; }
+.context-note button { color: #5f6b54; text-decoration: underline; text-underline-offset: 3px; font-size: 13px; min-height: 44px; }
 .status { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 3px; background: #f0f2eb; color: #626b59; font-size: 11px; white-space: nowrap; font-weight: 400; line-height: 1.5; }
 .status.active { color: var(--green); background: var(--green-soft); }
 .status.conditional, .status.truncated, .status.warn { color: var(--amber); background: var(--amber-soft); }

@@ -8,6 +8,23 @@ import { workspace } from './helpers.js';
 const cli = path.resolve('packages/cli/index.ts');
 function run(args: string[], cwd: string) { return spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), cli, ...args], { cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }); }
 
+test('a clean first CLI scan surfaces conditional instructions without changing trust', async t => {
+  const w = await workspace({ 'AGENTS.md': 'PROJECT INSTRUCTION' }, { '.codex/AGENTS.md': 'GLOBAL' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const flags = ['--client', 'codex', '--home', w.home, '--severity', 'error'];
+  const first = run(flags, w.repo);
+  assert.equal(first.status, 0, first.stderr);
+  assert.match(first.stdout, /0 findings\nErrors 0 · Warnings 0 · Info 0/);
+  assert.match(first.stdout, /OpenAI Codex CLI\s+1 loaded · 6 bytes · 1 conditional/);
+  const explained = run(['explain', '.', ...flags], w.repo);
+  assert.equal(explained.status, 0, explained.stderr);
+  assert.ok(explained.stdout.includes('Project trust is unknown'));
+  const captured = JSON.parse(run([...flags, '--json'], w.repo).stdout);
+  assert.equal(captured.clients[0].instructions, 'GLOBAL');
+  assert.equal(captured.clients[0].decisions.find((source: any) => source.path === path.join(captured.repository, 'AGENTS.md')).status, 'conditional');
+  assert.equal(await readFile(path.join(w.repo, 'AGENTS.md'), 'utf8'), 'PROJECT INSTRUCTION');
+});
+
 test('CLI resolves saved trust aliases and diagnoses the last malformed declaration through correction', async t => {
   const w = await workspace({ '.mcp.json': '{"mcpServers":{"fixture":{"command":"node"}}}' }, { '.copilot/config.json': '{}' });
   t.after(() => rm(w.root, { recursive: true, force: true }));

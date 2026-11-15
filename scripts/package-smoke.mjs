@@ -21,11 +21,15 @@ try {
   const geminiArgs = ['explain', '.', '--repo', geminiRepo, '--no-user', '--client', 'gemini'];
   const pendingGemini = JSON.parse(execFileSync(process.execPath, [cli, ...geminiArgs, '--json'], { encoding: 'utf8' }));
   if (pendingGemini.clients[0].instructions || !pendingGemini.clients[0].decisions.some(source => source.kind === 'instructions' && source.status === 'conditional')) throw new Error('Installed Gemini scan lost pending workspace approval.');
+  const pendingSummary = execFileSync(process.execPath, [cli, 'scan', ...geminiArgs.slice(2)], { encoding: 'utf8' });
+  if (!/Gemini CLI\s+0 loaded · 0 bytes · 2 conditional/.test(pendingSummary) || !pendingSummary.includes('Conditional sources await')) throw new Error('Installed first scan lost its conditional instruction summary.');
   geminiArgs.push('--trust', 'trusted');
   const gemini = JSON.parse(execFileSync(process.execPath, [cli, ...geminiArgs, '--json'], { encoding: 'utf8' }));
   const geminiText = gemini.clients[0].instructions;
   const geminiImport = gemini.clients[0].decisions.find(source => source.path === path.join(geminiRepo, 'shared.md'));
   if (geminiText.match(/GEMINI_(?:FIRST|IMPORTED|LAST)/g)?.join(',') !== 'GEMINI_FIRST,GEMINI_IMPORTED,GEMINI_LAST' || geminiImport?.importedFrom?.line !== 2 || geminiImport?.importedFrom?.column !== 1) throw new Error('Installed Gemini tree context or import provenance failed.');
+  const loadedSummary = execFileSync(process.execPath, [cli, 'scan', ...geminiArgs.slice(2)], { encoding: 'utf8' });
+  if (!/Gemini CLI\s+2 loaded · \d+ bytes/.test(loadedSummary) || !loadedSummary.includes('Inspect a target: agent-sightline explain <file> --client gemini')) throw new Error('Installed first scan lost its unique loaded sources or selected client.');
   const geminiFile = path.join(temp, 'gemini-context.html');
   execFileSync(process.execPath, [cli, 'report', '--repo', geminiRepo, '--no-user', '--client', 'gemini', '--trust', 'trusted', '--format', 'html', '--output', geminiFile]);
   const geminiHtml = readFileSync(geminiFile, 'utf8');
