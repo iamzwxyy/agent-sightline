@@ -38,6 +38,40 @@ test('homepage and guide copy the published one-command repository inspection', 
   } finally { await server.close(); }
 });
 
+test('opening the demo retains the preview client and source on desktop and phone', async ({ page }) => {
+  const server = await serveStatic('website/dist');
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      for (const [name, client] of [['Codex', 'codex'], ['Claude Code', 'claude'], ['Copilot', 'copilot']]) {
+        await page.goto(server.url);
+        await expect(page.locator('#demo-sources button').first()).toBeAttached();
+        await page.getByRole('button', { name, exact: true }).click();
+        const source = page.getByRole('link', { name: 'Open full inspector', exact: true });
+        const selection = new URLSearchParams(new URL((await source.getAttribute('href'))!, server.url).hash.slice(1));
+        await page.getByRole('link', { name: /Explore the demo/ }).click();
+        await expect(page.locator('#effective')).toBeVisible();
+        await expect(page.locator('#clients .selected')).toContainText(name);
+        await expect(page.locator('#source-title')).toHaveText(selection.get('source')!);
+        expect(new URL(page.url()).hash).toContain('client=' + client);
+      }
+    }
+  } finally { await server.close(); }
+});
+
+test('demo entry retains a client selected while the preview report is unavailable', async ({ page }) => {
+  const server = await serveStatic('website/dist');
+  try {
+    await page.route('**/demo-report.json', route => route.abort());
+    await page.goto(server.url);
+    await page.getByRole('button', { name: 'Claude Code', exact: true }).click();
+    await page.getByRole('link', { name: /Explore the demo/ }).click();
+    await expect(page.locator('#effective')).toBeVisible();
+    await expect(page.locator('#clients .selected')).toContainText('Claude Code');
+    expect(new URL(page.url()).hash).toContain('client=claude');
+  } finally { await server.close(); }
+});
+
 test('homepage preserves keyboard selection and opens the selected source in the inspector', async ({ page }) => {
   const server = await serveStatic('website/dist');
   try {
@@ -324,6 +358,12 @@ test('opening and primary navigation remain complete with JavaScript disabled', 
     await expect(page.getByRole('heading', { name: /Know what your agent/ })).toBeVisible();
     await expect(page.locator('#hero-source')).toHaveText(selected.path.split(/[\\/]/).pop()!);
     await expect(page.locator('#hero-verdict')).toHaveText(`${selected.loadedBytes} of ${selected.bytes} bytes reach Codex`);
+    const link = page.getByRole('link', { name: /Explore the demo/ });
+    const selection = new URLSearchParams(new URL((await link.getAttribute('href'))!, server.url).hash.slice(1));
+    expect(selection.get('view')).toBe('effective');
+    expect(selection.get('client')).toBe('codex');
+    expect(selection.get('source')).toBe(selected.path.replaceAll('\\', '/').slice(report.repository.replaceAll('\\', '/').length + 1));
+    expect(selection.get('line')).toBe(String(selected.line));
     await expect(page.locator('.hero-poster')).toBeVisible();
     expect(await page.locator('.hero-poster').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
     await expect(page.locator('#motion-toggle')).toBeHidden();

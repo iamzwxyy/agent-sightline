@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, URLSearchParams } from 'node:url';
 import { build } from 'esbuild';
 import { scan } from '../dist/core/index.js';
 import { html, portable } from '../dist/reporter/index.js';
@@ -46,6 +46,11 @@ const openingSource = publicReport.clients.find(client => client.client === 'cod
 if (!openingSource) throw new Error('The opening example must contain a truncated Codex instruction source.');
 const openingFilename = path.posix.basename(openingSource.path.replaceAll('\\', '/'))
   .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+const openingSelection = new URLSearchParams({
+  view: 'effective', client: 'codex',
+  source: path.posix.relative(publicReport.repository.replaceAll('\\', '/'), openingSource.path.replaceAll('\\', '/')),
+  line: String(openingSource.line),
+});
 for (const name of ['index.html', 'guide.html', 'robots.txt', 'sitemap.xml']) {
   const file = path.join(destination, name);
   let content = readFileSync(file, 'utf8')
@@ -54,6 +59,7 @@ for (const name of ['index.html', 'guide.html', 'robots.txt', 'sitemap.xml']) {
     .replaceAll('{{FAVICON_REV}}', faviconRevision)
     .replaceAll('{{POSTER_REV}}', posterRevision)
     .replaceAll('{{HERO_SOURCE}}', openingFilename)
+    .replaceAll('{{HERO_INSPECTOR}}', '/demo/#' + openingSelection.toString().replaceAll('&', '&amp;'))
     .replaceAll('{{HERO_VERDICT}}', `${openingSource.loadedBytes} of ${openingSource.bytes} bytes reach Codex`)
     .replaceAll(originalSite, configuredSite);
   if (name.endsWith('.html')) content = content.replace(/\b(href|src)="\/(?!\/)/g, (_match, attribute) => `${attribute}="${basePath}`);

@@ -71,11 +71,14 @@
   if ($('demo-sources')) fetch(basePath + 'demo-report.json').then(response => response.json()).then(data => { report = data; renderDemo(); }).catch(() => {
     $('demo-reason').textContent = 'Open the full bundled demo to inspect source loading and configuration findings.';
   });
-  document.querySelectorAll('[data-demo-client]').forEach(button => {
-    button.onclick = () => { clientId = button.dataset.demoClient; selectedPath = null; if (report) renderDemo(); };
-  });
-  document.querySelectorAll('[data-hero-client]').forEach(button => {
-    button.onclick = () => { clientId = button.dataset.heroClient; selectedPath = null; if (report) renderDemo(); };
+  document.querySelectorAll('[data-demo-client], [data-hero-client]').forEach(button => {
+    button.onclick = () => {
+      clientId = button.dataset.demoClient ?? button.dataset.heroClient;
+      selectedPath = null;
+      const selection = new URLSearchParams({ view: 'effective', client: clientId });
+      document.querySelectorAll('[data-inspector-link]').forEach(link => { link.href = basePath + 'demo/#' + selection; });
+      if (report) renderDemo();
+    };
   });
   const workflows = {
     trace: { image: basePath + 'images/instructions.png', alt: 'The instruction explorer shows a source file, its loading order and provenance', caption: 'Inspect a source, read its loaded content, and see why it applies to your target file.', link: basePath + 'demo/#view=effective&client=codex' },

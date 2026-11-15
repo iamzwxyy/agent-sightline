@@ -1,5 +1,11 @@
 # Release validation
 
+## Homepage demo entry, 2026-11-15
+
+* A browser regression reproduced the primary homepage demo action opening Overview after selecting a preview client. The action now opens the selected client's instruction source, with its original line. Desktop and phone checks cover Codex, Claude Code and Copilot.
+* The build derives the default entry from the real bundled scan. JavaScript-disabled checks verify the matching client, source path and line. A failed preview-report request still permits opening the chosen client's instruction chain.
+* All 88 Chromium browser cases and all twelve website WebKit cases passed. Lint and strict TypeScript checks passed. The project-path build passed primary-entry, source-selection, manual-copy and overflow journeys at 1440×1000, 390×844 and 667×320. Its published v0.3.31 download matched the recorded SHA-256 and 1,410,785-byte size.
+
 ## v0.3.31
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
