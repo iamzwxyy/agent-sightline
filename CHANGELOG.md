@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.38 — 2026-11-16
+
+* Align two clients’ redacted effective instruction texts line by line, with original effective-text line numbers, addition/removal markers and optional unchanged context.
+* Select and swap the comparison pair within the selected clients, inspect their source chains and retain the pair, context and expanded lines through reload, browser history, refresh and offline export.
+* Compare repeated lines, whitespace, Unicode, CRLF and final-newline differences, including older reports and empty instruction text.
+* Compute line alignment asynchronously, discard stale results and paginate long comparisons. A calculation reaching its time budget shows complete text replacements.
+* Bundle JsDiff 9.0.0 and include its BSD 3-Clause notice in every standalone HTML report.
+
 ## 0.3.37 — 2026-11-15
 
 * Retain comparison client selections, content filters, Differences only and expanded paragraphs in reloadable browser links.

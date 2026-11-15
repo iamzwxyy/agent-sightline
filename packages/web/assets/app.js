@@ -16,6 +16,9 @@
     extensionKind: 'all',
     compareClients: comparisonSelection(),
     comparisonLimit: 100,
+    lineLeft: null,
+    lineRight: null,
+    lineLimit: 200,
     highlightLine: null,
     request: 0,
   };
@@ -33,6 +36,7 @@
   let targetRequest = 0;
   let targetItems = [];
   let targetIndex = -1;
+  let lineComparison;
   const $ = id => document.getElementById(id);
   function updateHeaderHeights() {
     document.documentElement.style.setProperty('--workspace-header-height', `${$('workspace-header').getBoundingClientRect().height}px`);
@@ -192,6 +196,10 @@
       if ($('content-filter').value !== 'all') hash.set('content', $('content-filter').value);
       if (!$('differences-only').checked) hash.set('differences', 'all');
       if (state.comparisonLimit > 100) hash.set('paragraphs', String(state.comparisonLimit));
+      const { left, right } = comparisonPair();
+      if (left && right) { hash.set('left', left.client); hash.set('right', right.client); }
+      if ($('show-unchanged-lines').checked) hash.set('unchanged', 'show');
+      if (state.lineLimit > 200) hash.set('lines', String(state.lineLimit));
     }
     return '#' + hash.toString();
   }
@@ -737,6 +745,113 @@
     const sharedSummary = filter === 'all' && clients.length > 1 ? ` ${sharedCount} ${sharedCount === 1 ? 'reaches' : 'reach'} every selected client.` : '';
     $('comparison-content-summary').textContent = `Showing ${Math.min(filtered.length, state.comparisonLimit)} of ${filtered.length} ${paragraphLabel}.${sharedSummary}`;
   }
+  function comparisonPair() {
+    const clients = report.clients.filter(client => state.compareClients.has(client.client));
+    const left = clients.find(client => client.client === state.lineLeft) ?? clients[0];
+    const right = clients.find(client => client !== left && client.client === state.lineRight) ?? clients.find(client => client !== left);
+    state.lineLeft = left?.client ?? null;
+    state.lineRight = right?.client ?? null;
+    return { left, right, clients };
+  }
+  function instructionLineCount(text) {
+    if (!text) return 0;
+    return text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+  }
+  function renderLineRows(comparison) {
+    const { left, right, changes } = comparison;
+    const removed = changes.filter(change => change.removed).reduce((total, change) => total + change.count, 0);
+    const added = changes.filter(change => change.added).reduce((total, change) => total + change.count, 0);
+    const shared = changes.filter(change => !change.added && !change.removed).reduce((total, change) => total + change.count, 0);
+    const showUnchanged = $('show-unchanged-lines').checked;
+    const total = removed + added + (showUnchanged ? shared : 0);
+    const rows = [];
+    let leftLine = 1;
+    let rightLine = 1;
+    for (const change of changes) {
+      const unchanged = !change.added && !change.removed;
+      if (unchanged && !showUnchanged) { leftLine += change.count; rightLine += change.count; continue; }
+      for (const match of change.value.matchAll(/[^\n]*\n|[^\n]+$/g)) {
+        if (rows.length >= state.lineLimit) break;
+        const text = match[0];
+        const row = node('div', undefined, `comparison-line ${change.removed ? 'removed' : change.added ? 'added' : 'unchanged'}`);
+        row.tabIndex = -1;
+        const leftNumber = node('span', change.added ? '' : String(leftLine), 'comparison-line-number');
+        const rightNumber = node('span', change.removed ? '' : String(rightLine), 'comparison-line-number');
+        const marker = node('span', change.removed ? '−' : change.added ? '+' : ' ', 'comparison-line-marker');
+        [leftNumber, rightNumber, marker].forEach(element => element.setAttribute('aria-hidden', 'true'));
+        const label = change.removed ? `Removal from ${names[left.client]}, effective line ${leftLine}. ` : change.added ? `Addition in ${names[right.client]}, effective line ${rightLine}. ` : `${names[left.client]} line ${leftLine}, ${names[right.client]} line ${rightLine}. `;
+        const code = node('code', text.endsWith('\n') ? text.slice(0, -1) : text, 'comparison-line-text');
+        if (!text.endsWith('\n')) code.append(node('span', 'No newline at end of text', 'line-ending-note'));
+        row.append(leftNumber, rightNumber, marker, node('span', label, 'sr-only'), code);
+        rows.push(row);
+        if (!change.added) leftLine++;
+        if (!change.removed) rightLine++;
+      }
+      if (rows.length >= state.lineLimit) break;
+    }
+    const content = [];
+    if (comparison.coarse) content.push(node('p', 'Alignment time limit reached. Complete text replacements are shown.', 'code-note'));
+    if (rows.length) {
+      const legend = node('div', undefined, 'line-comparison-legend');
+      legend.append(node('span', `− ${names[left.client]}`, 'removed'), node('span', `+ ${names[right.client]}`, 'added'));
+      const list = node('div', undefined, 'line-comparison-list');
+      list.tabIndex = 0; list.setAttribute('role', 'region'); list.setAttribute('aria-label', 'Effective text line comparison');
+      list.append(...rows); content.push(legend, list);
+    } else content.push(empty(shared ? 'Displayed texts match' : 'No active instruction text', shared ? 'Select Show unchanged lines to read the alignment.' : 'Inspect the source chains and workspace trust for these clients.'));
+    if (total > state.lineLimit) content.push(button(`Show ${Math.min(200, total - state.lineLimit)} more lines`, () => {
+      const firstNew = state.lineLimit;
+      state.lineLimit += 200; navigate('compare');
+      $('line-comparison-result').querySelectorAll('.comparison-line')[firstNew]?.focus();
+    }, 'button button-small line-comparison-more'));
+    $('line-comparison-result').replaceChildren(...content);
+    const countedLines = count => `${count} ${count === 1 ? 'line' : 'lines'}`;
+    $('line-comparison-summary').textContent = `${countedLines(removed)} removed · ${countedLines(added)} added · ${shared} displayed ${shared === 1 ? 'line aligns' : 'lines align'}. Showing ${rows.length} of ${countedLines(total)}.`;
+  }
+  function renderLineComparison() {
+    const { left, right, clients } = comparisonPair();
+    for (const side of ['left', 'right']) {
+      const select = $(`line-${side}`);
+      select.replaceChildren(...clients.map(client => {
+        const option = node('option', names[client.client]); option.value = client.client; return option;
+      }));
+      select.value = side === 'left' ? left?.client ?? '' : right?.client ?? '';
+      select.disabled = clients.length < 2;
+      const trace = $(`line-trace-${side}`);
+      const client = side === 'left' ? left : right;
+      trace.disabled = !client;
+      trace.setAttribute('aria-label', client ? `Inspect ${names[client.client]} sources` : 'Inspect sources');
+      trace.onclick = () => {
+        state.source = null; state.instructionView = 'sources'; $('source-search').value = '';
+        navigate('effective', client.client);
+      };
+    }
+    $('show-unchanged-lines').disabled = !right;
+    if (!left || !right) {
+      lineComparison = undefined;
+      $('line-comparison-summary').textContent = '';
+      $('line-comparison-result').replaceChildren(empty('Choose two clients to compare text', 'Select another client above to align its effective instruction lines.'));
+      return;
+    }
+    if (lineComparison?.left === left && lineComparison.right === right) {
+      if (lineComparison.changes) renderLineRows(lineComparison);
+      return;
+    }
+    const comparison = { left, right, changes: null, coarse: false };
+    lineComparison = comparison;
+    $('line-comparison-summary').textContent = 'Comparing effective text…';
+    $('line-comparison-result').replaceChildren();
+    const leftText = left.instructions.replace(/\r\n/g, '\n');
+    const rightText = right.instructions.replace(/\r\n/g, '\n');
+    window.Diff.diffLines(leftText, rightText, { timeout: 1000, callback: changes => {
+      if (lineComparison !== comparison) return;
+      comparison.coarse = changes === undefined;
+      comparison.changes = changes ?? [
+        { removed: true, value: leftText, count: instructionLineCount(leftText) },
+        { added: true, value: rightText, count: instructionLineCount(rightText) },
+      ].filter(change => change.count);
+      if (state.view === 'compare') renderLineRows(comparison);
+    } });
+  }
   function renderCompare() {
     const clients = report.clients.filter(client => state.compareClients.has(client.client));
     $('compare-clients').replaceChildren(...report.clients.map((client, index) => {
@@ -745,13 +860,14 @@
           if (state.compareClients.size === 1) { toast('Keep at least one client selected'); return; }
           state.compareClients.delete(client.client);
         } else state.compareClients.add(client.client);
-        state.comparisonLimit = 100; navigate('compare');
+        state.comparisonLimit = 100; state.lineLimit = 200; navigate('compare');
         $('compare-clients').children[index].focus({ preventScroll: true });
       }, 'compare-chip');
       element.append(avatar(client.client), node('span', names[client.client]));
       element.setAttribute('aria-pressed', String(state.compareClients.has(client.client)));
       return element;
     }));
+    renderLineComparison();
     renderContentComparison(clients);
     $('comparison-text').replaceChildren(...clients.map(client => {
       const panel = node('article', undefined, 'comparison-document');
@@ -1061,6 +1177,18 @@
   $('extension-client').onchange = renderExtensions;
   $('differences-only').onchange = () => navigate('compare');
   $('content-filter').onchange = () => { state.comparisonLimit = 100; navigate('compare'); };
+  for (const side of ['left', 'right']) $(`line-${side}`).onchange = () => {
+    const previous = side === 'left' ? state.lineLeft : state.lineRight;
+    if (side === 'left') {
+      state.lineLeft = $('line-left').value;
+      if (state.lineLeft === state.lineRight) state.lineRight = previous;
+    } else {
+      state.lineRight = $('line-right').value;
+      if (state.lineRight === state.lineLeft) state.lineLeft = previous;
+    }
+    state.lineLimit = 200; navigate('compare');
+  };
+  $('show-unchanged-lines').onchange = () => { state.lineLimit = 200; navigate('compare'); };
   $('review-findings').onclick = () => { $('severity').value = 'actionable'; navigate('findings'); };
   $('scope-button').onclick = () => {
     if (document.body.classList.contains('nav-open')) setNavigationOpen(false);
@@ -1145,6 +1273,10 @@
       $('differences-only').checked = hash.get('differences') !== 'all';
       const limit = Number(hash.get('paragraphs'));
       state.comparisonLimit = Number.isSafeInteger(limit) && limit >= 100 ? limit : 100;
+      state.lineLeft = hash.get('left'); state.lineRight = hash.get('right');
+      $('show-unchanged-lines').checked = hash.get('unchanged') === 'show';
+      const lineLimit = Number(hash.get('lines'));
+      state.lineLimit = Number.isSafeInteger(lineLimit) && lineLimit >= 200 ? lineLimit : 200;
     }
     state.instructionView = hash.get('text') === 'effective' ? 'document' : 'sources';
     const sourcePath = hash.get('source');

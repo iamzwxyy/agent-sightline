@@ -7,18 +7,18 @@ One file. Several agents. Different instructions. Sightline shows every discover
 Open a terminal in your project folder and run one command to inspect your repository in the browser.
 
 ```sh
-npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.37/agent-sightline-0.3.37.tgz ui
+npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.38/agent-sightline-0.3.38.tgz ui
 ```
 
 For repeated use, install the CLI. The bundled demo provides a sample workspace with intentional configuration problems.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.37/agent-sightline-0.3.37.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.38/agent-sightline-0.3.38.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.37.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.38.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -65,6 +65,8 @@ The workspace opens with grouped errors and warnings. Select a finding to read i
 Read effective text shows the exact accumulated instructions with clickable source origins. Compare clients finds shared paragraphs across different source files, with filters for shared content and different recipients. Each occurrence links to the owning client and source lines. The full instruction text also appears side by side. Settings lets you search resolved values, inspect the selected definition and follow replaced layers. Source jumps bring the selected line into view, and source links retain that line through reload and browser Back/Forward in live and portable reports. Refresh scan retains the selected line in the local inspector. After a successful refresh, the fixed header shows current error and warning counts with a Review findings action. Incomplete discovery links to scan scope. Repeated source rows retain their individual loading decisions and captured import origins. Open an import origin to inspect its declaring line. The selected occurrence survives reload and browser history in live and portable reports. Navigation, export and local inspection controls stay visible while reading long sources. Detail dialogs keep their close control visible during long configuration inspection. The source filename stays in view. Long source lists reveal the selected row while keeping desktop search and filters accessible. Tab enters the source list once. Arrow keys and Home/End move through rows, and Enter selects a source. Source inspection focuses the filename heading, with Shift+Tab returning to the list. Source origins and client entry points clear stale searches. Browser history clears a search that excludes its destination. Wide desktop layouts keep source and explanation panels beside the code. Newly selected views open at their heading and filters. The target and trust choice survive reloads, and browser Back returns through your inspection history. A repository with no configuration opens with a working sample-workspace entry point.
 
 MCP extension details link each configured field to its contributing file and line. A Codex server can inherit its command from user settings and its arguments from a project layer. Findings and terminal explanations retain those separate origins. Terminal explanations and comparisons include each extension’s loading reason.
+
+Line-by-line comparison aligns two clients’ redacted effective text. It marks additions and removals in the alignment and can show unchanged context. Select either client, inspect its sources and preserve the pair through refresh and offline sharing. Line numbers refer to the displayed effective text. The first 200 comparison lines render initially, with more available on demand.
 
 Instruction coverage includes structured files imported as context. It shows each source's loading states across clients, with configuration roles for clients reading the file as settings. Select a state with multiple contributions to inspect every occurrence, its source line and loading reason. Differences only includes later repeated contributions and mixed states.
 
@@ -121,7 +123,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.3.37.tgz
+npm install -g ./agent-sightline-0.3.38.tgz
 agent-sightline demo
 ```
 
@@ -139,10 +141,10 @@ Interrupted scans exit with 130 for SIGINT or 143 for SIGTERM, after active prob
 
 ## Scope and next steps
 
-Sightline diagnoses configuration; it does not synchronize it or switch API providers/models. Markdown guidance accumulates, so the tool does not guess which conflicting sentence an LLM will obey. Content comparison matches blank-line-delimited paragraphs exactly after CRLF normalization. Fenced code stays intact, and repeated occurrences retain their loading order. Wording and indentation remain significant. Transformed text without a proven contiguous source range links to the source contribution’s start.
+Sightline diagnoses configuration; it does not synchronize it or switch API providers/models. Markdown guidance accumulates, so the tool does not guess which conflicting sentence an LLM will obey. Paragraph comparison matches blank-line-delimited paragraphs exactly after CRLF normalization. Fenced code stays intact, and repeated occurrences retain their loading order. Wording and indentation remain significant. Transformed text without a proven contiguous source range links to the source contribution’s start.
 
 Static reports exclude session toggles, other command-line overrides, account/managed-cloud policy and bundled/plugin state unless expressly supported by an adapter. Experimental adapters describe their gaps rather than claiming complete resolution. Sightline inspects files up to 2 MiB each. Discovery defaults to 50,000 repository entries and 4,000 matching files per user configuration root. Adjust these budgets with `--max-entries` and `--max-user-files`. Reports retain an incomplete-discovery status when limits or inaccessible locations leave sources uninspected, including filtered and exported reports.
 
-The next increments toward v1.0 are broader real-client conformance coverage, plugin/managed-policy provenance and line-level alignment inside changed paragraphs. See [architecture](docs/architecture.md), [adapter guide](docs/adapters.md), [contributing](CONTRIBUTING.md), [release procedure](docs/release.md), [30-second demo](docs/demo.md), and [launch drafts](docs/launch-drafts.md).
+The next increments toward v1.0 are broader real-client conformance coverage, plugin/managed-policy provenance and character-level highlighting inside changed lines. See [architecture](docs/architecture.md), [adapter guide](docs/adapters.md), [contributing](CONTRIBUTING.md), [release procedure](docs/release.md), [30-second demo](docs/demo.md), and [launch drafts](docs/launch-drafts.md).
 
 MIT. Codex schema attribution: [third-party notices](docs/third-party.md).

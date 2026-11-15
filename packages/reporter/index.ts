@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import type { Extension, Finding, Report, Severity } from '../core/types.js';
 import { CLIENTS } from '../core/types.js';
 import { redact, redactText } from '../core/redact.js';
@@ -155,7 +157,11 @@ export function portable(report: Report): Report {
 export function html(report: Report, options: { live?: boolean; portable?: boolean } = {}): string {
   const data = options.portable === false ? redact(report) : portable(report);
   // HTML parsing normalizes CRLF before CSP hashing; Windows checkouts must agree.
-  const script = readFileSync(new URL('../web/assets/app.js', import.meta.url), 'utf8').replace(/\r\n?/g, '\n');
+  const diffRoot = dirname(createRequire(import.meta.url).resolve('diff/package.json'));
+  const diffLicense = readFileSync(join(diffRoot, 'LICENSE'), 'utf8').replaceAll('*/', '* /');
+  const diffScript = readFileSync(join(diffRoot, 'dist/diff.min.js'), 'utf8');
+  const applicationScript = readFileSync(new URL('../web/assets/app.js', import.meta.url), 'utf8');
+  const script = [`/* JsDiff license\n${diffLicense}\n*/`, diffScript, applicationScript].join('\n').replace(/\r\n?/g, '\n');
   const font = readFileSync(new URL('../web/assets/fonts/instrument-sans.woff2', import.meta.url)).toString('base64');
   const icons = CLIENTS.map(client => {
     const data = readFileSync(new URL(`../web/assets/clients/${client}.svg`, import.meta.url)).toString('base64');

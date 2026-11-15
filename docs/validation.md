@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.38
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
+
+* Four new browser cases cover a real Codex/Claude one-line instruction difference, effective-text line numbers, unchanged context, source inspection and desktop/phone offline export. Pair selection and swapping survive reload, browser history, refresh and re-export, including removal and re-selection of clients.
+* Eight displayed-text fixtures reconstruct the complete left and right inputs after alignment. They cover repeated and reordered lines, CRLF, indentation, trailing spaces, final newlines, empty sides, redacted values, Unicode and HTML-like text. Earlier reports without instructionDiff retain line comparison.
+* Controlled asynchronous completions prove that superseded comparisons cannot overwrite the selected pair. Calculation-budget fallback shows complete replacements. Expanding to 400 rows retains focus, reloadable state and visible pair controls on desktop and phone. The shipped demo exposed moved-line labeling, and the final legend and summary describe additions and removals in the alignment.
+* The 574-case core suite completed with 572 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. Production dependency audit reported zero vulnerabilities.
+* All 106 Chromium browser cases and seven focused WebKit flows passed. Automated WCAG AA checks passed. Desktop and phone comparison views received visual review. The example HTML, inspector capture and website comparison image were generated from the working interfaces.
+* The runtime package bundles JsDiff 9.0.0. Standalone reports embed its browser code and BSD 3-Clause notice in their CSP-hashed script and execute with networking disabled.
+
 ## v0.3.37
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.

@@ -15,6 +15,184 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('line comparison locates a changed instruction and retains context and source navigation online and offline', async ({ page }) => {
+  const w = await workspace({
+    'AGENTS.md': '# Project\nRun npm test.\nKeep changes focused.',
+    'CLAUDE.md': '# Project\nRun pnpm test.\nKeep changes focused.',
+  });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await page.context().setOffline(false);
+      await page.goto(server.url + '#view=compare');
+      await expect(page.locator('#line-comparison-summary')).toContainText('1 line removed · 1 line added · 2 displayed lines align');
+      await expect(page.locator('.comparison-line.removed .comparison-line-text')).toHaveText('Run npm test.');
+      await expect(page.locator('.comparison-line.added .comparison-line-text')).toHaveText('Run pnpm test.');
+      await expect(page.locator('.comparison-line.removed .comparison-line-number').first()).toHaveText('2');
+      await expect(page.locator('.comparison-line.added .comparison-line-number').last()).toHaveText('2');
+      await page.locator('#show-unchanged-lines').check();
+      await expect(page.locator('.comparison-line')).toHaveCount(4);
+      await expect(page.locator('.comparison-line.unchanged')).toHaveCount(2);
+      await page.getByRole('button', { name: 'Inspect Codex sources', exact: true }).click();
+      await expect(page.locator('#source-title')).toHaveText('AGENTS.md');
+      await page.goBack();
+      await expect(page.locator('#show-unchanged-lines')).toBeChecked();
+      const downloading = page.waitForEvent('download');
+      await page.getByRole('button', { name: /Export report/ }).click();
+      const file = test.info().outputPath(`line-comparison-${viewport.width}.html`);
+      await (await downloading).saveAs(file);
+      const exported = await readFile(file, 'utf8');
+      expect(exported).toContain('BSD 3-Clause License');
+      expect(exported).toContain('Kevin Decker');
+      await page.context().setOffline(true);
+      await page.goto(pathToFileURL(file).href);
+      await expect(page.locator('.comparison-line')).toHaveCount(4);
+      await page.reload();
+      await expect(page.locator('.comparison-line')).toHaveCount(4);
+      await page.screenshot({ path: test.info().outputPath(`line-comparison-${viewport.width}.png`), fullPage: true });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('line comparison pair selection survives history, refresh and offline re-export and follows selected clients', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'Shared.\nCodex line.', 'CLAUDE.md': 'Shared.\nClaude line.', 'GEMINI.md': 'Shared.\nGemini line.' });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude', 'gemini'], trust: 'trusted' });
+  const exportReport = async (name: string) => {
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath(name);
+    await (await downloading).saveAs(file);
+    return pathToFileURL(file).href;
+  };
+  try {
+    await page.goto(server.url + '#view=compare');
+    await page.getByRole('combobox', { name: 'Right text', exact: true }).selectOption('gemini');
+    await page.getByRole('combobox', { name: 'Left text', exact: true }).selectOption('claude');
+    await expect(page.locator('#line-comparison-summary')).toContainText('removed');
+    await page.reload();
+    await expect(page.locator('#line-left')).toHaveValue('claude');
+    await expect(page.locator('#line-right')).toHaveValue('gemini');
+    await page.locator('#refresh').click();
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+    await expect(page.locator('#line-left')).toHaveValue('claude');
+    const file = await exportReport('selected-line-comparison.html');
+    await page.context().setOffline(true);
+    await page.goto(file);
+    await expect(page.locator('#line-left')).toHaveValue('claude');
+    await expect(page.locator('#line-right')).toHaveValue('gemini');
+    await page.getByRole('combobox', { name: 'Left text', exact: true }).selectOption('gemini');
+    await expect(page.locator('#line-right')).toHaveValue('claude');
+    await page.goBack();
+    await expect(page.locator('#line-left')).toHaveValue('claude');
+    await expect(page.locator('#line-right')).toHaveValue('gemini');
+    await page.locator('#show-unchanged-lines').check();
+    const second = await exportReport('reshared-line-comparison.html');
+    await page.goto(second);
+    await expect(page.locator('#line-left')).toHaveValue('claude');
+    await expect(page.locator('#line-right')).toHaveValue('gemini');
+    await expect(page.locator('#show-unchanged-lines')).toBeChecked();
+    await page.locator('#compare-clients').getByRole('button', { name: 'Claude Code', exact: true }).click();
+    await expect(page.locator('#line-left')).toHaveValue('codex');
+    await expect(page.locator('#line-right')).toHaveValue('gemini');
+    await page.locator('#compare-clients').getByRole('button', { name: 'Codex', exact: true }).click();
+    await expect(page.locator('#line-comparison-result')).toContainText('Choose two clients');
+    await expect(page.locator('#line-left')).toBeDisabled();
+    await expect(page.locator('#line-right')).toBeDisabled();
+    await page.locator('#compare-clients').getByRole('button', { name: 'Claude Code', exact: true }).click();
+    await expect(page.locator('#line-left')).toHaveValue('gemini');
+    await expect(page.locator('#line-right')).toHaveValue('claude');
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('line comparison reconstructs full displayed text for repeats, whitespace, line endings, empty and legacy reports', async ({ page }) => {
+  const report = await scan({ repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted', clients: ['codex', 'claude'] });
+  delete report.instructionDiff;
+  const cases = [
+    { left: 'One.\nTwo.\nOne.\nEnd.', right: 'One.\nOne.\nTwo.\nEnd.' },
+    { left: 'Start.\r\n  Indent.\r\nKeep trailing space. \r\nEnd.', right: 'Start.\nIndent.\nKeep trailing space.\nEnd.' },
+    { left: 'Final newline.\n', right: 'Final newline.' },
+    { left: '', right: 'Only right.\n\n' },
+    { left: 'Only left.', right: '' },
+    { left: '', right: '' },
+    { left: 'password=private-left-value\nSafe.', right: 'password=private-right-value\nSafe.' },
+    { left: '<script>window.untrusted = true</script>\n日本語の指示。', right: '<script>window.untrusted = false</script>\n日本語の指示。' },
+  ];
+  for (const [index, scenario] of cases.entries()) {
+    const current = structuredClone(report);
+    current.clients[0].instructions = scenario.left;
+    current.clients[1].instructions = scenario.right;
+    const file = test.info().outputPath(`line-cases-${index}.html`);
+    await writeFile(file, html(current));
+    await page.goto(pathToFileURL(file).href + '#view=compare&unchanged=show');
+    await expect(page.locator('#line-comparison-summary')).not.toHaveText('Comparing effective text…');
+    const reconstructed = await page.locator('.comparison-line').evaluateAll(rows => {
+      let left = '', right = '';
+      for (const row of rows) {
+        const code = row.querySelector('.comparison-line-text')!;
+        const text = (code.firstChild?.textContent ?? '') + (code.querySelector('.line-ending-note') ? '' : '\n');
+        if (!row.classList.contains('added')) left += text;
+        if (!row.classList.contains('removed')) right += text;
+      }
+      return { left, right };
+    });
+    const displayed = portable(current).clients;
+    expect(reconstructed).toEqual({ left: displayed[0].instructions.replaceAll('\r\n', '\n'), right: displayed[1].instructions.replaceAll('\r\n', '\n') });
+    for (const value of ['private-left-value', 'private-right-value']) expect(await readFile(file, 'utf8')).not.toContain(value);
+    if (index === 0) {
+      await expect(page.locator('.line-comparison-legend .removed')).toHaveText('− Codex');
+      await expect(page.locator('.line-comparison-legend .added')).toHaveText('+ Claude Code');
+      await expect(page.locator('#line-comparison-summary')).toContainText('1 line removed · 1 line added');
+    }
+    expect(await page.evaluate(() => (window as any).untrusted)).toBeUndefined();
+  }
+});
+
+test('line comparison rejects stale results and paginates complete replacements after its calculation budget', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'Codex.', 'CLAUDE.md': 'Claude.', 'GEMINI.md': Array.from({ length: 450 }, (_, index) => `Gemini ${index}.`).join('\n') });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude', 'gemini'], trust: 'trusted' });
+  try {
+    await page.goto(server.url + '#view=compare');
+    await expect(page.locator('#line-comparison-summary')).toContainText('removed');
+    await page.evaluate(() => {
+      (window as any).pendingLineComparisons = [];
+      (window as any).Diff.diffLines = (_left: string, _right: string, options: any) => (window as any).pendingLineComparisons.push(options.callback);
+    });
+    await page.getByRole('combobox', { name: 'Right text', exact: true }).selectOption('gemini');
+    await page.getByRole('combobox', { name: 'Left text', exact: true }).selectOption('claude');
+    await page.evaluate(() => (window as any).pendingLineComparisons[0]([{ removed: true, count: 1, value: 'STALE_RESULT' }]));
+    await expect(page.locator('#line-comparison-summary')).toHaveText('Comparing effective text…');
+    await expect(page.locator('#line-comparison-result')).not.toContainText('STALE_RESULT');
+    await page.evaluate(() => (window as any).pendingLineComparisons[1](undefined));
+    await expect(page.locator('#line-comparison-result')).toContainText('Complete text replacements');
+    await expect(page.locator('.comparison-line')).toHaveCount(200);
+    await page.getByRole('button', { name: 'Show 200 more lines', exact: true }).click();
+    await expect(page.locator('.comparison-line')).toHaveCount(400);
+    await expect(page.locator('.comparison-line').nth(200)).toBeFocused();
+    await expect(page.locator('#line-left')).toBeInViewport({ ratio: 1 });
+    await expect(page.locator('#line-right')).toBeInViewport({ ratio: 1 });
+    expect(await page.evaluate(() => (window as any).pendingLineComparisons.length)).toBe(2);
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('expanded-line-comparison.html');
+    await (await downloading).saveAs(file);
+    await page.context().setOffline(true);
+    await page.goto(pathToFileURL(file).href);
+    await expect(page.locator('.comparison-line')).toHaveCount(400);
+    await expect(page.locator('#line-left')).toHaveValue('claude');
+    await expect(page.locator('#line-right')).toHaveValue('gemini');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('.comparison-line').nth(200).focus();
+    await expect(page.locator('#line-left')).toBeInViewport({ ratio: 1 });
+    await expect(page.locator('#line-right')).toBeInViewport({ ratio: 1 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('comparison context survives reload, refresh, export and offline re-export on desktop and phone', async ({ page }) => {
   const w = await workspace({
     'AGENTS.md': 'SHARED_GUIDANCE\n\nCODEX_GUIDANCE',

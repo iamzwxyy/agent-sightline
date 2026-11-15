@@ -83,6 +83,16 @@
         <section id="compare" class="page-view" hidden>
           <div class="page-heading compact"><div><p class="overline">Across clients</p><h1>Same repository. Different context.</h1><p class="page-description">See where instructions reach your clients, and where their paths diverge.</p></div></div>
           <div id="compare-clients" class="compare-client-picker" aria-label="Clients to compare"></div>
+          <section id="line-comparison" aria-labelledby="line-comparison-title">
+            <div class="section-heading"><h2 id="line-comparison-title">Line-by-line comparison</h2><label class="check-label"><input disabled data-startup-disabled id="show-unchanged-lines" type="checkbox"> Show unchanged lines</label></div>
+            <p class="subtle">Redacted effective text, in loading order. Line numbers refer to this text.</p>
+            <div class="line-comparison-controls">
+              <div><label class="filter-label">Left text<select disabled data-startup-disabled id="line-left"></select></label><button disabled data-startup-disabled id="line-trace-left" class="text-button">Inspect sources</button></div>
+              <div><label class="filter-label">Right text<select disabled data-startup-disabled id="line-right"></select></label><button disabled data-startup-disabled id="line-trace-right" class="text-button">Inspect sources</button></div>
+            </div>
+            <p id="line-comparison-summary" class="subtle" role="status"></p>
+            <div id="line-comparison-result"></div>
+          </section>
           <section id="comparison-content" aria-labelledby="comparison-content-title">
             <div class="section-heading"><h2 id="comparison-content-title">Instruction paragraphs</h2><label class="filter-label">Show<select disabled data-startup-disabled id="content-filter" aria-label="Instruction content filter"><option value="all">All content</option><option value="shared">Shared by all</option><option value="different">Different recipients</option></select></label></div>
             <p id="comparison-content-summary" class="subtle" role="status"></p><div id="comparison-blocks"></div>

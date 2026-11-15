@@ -1,6 +1,6 @@
 {
   "name": "agent-sightline",
-  "version": "0.3.37",
+  "version": "0.3.38",
   "description": "See what your coding agent actually sees. Local, read-only configuration diagnostics.",
   "type": "module",
   "license": "MIT",
@@ -53,6 +53,7 @@
     "ajv": "8.20.0",
     "commander": "14.0.3",
     "cross-spawn": "7.0.6",
+    "diff": "9.0.0",
     "jsonc-parser": "3.3.1",
     "minimatch": "11.0.8",
     "smol-toml": "1.9.1",
