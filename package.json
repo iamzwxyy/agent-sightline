@@ -36,7 +36,7 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint packages tests scripts website/public/*.js && git diff --check",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --test --test-concurrency=2 tests/*.test.ts",
     "test:web": "playwright test",
     "smoke": "node scripts/package-smoke.mjs",
     "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run smoke",
