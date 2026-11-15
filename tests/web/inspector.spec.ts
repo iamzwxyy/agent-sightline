@@ -318,6 +318,10 @@ test('workspace trust remains selected when private text matches the trust name'
       await page.goto(pathToFileURL(file).href);
       await expect(page.locator('#trust')).toHaveValue('untrusted');
       await expect(page.locator('#trust-control')).not.toBeVisible();
+      await page.locator('#session-button').click();
+      await expect(page.locator('#assumptions')).toContainText('Workspace trust assumption is untrusted.');
+      await page.screenshot({ path: test.info().outputPath(`offline-trust-scope-${viewport.width}.png`), fullPage: true });
+      await page.getByRole('button', { name: 'Close scan details', exact: true }).click();
       const reexporting = page.waitForEvent('download');
       await page.locator('#export').click();
       const reexported = await readFile((await (await reexporting).path())!, 'utf8');

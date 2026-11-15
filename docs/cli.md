@@ -39,7 +39,7 @@ The terminal scan summary groups identical diagnostics across clients at the sam
 
 Browser rescans retain the actual selected target and Codex profile when their displayed report values are redacted. Submitting an unchanged target with Inspect or Enter keeps that target and its starting directory. Applying an unchanged profile keeps the selected file. Clearing the profile field selects the base configuration. Invalid profile names produce a server validation message and preserve the last successful report for export.
 
-Explicit trust assumptions add optional `inputs.trust` metadata with `auto`, `trusted` or `untrusted`. These generated control values retain their enum representation when private source text contains the same words. Source previews, copied instructions and diagnostic prose keep their redaction. The inspector uses this metadata for the trust control and reads the captured assumption text for earlier reports.
+Explicit trust assumptions add optional `inputs.trust` metadata with `auto`, `trusted` or `untrusted`. These generated control values retain their enum representation when private source text contains the same words. Source previews, copied instructions and diagnostic prose keep their redaction. The inspector uses this metadata for the trust control and the visible scan-scope details in live and standalone reports. Earlier reports use their captured assumption text.
 
 Live links keep explicitly entered request selections through reload and browser history. An omitted URL parameter uses the server's CLI-configured default. Standalone HTML captures retain their redacted diagnostic values and trust assumption. The request selections used by the local server stay outside those files.
 

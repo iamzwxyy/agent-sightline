@@ -1050,7 +1050,10 @@
     $('session-form').hidden = !live;
     $('session-directory').placeholder = directory;
     $('session-reset').hidden = report.inputs?.sessionDirectory === undefined;
-    const notes = [...report.assumptions];
+    const trust = reportedTrust();
+    const notes = report.assumptions.map(assumption => assumption.startsWith('Trust:') && report.inputs?.trust === trust
+      ? `Workspace trust assumption is ${trust}. Unknown trust leaves trust-dependent sources conditional. The trusted option also assumes Claude project MCP approval.`
+      : assumption);
     if (report.discovery) {
       const entryUnit = report.discovery.repositoryEntries === 1 ? 'entry' : 'entries';
       notes.push(`Repository discovery examined ${report.discovery.repositoryEntries.toLocaleString()} filesystem ${entryUnit} with a budget of ${report.discovery.repositoryEntryLimit.toLocaleString()}.`);
