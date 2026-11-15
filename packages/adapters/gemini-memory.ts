@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { access, lstat, readFile, readlink, realpath } from 'node:fs/promises';
 import type { Context, Effective, Location, Source } from '../core/types.js';
-import { bytes, cmp, finding, within } from '../core/utils.js';
+import { bytes, cmp, finding, slash, within } from '../core/utils.js';
 import { decision, effectiveValue } from './common.js';
 import { parseSource } from '../core/parse.js';
 import { redactSourcePreview } from '../core/redact.js';
@@ -252,8 +252,9 @@ export async function resolveGeminiMemory(e: Effective, ctx: Context, includePro
     const scope = source.scope === 'user' ? userRoot : ctx.repo;
     const content = format === 'flat' ? await flat(source, root, scope) : await tree(source, root, scope, new Set());
     if (content.text.trim()) {
-      contexts.push(`--- Context from: ${source.path} ---\n${content.text.trim()}\n--- End of Context from: ${source.path} ---`);
-      redactedContexts.push(`--- Context from: ${source.path} ---\n${content.redacted.trim()}\n--- End of Context from: ${source.path} ---`);
+      const label = slash(source.path);
+      contexts.push(`--- Context from: ${label} ---\n${content.text.trim()}\n--- End of Context from: ${label} ---`);
+      redactedContexts.push(`--- Context from: ${label} ---\n${content.redacted.trim()}\n--- End of Context from: ${label} ---`);
     }
   }
   e.instructions = redactedContexts.join('\n\n');

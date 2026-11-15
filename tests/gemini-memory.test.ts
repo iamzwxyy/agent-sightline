@@ -14,10 +14,12 @@ function nativeContext(filename: string, format: 'tree' | 'flat', markers = ['.g
     import { readFile } from 'node:fs/promises';
     import path from 'node:path';
     import { processImports } from ${JSON.stringify(publishedLoader.href)};
+    import { toAbsolutePath } from ${JSON.stringify(new URL('paths.js', publishedLoader).href)};
     const [filename, format, markers] = JSON.parse(process.argv[1]);
     const result = await processImports(await readFile(filename, 'utf8'), path.dirname(filename), false, undefined, undefined, format, markers);
     const body = result.content.trim();
-    const lines = ['--- Context from: ' + filename + ' ---', body, '--- End of Context from: ' + filename + ' ---'];
+    const label = toAbsolutePath(filename);
+    const lines = ['--- Context from: ' + label + ' ---', body, '--- End of Context from: ' + label + ' ---'];
     console.log(JSON.stringify(body ? lines.join(String.fromCharCode(10)) : ''));
   `;
   return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script, JSON.stringify([filename, format, markers])], {

@@ -9,6 +9,7 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 * All 89 Chromium browser cases passed. Three focused Gemini and all twelve website cases passed in WebKit. Desktop and phone flows verify pending/approved/rejected context, refresh, copied effective text and private offline reports. Their source views received visual review.
 * The installed package verifies saved Gemini trust through all three states, current user context, project custom context and the GEMINI.md fallback. HTML output conceals unrelated saved folder entries and private paths. The production archive excludes the development-only Gemini runtime.
 * Homepage checks cover sourced client icons, the WebGL opening, pause, visibility changes, context loss, reduced motion and JavaScript-disabled fallback. A phone screenshot exposed joined client-strip sentences, and a responsive wording regression now covers their spacing.
+* The initial Windows startup comparison exposed backslashes in generated context delimiters where the native manager uses forward slashes. Delimiters now use the native display form. Import-only comparisons also call the pinned upstream path formatter for their context labels. [Initial OS verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43690495388)
 
 ## Homepage demo entry, 2026-11-15
 
