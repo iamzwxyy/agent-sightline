@@ -61,3 +61,19 @@ test('private values matching input field names preserve report input keys', asy
   assert.deepEqual(Object.keys(report.inputs!).sort(), ['codexProfile', 'sessionDirectory']);
   assert.deepEqual(Object.keys(portable(report).inputs!).sort(), ['codexProfile', 'sessionDirectory']);
 });
+
+test('explicit trust inputs retain generated modes when private text uses the same words', async t => {
+  const w = await workspace({
+    'AGENTS.md': 'Safe instructions.\ntrusted\nuntrusted\nauto',
+    '.mcp.json': '{"mcpServers":{"fixture":{"command":"node","env":{"A":"trusted","B":"untrusted","C":"auto"}}}}',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  for (const trust of ['auto', 'trusted', 'untrusted'] as const) {
+    const report = await scan({ ...w, clients: ['codex', 'claude'], user: false, trust });
+    assert.equal(report.inputs?.trust, trust);
+    assert.equal(portable(report).inputs?.trust, trust);
+    const instruction = report.sources.find(source => source.relativePath === 'AGENTS.md')!;
+    assert.equal(instruction.preview, 'Safe instructions.\n[REDACTED]\n[REDACTED]\n[REDACTED]');
+    assert.ok(report.assumptions.some(assumption => assumption.startsWith('Trust: [REDACTED];')));
+  }
+});

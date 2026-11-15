@@ -56,7 +56,7 @@ export interface InstructionBlock {
 }
 export interface Report {
   schemaVersion: '1.0'; tool: { name: string; version: string };
-  inputs?: { codexProfile?: string; sessionDirectory?: string };
+  inputs?: { codexProfile?: string; sessionDirectory?: string; trust?: ScanOptions['trust'] };
   discovery?: Discovery;
   pathMappings?: { path: string; replacement: string }[];
   repository: string; target: string; sessionDirectory: string;

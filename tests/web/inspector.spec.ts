@@ -9,7 +9,7 @@ import { trustWorkspace } from '../copilot-trust-fixture.js';
 import { mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { html, portable } from '../../packages/reporter/index.js';
-import type { Report } from '../../packages/core/types.js';
+import type { Report, ScanOptions } from '../../packages/core/types.js';
 import { scan } from '../../packages/core/index.js';
 import { createServer } from 'node:http';
 
@@ -113,6 +113,217 @@ test('starting-directory rescans keep request paths when displayed paths are red
       await page.reload();
     }
   } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('Inspect preserves an unchanged redacted target from server defaults and explicit URLs', async ({ page }) => {
+  const w = await workspace({
+    'src/file.ts': '', 'src/AGENTS.md': 'Nested instructions.',
+    '.mcp.json': '{"mcpServers":{"fixture":{"command":"node","env":{"TARGET":"src/file.ts"}}}}',
+  });
+  const server = await serve({ ...w, target: 'src/file.ts', user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  const inspect = async (action: () => Promise<unknown>, target: string | null) => {
+    const scanning = page.waitForResponse(response => new URL(response.url()).pathname === '/api/scan');
+    await action();
+    const response = await scanning;
+    expect(response.status()).toBe(200);
+    expect(new URL(response.url()).searchParams.get('target')).toBe(target);
+    const captured = (await response.json()).report;
+    expect(captured.clients.find((client: any) => client.client === 'codex').instructions).toBe('Nested instructions.');
+    expect(captured.sessionDirectory).toBe(path.join(w.repo, 'src'));
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+  };
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      for (const query of ['', '?target=src/file.ts']) {
+        await page.context().setOffline(false);
+        await page.goto(server.url + query);
+        await expect(page.locator('#target')).toHaveValue('[REDACTED]');
+        await inspect(() => page.locator('#inspect').click(), query ? 'src/file.ts' : null);
+        await page.locator('#target').focus();
+        await inspect(() => page.locator('#target').press('Enter'), query ? 'src/file.ts' : null);
+        const downloading = page.waitForEvent('download');
+        await page.locator('#export').click();
+        const file = test.info().outputPath(`unchanged-target-${viewport.width}-${Boolean(query)}.html`);
+        await (await downloading).saveAs(file);
+        const exported = await readFile(file, 'utf8');
+        expect(exported).not.toContain('src/file.ts');
+        expect(exported).not.toContain(w.repo);
+        const captured = JSON.parse(exported.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
+        expect(captured.target.replaceAll('\\', '/')).toBe('<repo>/[REDACTED]');
+        expect(captured.sessionDirectory.replaceAll('\\', '/')).toBe('<repo>/src');
+        await page.context().setOffline(true);
+        await page.goto(pathToFileURL(file).href);
+        await expect(page.locator('#target')).toHaveValue('[REDACTED]');
+        const reexporting = page.waitForEvent('download');
+        await page.locator('#export').click();
+        const reexported = await readFile((await (await reexporting).path())!, 'utf8');
+        expect(JSON.parse(reexported.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1])).toEqual(captured);
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('Inspect preserves unchanged target spellings including whitespace, relative aliases and backslashes', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'Root instructions.', 'src/AGENTS.md': 'Nested instructions.', 'src/file.ts': '' });
+  const options: ScanOptions = { ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' };
+  const server = await serve(options);
+  try {
+    for (const target of ['src/ file.ts ', 'src/../src/file.ts', 'src\\file.ts']) {
+      const baseline = JSON.parse(JSON.stringify(await scan({ ...options, target })));
+      await page.goto(server.url + '?' + new URLSearchParams({ target }));
+      const scanning = page.waitForResponse(response => new URL(response.url()).pathname === '/api/scan');
+      await page.locator('#inspect').click();
+      const response = await scanning;
+      expect(response.status()).toBe(200);
+      expect(new URL(response.url()).searchParams.get('target')).toBe(target);
+      expect((await response.json()).report).toEqual(baseline);
+    }
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('Codex rescans preserve a redacted profile from server defaults and explicit URLs', async ({ page }) => {
+  const firstProfile = 'private-review-fixture';
+  const secondProfile = 'private-audit-fixture';
+  const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { FIRST: firstProfile, SECOND: secondProfile } } } }) }, {
+    '.codex/config.toml': 'model="base-model"',
+    [`.codex/${firstProfile}.config.toml`]: 'model="first-model"',
+    [`.codex/${secondProfile}.config.toml`]: 'model="second-model"',
+  });
+  const server = await serve({ ...w, clients: ['codex', 'claude'], codexProfile: firstProfile });
+  const rescan = async (action: () => Promise<unknown>, profile: string | null, model: string) => {
+    const scanning = page.waitForResponse(response => new URL(response.url()).pathname === '/api/scan');
+    await action();
+    const response = await scanning;
+    expect(response.status()).toBe(200);
+    expect(new URL(response.url()).searchParams.get('profile')).toBe(profile);
+    const captured = (await response.json()).report;
+    expect(captured.clients.find((client: any) => client.client === 'codex').settings.find((setting: any) => setting.key === 'model' && setting.status === 'active').value).toBe(model);
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+  };
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      for (const query of ['', '?profile=' + firstProfile]) {
+        await page.context().setOffline(false);
+        await page.goto(server.url + query + '#view=configuration');
+        const originalProfile = query ? firstProfile : null;
+        await expect(page.locator('#codex-profile')).toHaveValue('[REDACTED]');
+        await rescan(() => page.locator('#refresh').click(), originalProfile, 'first-model');
+        await rescan(() => page.locator('#profile-form button').click(), originalProfile, 'first-model');
+        await rescan(() => page.locator('#codex-profile').press('Enter'), originalProfile, 'first-model');
+        await rescan(() => page.locator('#inspect').click(), originalProfile, 'first-model');
+        if (viewport.width === 390) await page.locator('#mobile-menu').click();
+        await page.locator('#effective-tab').click();
+        if (viewport.width === 390) await page.locator('#mobile-menu').click();
+        await page.locator('#configuration-tab').click();
+        await page.locator('#codex-profile').fill(secondProfile);
+        await rescan(() => page.locator('#profile-form button').click(), secondProfile, 'second-model');
+        await expect(page.locator('#setting-list')).toContainText('second-model');
+        await page.reload();
+        await expect(page.locator('#codex-profile')).toHaveValue('[REDACTED]');
+        await expect(page.locator('#setting-list')).toContainText('second-model');
+        expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+        await page.screenshot({ path: test.info().outputPath(`redacted-profile-controls-${viewport.width}.png`), fullPage: true });
+        await page.goBack();
+        await page.goBack();
+        await expect(page.locator('#setting-list')).toContainText('first-model');
+        await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+        await page.goForward();
+        await page.goForward();
+        await expect(page.locator('#setting-list')).toContainText('second-model');
+        await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+        const rejected = page.waitForResponse(response => new URL(response.url()).pathname === '/api/scan');
+        await page.locator('#codex-profile').fill('invalid/profile');
+        await page.locator('#profile-form button').click();
+        expect((await rejected).status()).toBe(400);
+        await expect(page.locator('#error')).toContainText('Profile names use letters');
+        const downloading = page.waitForEvent('download');
+        await page.locator('#export').click();
+        const file = test.info().outputPath(`redacted-profile-${viewport.width}-${Boolean(query)}.html`);
+        await (await downloading).saveAs(file);
+        const exported = await readFile(file, 'utf8');
+        for (const value of [firstProfile, secondProfile, w.repo, w.home]) expect(exported).not.toContain(value);
+        const captured = JSON.parse(exported.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
+        expect(captured.inputs.codexProfile).toBe('[REDACTED]');
+        await page.locator('#codex-profile').fill('');
+        await rescan(() => page.locator('#profile-form button').click(), '', 'base-model');
+        await rescan(() => page.locator('#refresh').click(), '', 'base-model');
+        await page.reload();
+        await expect(page.locator('#codex-profile')).toHaveValue('');
+        await expect(page.locator('#setting-list')).toContainText('base-model');
+        await page.context().setOffline(true);
+        await page.goto(pathToFileURL(file).href);
+        await expect(page.locator('#setting-list')).toContainText('second-model');
+        const reexporting = page.waitForEvent('download');
+        await page.locator('#export').click();
+        const reexported = await readFile((await (await reexporting).path())!, 'utf8');
+        expect(JSON.parse(reexported.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1])).toEqual(captured);
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('workspace trust remains selected when private text matches the trust name', async ({ page }) => {
+  const w = await workspace({
+    'AGENTS.md': 'Project instructions.\ntrusted\nauto\nuntrusted',
+    '.mcp.json': '{"mcpServers":{"fixture":{"command":"node","env":{"A":"trusted","B":"auto","C":"untrusted"}}}}',
+  });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.context().setOffline(false);
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await expect(page.locator('#trust')).toHaveValue('trusted');
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+      const scanning = page.waitForResponse(response => new URL(response.url()).pathname === '/api/scan');
+      await page.locator('#refresh').click();
+      const response = await scanning;
+      expect(new URL(response.url()).searchParams.get('trust')).toBe(null);
+      const initialReport = (await response.json()).report;
+      expect(initialReport.inputs.trust).toBe('trusted');
+      const loaded = 'Project instructions.\n[REDACTED]\n[REDACTED]\n[REDACTED]';
+      expect(initialReport.clients.find((client: any) => client.client === 'codex').instructions).toBe(loaded);
+      if (viewport.width === 390) await page.locator('#mobile-menu').click();
+      await page.locator('#configuration-tab').click();
+      for (const trust of ['auto', 'trusted', 'untrusted']) {
+        const changing = page.waitForResponse(response => new URL(response.url()).pathname === '/api/scan');
+        await page.locator('#trust').selectOption(trust);
+        const response = await changing;
+        expect(response.status()).toBe(200);
+        expect(new URL(response.url()).searchParams.get('trust')).toBe(trust);
+        const report = (await response.json()).report;
+        expect(report.inputs.trust).toBe(trust);
+        expect(report.clients.find((client: any) => client.client === 'codex').instructions).toBe(trust === 'trusted' ? loaded : '');
+        await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+        await expect(page.locator('#trust')).toHaveValue(trust);
+      }
+      await page.reload();
+      await expect(page.locator('#trust')).toHaveValue('untrusted');
+      await page.goBack();
+      await expect(page.locator('#trust')).toHaveValue('trusted');
+      await page.goForward();
+      await expect(page.locator('#trust')).toHaveValue('untrusted');
+      await page.screenshot({ path: test.info().outputPath(`redacted-trust-${viewport.width}.png`), fullPage: true });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      const downloading = page.waitForEvent('download');
+      await page.locator('#export').click();
+      const file = test.info().outputPath(`redacted-trust-${viewport.width}.html`);
+      await (await downloading).saveAs(file);
+      const captured = JSON.parse((await readFile(file, 'utf8')).match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
+      expect(captured.inputs.trust).toBe('untrusted');
+      expect(captured.sources.find((source: any) => source.relativePath === 'AGENTS.md').preview).toBe(loaded);
+      await page.context().setOffline(true);
+      await page.goto(pathToFileURL(file).href);
+      await expect(page.locator('#trust')).toHaveValue('untrusted');
+      await expect(page.locator('#trust-control')).not.toBeVisible();
+      const reexporting = page.waitForEvent('download');
+      await page.locator('#export').click();
+      const reexported = await readFile((await (await reexporting).path())!, 'utf8');
+      expect(JSON.parse(reexported.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1])).toEqual(captured);
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 
 test('line comparison locates a changed instruction and retains context and source navigation online and offline', async ({ page }) => {
@@ -900,6 +1111,8 @@ for (const format of ['tree', 'flat']) test(`Gemini ${format} imports retain sou
       await page.setViewportSize(viewport);
       await writeFile(path.join(w.repo, 'shared.md'), shared('IMPORTED_INSTRUCTION'));
       await page.goto(server.url + '#view=effective&client=gemini&source=shared.md');
+      // A fragment-only navigation retains the previous inspection after fixture edits.
+      await page.reload();
       await expect(page.locator('#source-title')).toHaveText('shared.md');
       await expect(page.locator('#source-status')).toHaveText('Loaded');
       await expect(page.locator('#why')).toContainText('Imported from GEMINI.md:3');

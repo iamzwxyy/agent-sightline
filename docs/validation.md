@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.42
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
+
+* Four browser regressions failed before correction. Inspect submitted a redacted target as another valid virtual target, a redacted Codex profile caused rejected rescans, private text matching a trust name reset the displayed trust control, and resubmitting an unchanged target trimmed its filename whitespace.
+* Desktop and phone journeys exercise Inspect, Enter, Apply, refresh, actual effective model/instruction values, profile clearing, invalid-profile recovery, reload and Back/Forward. Server defaults and explicitly entered selections retain their request meaning. Aliases and backslashes match complete baseline scan reports. Export and offline re-export retain redacted target/profile data and the last successful inspection after a rejected request.
+* Optional inputs.trust metadata preserves the generated auto/trusted/untrusted enum across public scans and portable reports. Private copies in source text and instruction bodies remain masked. Earlier reports retain assumption-text fallback for the trust control.
+* The 600-case core suite completed with 598 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. The installed CLI smoke check retains explicit trust metadata when private values use the same words. Production dependency audit reported zero vulnerabilities.
+* All 113 Chromium browser cases and six focused WebKit flows passed. Live profile and trust controls passed desktop/phone WCAG AA checks. The standalone report and product captures were regenerated from the working application. The Gemini import fixture explicitly reloads its edited source between viewport runs, since fragment navigation retains the captured inspection.
+* The local Firefox binary exited before navigation with a profile-folder startup error, including a short temporary-path retry. Linux CI exercises Firefox.
+
 ## v0.3.41
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

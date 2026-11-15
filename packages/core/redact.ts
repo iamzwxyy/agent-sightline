@@ -85,7 +85,10 @@ export function redactScanReport(report: Report, scrub: ReturnType<typeof create
   };
   return {
     ...report,
-    ...(report.inputs ? { inputs: Object.fromEntries(Object.entries(report.inputs).map(([key, value]) => [key, scrub(value)])) } : {}),
+    ...(report.inputs ? { inputs: Object.fromEntries(Object.entries(report.inputs).map(([key, value]) => {
+      const trustInput = key === 'trust' && ['auto', 'trusted', 'untrusted'].includes(value);
+      return [key, trustInput ? value : scrub(value)];
+    })) } : {}),
     ...(report.pathMappings ? { pathMappings: report.pathMappings.map(mapping => ({ path: scrub(mapping.path), replacement: scrub(mapping.replacement) })) } : {}),
     repository: scrub(report.repository), target: scrub(report.target), sessionDirectory: scrub(report.sessionDirectory),
     assumptions: report.assumptions.map(scrub),

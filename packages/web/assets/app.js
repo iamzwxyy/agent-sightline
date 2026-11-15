@@ -50,10 +50,10 @@
   };
   const short = (value, repository = report.repository) => value.startsWith(repository) ? value.slice(repository.length).replace(/^[/\\]/, '').replace(/\\/g, '/') || '.' : value.replace(/\\/g, '/');
   const initialParameters = new URLSearchParams(location.search);
-  const initialTarget = initialParameters.get('target');
-  const initialSession = initialParameters.get('session');
-  let selectedTarget = initialTarget;
-  let selectedSession = initialSession;
+  let selectedTarget = initialParameters.get('target');
+  let selectedSession = initialParameters.get('session');
+  let selectedProfile = initialParameters.get('profile');
+  let selectedTrust = initialParameters.get('trust');
   const basename = value => value.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'Workspace';
   const selectedClient = () => report.clients.find(client => client.client === state.client) ?? report.clients[0];
   const statusNames = { active: 'Loaded', conditional: 'Conditional', shadowed: 'Shadowed', ignored: 'Not loaded', truncated: 'Truncated', invalid: 'Invalid' };
@@ -1074,6 +1074,7 @@
     $('repository').textContent = report.repository;
     $('target').value = short(report.target);
     $('codex-profile').value = report.inputs?.codexProfile ?? '';
+    $('trust').value = reportedTrust();
     $('profile-form').hidden = !live || !report.clients.some(client => client.client === 'codex') || report.assumptions.includes('User configuration: excluded.');
     updateHeaderHeights();
     $('footer-target').textContent = short(report.target);
@@ -1119,8 +1120,22 @@
     else if (errors || warnings) content.push(button('Review findings', () => $('review-findings').click(), 'text-button'));
     $('refresh-summary').replaceChildren(...content);
   }
-  async function refresh(target = selectedTarget, fromHistory = false, session = selectedSession) {
+  function reportedTrust() {
+    const assumption = report.assumptions.find(assumption => assumption.startsWith('Trust:'));
+    const legacyTrust = assumption?.match(/^Trust: (auto|trusted|untrusted);/)?.[1];
+    const trust = report.inputs?.trust ?? legacyTrust;
+    return ['auto', 'trusted', 'untrusted'].includes(trust) ? trust : 'auto';
+  }
+  async function refresh(target = selectedTarget, fromHistory = false, session = selectedSession, profile, trust) {
     if (!live) return;
+    if (profile === undefined) {
+      const enteredProfile = $('codex-profile').value.trim();
+      profile = enteredProfile === (report.inputs?.codexProfile ?? '') ? selectedProfile : enteredProfile;
+    }
+    if (trust === undefined) {
+      const enteredTrust = $('trust').value;
+      trust = enteredTrust === reportedTrust() ? selectedTrust : enteredTrust;
+    }
     const request = ++state.request;
     scanController?.abort(); scanController = new AbortController();
     $('refresh-summary').replaceChildren();
@@ -1130,9 +1145,11 @@
     $('scan-status').replaceChildren(node('span', undefined, 'connection'), node('span', 'Inspecting…'));
     let succeeded = false;
     try {
-      const query = new URLSearchParams({ trust: $('trust').value, profile: $('codex-profile').value.trim(), include: 'html' });
+      const query = new URLSearchParams({ include: 'html' });
       if (target !== null) query.set('target', target);
       if (session !== null) query.set('session', session);
+      if (profile !== null) query.set('profile', profile);
+      if (trust !== null) query.set('trust', trust);
       const response = await fetch(`/api/scan?${query}`, { signal: scanController.signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
@@ -1140,6 +1157,8 @@
       report = data.report;
       selectedTarget = target;
       selectedSession = session;
+      selectedProfile = profile;
+      selectedTrust = trust;
       exportDocument = data.html;
       renderRefreshSummary();
       readLocation();
@@ -1149,7 +1168,10 @@
       else address.searchParams.set('target', target);
       if (session === null) address.searchParams.delete('session');
       else address.searchParams.set('session', session);
-      address.searchParams.set('trust', $('trust').value); address.searchParams.set('profile', report.inputs?.codexProfile ?? '');
+      if (profile === null) address.searchParams.delete('profile');
+      else address.searchParams.set('profile', profile);
+      if (trust === null) address.searchParams.delete('trust');
+      else address.searchParams.set('trust', trust);
       history.replaceState(null, '', address);
       render();
       succeeded = true;
@@ -1234,7 +1256,12 @@
   };
   $('session-reset').onclick = () => void changeSession('');
   $('help-button').onclick = () => $('help-dialog').showModal();
-  $('target-form').onsubmit = event => { event.preventDefault(); closeTargetPicker(); void refresh($('target').value.trim() || '.'); };
+  $('target-form').onsubmit = event => {
+    event.preventDefault();
+    closeTargetPicker();
+    const enteredTarget = $('target').value;
+    void refresh(enteredTarget === short(report.target) ? selectedTarget : enteredTarget.trim() || '.');
+  };
   $('target').onfocus = () => searchTargetFiles(true);
   $('target').oninput = () => searchTargetFiles();
   $('target').onblur = () => closeTargetPicker();
@@ -1338,21 +1365,15 @@
     readLocation();
     if (live) {
       const params = new URLSearchParams(location.search);
-      const target = params.get('target') ?? initialTarget;
-      const session = params.get('session') ?? initialSession;
-      const trust = params.get('trust') ?? initialTrust;
-      const profile = params.get('profile') ?? initialProfile;
-      if (target !== selectedTarget || session !== selectedSession || trust !== $('trust').value || profile !== (report.inputs?.codexProfile ?? '')) { $('trust').value = trust; $('codex-profile').value = profile; void refresh(target, true, session); return; }
+      const target = params.get('target');
+      const session = params.get('session');
+      const trust = params.get('trust');
+      const profile = params.get('profile');
+      if (target !== selectedTarget || session !== selectedSession || trust !== selectedTrust || profile !== selectedProfile) { void refresh(target, true, session, profile, trust); return; }
     }
     clearExcludingSourceSearch();
     render();
   });
-  const trustAssumption = report.assumptions.find(assumption => assumption.startsWith('Trust:')) ?? '';
-  if (trustAssumption.includes('trusted;')) $('trust').value = 'trusted';
-  if (trustAssumption.includes('untrusted;')) $('trust').value = 'untrusted';
-  const initialTrust = $('trust').value;
-  const initialProfile = report.inputs?.codexProfile ?? '';
-  $('codex-profile').value = initialProfile;
   if (!live) {
     $('target').readOnly = true; $('inspect').hidden = true; $('refresh').hidden = true;
     ['role', 'aria-autocomplete', 'aria-controls', 'aria-expanded'].forEach(attribute => $('target').removeAttribute(attribute));
