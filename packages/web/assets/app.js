@@ -243,6 +243,15 @@
     element.append(severity, title, recipients, node('span', '›', 'row-arrow'));
     return element;
   }
+  function instructionSources(client) {
+    const instructions = client.decisions.filter(source => ['rules', 'instructions'].includes(source.kind));
+    const loaded = instructions.filter(source => source.status === 'active' || source.status === 'truncated' && source.loadedBytes > 0);
+    const conditional = instructions.filter(source => source.status === 'conditional');
+    return {
+      loadedPaths: [...new Map(loaded.map(source => [source.sourceId, source.path])).values()],
+      conditionalPaths: [...new Map(conditional.map(source => [source.sourceId, source.path])).values()],
+    };
+  }
   function renderOverview() {
     const findings = groupFindings();
     const errors = findings.filter(finding => finding.severity === 'error');
@@ -300,10 +309,7 @@
       }, 'client-card');
       const heading = node('div', undefined, 'client-card-heading');
       heading.append(avatar(client.client), node('h3', names[client.client]), node('span', '↗', 'row-arrow'));
-      const loaded = client.decisions.filter(source => (source.status === 'active' || source.status === 'truncated' && source.loadedBytes > 0) && ['rules', 'instructions'].includes(source.kind));
-      const conditional = client.decisions.filter(source => source.status === 'conditional' && ['rules', 'instructions'].includes(source.kind));
-      const loadedPaths = [...new Map(loaded.map(source => [source.sourceId, source.path])).values()];
-      const conditionalPaths = [...new Map(conditional.map(source => [source.sourceId, source.path])).values()];
+      const { loadedPaths, conditionalPaths } = instructionSources(client);
       const chain = loadedPaths.map(basename).join(' → ') || (conditionalPaths.length ? conditionalPaths.map(basename).join(' → ') + ' (conditional)' : 'No instructions loaded');
       element.append(heading, node('p', `${loadedPaths.length} loaded instruction ${loadedPaths.length === 1 ? 'source' : 'sources'} · ~${client.estimatedTokens.toLocaleString()} tokens${conditionalPaths.length ? ` · ${conditionalPaths.length} conditional` : ''}`), node('div', chain, 'chain-preview'));
       return element;
@@ -627,6 +633,28 @@
     $('source-title').focus({ preventScroll: true });
     if (!$('instructions').querySelector('.code-line.highlight')) $('source-title').scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
+  function showInstructionContributions(entries, client) {
+    if (entries.length === 1) {
+      const { source, occurrence } = entries[0];
+      inspectSourceLocation({ path: source.path, line: source.line }, client, occurrence);
+      return;
+    }
+    $('detail-category').textContent = `${names[client]} / instructions`;
+    const content = node('div', undefined, 'dialog-content');
+    const title = node('h2', basename(entries[0].source.path)); title.id = 'detail-title';
+    content.append(badge(entries[0].source.status), title, node('p', short(entries[0].source.path), 'path'));
+    const list = node('div', undefined, 'contribution-list');
+    for (const { source, occurrence } of entries) {
+      const row = node('div');
+      const label = `Occurrence ${occurrence} · line ${source.line}${source.column > 1 ? `, column ${source.column}` : ''}`;
+      row.append(button(label, () => inspectSourceLocation({ path: source.path, line: source.line }, client, occurrence), 'source-link'), node('p', source.reason));
+      list.append(row);
+    }
+    content.append(list);
+    $('detail-body').replaceChildren(content);
+    if (!$('detail-dialog').open) $('detail-dialog').showModal();
+    $('detail-dialog').scrollTop = 0;
+  }
   function renderSettings() {
     const selected = $('setting-client').value;
     const query = $('setting-search').value.trim().toLowerCase();
@@ -716,9 +744,8 @@
       const heading = node('div', undefined, 'comparison-document-heading');
       const title = node('h3'); title.append(avatar(client.client), node('span', names[client.client]));
       heading.append(title, button('Copy text', () => copy(client.instructions, `${names[client.client]} instructions copied`), 'button button-small'));
-      const loaded = client.decisions.filter(source => ['active', 'truncated'].includes(source.status) && source.content && ['instructions', 'rules'].includes(source.kind));
-      const conditional = client.decisions.filter(source => source.status === 'conditional' && ['instructions', 'rules'].includes(source.kind)).length;
-      panel.append(heading, node('p', `${client.instructionBytes.toLocaleString()} bytes · ${loaded.length} ${loaded.length === 1 ? 'source' : 'sources'} loaded${conditional ? ` · ${conditional} conditional` : ''}`, 'comparison-document-meta'));
+      const { loadedPaths, conditionalPaths } = instructionSources(client);
+      panel.append(heading, node('p', `${client.instructionBytes.toLocaleString()} bytes · ${loadedPaths.length} ${loadedPaths.length === 1 ? 'source' : 'sources'} loaded${conditionalPaths.length ? ` · ${conditionalPaths.length} conditional` : ''}`, 'comparison-document-meta'));
       if (client.instructions) { const text = node('pre', client.instructions, 'comparison-document-text'); text.tabIndex = 0; text.setAttribute('aria-label', `${names[client.client]} effective instructions`); panel.append(text); }
       else panel.append(node('p', 'No proven active instruction text for this target.', 'comparison-document-text subtle'));
       panel.append(button('Trace this instruction chain →', () => {
@@ -729,38 +756,87 @@
       }, 'text-button'));
       return panel;
     }));
-    const sources = report.sources.filter(source => ['instructions', 'rules'].includes(source.kind));
+    const instructionIds = new Set(report.clients.flatMap(client => client.decisions.filter(source => ['instructions', 'rules'].includes(source.kind)).map(source => source.sourceId)));
+    const sources = report.sources.filter(source => ['instructions', 'rules'].includes(source.kind) || instructionIds.has(source.id));
+    const entriesByClient = clients.map(client => {
+      const bySource = new Map();
+      for (const entry of sourceEntries(client)) {
+        const entries = bySource.get(entry.source.sourceId) ?? [];
+        entries.push(entry);
+        bySource.set(entry.source.sourceId, entries);
+      }
+      return bySource;
+    });
+    const roles = { settings: 'Settings', mcp: 'MCP', skill: 'Skill', hooks: 'Hooks' };
     const table = node('table', undefined, 'coverage-table');
     const head = node('thead'); const header = node('tr'); header.append(node('th', 'Instruction source'));
     clients.forEach(client => header.append(node('th', names[client.client]))); head.append(header); table.append(head);
     const body = node('tbody');
     let count = 0;
     for (const source of sources) {
-      const decisions = clients.map(client => client.decisions.find(decision => decision.sourceId === source.id));
-      if ($('differences-only').checked && new Set(decisions.map(decision => JSON.stringify([decision?.status ?? 'ignored', decision?.loadedBytes ?? 0, decision?.content ?? '']))).size <= 1) continue;
+      const contributions = entriesByClient.map(entries => (entries.get(source.id) ?? []).filter(entry => ['instructions', 'rules'].includes(entry.source.kind)));
+      const signatures = contributions.map(entries => JSON.stringify(entries.length ? entries.map(entry => [entry.source.status, entry.source.loadedBytes, entry.source.content]) : [['ignored', 0, '']]));
+      if ($('differences-only').checked && new Set(signatures).size <= 1) continue;
       const row = node('tr'); const label = node('td');
-      label.append(button(basename(source.path), () => inspectSourceLocation({ path: source.path }, clients[0].client), 'source-link'), node('span', short(source.path), 'source-path')); row.append(label);
-      decisions.forEach((decision, index) => {
+      label.append(button(basename(source.path), () => inspectSourceLocation({ path: source.path }, clients[0]?.client), 'source-link'), node('span', short(source.path), 'source-path')); row.append(label);
+      contributions.forEach((entries, index) => {
         const cell = node('td');
-        const action = button('', () => inspectSourceLocation({ path: source.path }, clients[index].client), 'source-link');
-        action.append(badge(decision?.status ?? 'ignored')); action.title = decision?.reason ?? 'This client does not load this source.'; cell.append(action); row.append(cell);
+        const groups = new Map();
+        for (const entry of entries) {
+          const group = groups.get(entry.source.status) ?? [];
+          group.push(entry);
+          groups.set(entry.source.status, group);
+        }
+        const actions = node('div', undefined, 'coverage-contributions');
+        for (const [status, group] of groups) {
+          const action = button('', () => showInstructionContributions(group, clients[index].client), 'source-link');
+          action.append(badge(status));
+          if (group.length > 1) action.append(node('span', `${group.length} contributions`, 'contribution-count'));
+          action.setAttribute('aria-label', `${statusNames[status]}${group.length > 1 ? ` ${group.length} contributions` : ''}`);
+          action.title = group.length === 1 ? group[0].source.reason : `${group.length} loading contributions from this source.`;
+          actions.append(action);
+        }
+        if (!entries.length) {
+          const otherEntries = entriesByClient[index].get(source.id) ?? [];
+          const configuration = otherEntries.find(entry => entry.source.status !== 'ignored');
+          const fallback = configuration ?? otherEntries[0];
+          const action = button('', () => inspectSourceLocation({ path: source.path, line: fallback?.source.line ?? 1 }, clients[index].client, fallback?.occurrence ?? 1), 'source-link');
+          action.append(configuration ? node('span', roles[configuration.source.kind] ?? configuration.source.kind, 'status') : badge('ignored'));
+          action.title = fallback?.source.reason ?? 'This client has no instruction contribution from this source.';
+          actions.append(action);
+        }
+        cell.append(actions); row.append(cell);
       });
       body.append(row); count++;
     }
-    table.append(body); $('comparison-matrix').replaceChildren(count ? table : empty('No instruction differences', 'The selected clients have the same loading status for every discovered instruction source.'));
-    const extensionNames = [...new Set(clients.flatMap(client => client.extensions.map(extension => extension.kind + '|' + extension.name)))];
+    table.append(body);
+    $('comparison-matrix').replaceChildren(count ? table : empty(
+      sources.length ? 'No instruction differences' : 'No instruction sources discovered',
+      sources.length ? 'Turn off Differences only to inspect the selected clients’ source contributions.' : 'Inspect another target, or add instructions and generate a new report.',
+    ));
+    const extensionNames = new Map(clients.flatMap(client => client.extensions.map(extension => [JSON.stringify([extension.kind, extension.name]), extension])));
     const extensionTable = node('table', undefined, 'coverage-table');
     const extensionHead = node('thead'); const extensionHeader = node('tr'); extensionHeader.append(node('th', 'Extension'));
     clients.forEach(client => extensionHeader.append(node('th', names[client.client]))); extensionHead.append(extensionHeader); extensionTable.append(extensionHead);
     const extensionBody = node('tbody');
-    for (const key of extensionNames) {
-      const [kind, name] = key.split('|');
+    for (const { kind, name } of extensionNames.values()) {
       const definitions = clients.map(client => client.extensions.filter(extension => extension.kind === kind && extension.name === name && ['active', 'conditional'].includes(extension.status)));
-      if ($('differences-only').checked && new Set(definitions.map(items => JSON.stringify(items.map(item => item.config)))).size <= 1) continue;
+      if ($('differences-only').checked && new Set(definitions.map(items => JSON.stringify(items.map(item => [item.status, item.config])))).size <= 1) continue;
       const row = node('tr'); const nameCell = node('td'); nameCell.append(node('strong', name), node('span', kind, 'source-path')); row.append(nameCell);
       definitions.forEach((items, index) => {
         const cell = node('td');
-        if (items.length) cell.append(button(extensionSummary(items[0], clients[index].client), () => showExtension(items[0], clients[index].client), 'source-link'));
+        if (items.length) {
+          const actions = node('div', undefined, 'coverage-contributions');
+          for (const item of items) {
+            const summary = extensionSummary(item, clients[index].client);
+            const action = button('', () => showExtension(item, clients[index].client), 'source-link');
+            action.append(badge(item.status), node('span', summary));
+            action.setAttribute('aria-label', `${statusNames[item.status]} ${summary}`);
+            action.title = `${short(item.location.path)}:${item.location.line}`;
+            actions.append(action);
+          }
+          cell.append(actions);
+        }
         else cell.append(node('span', '—', 'subtle'));
         row.append(cell);
       });

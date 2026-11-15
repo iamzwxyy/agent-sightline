@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.36 — 2026-11-15
+
+* Include structured files used as instructions in the client coverage matrix, with configuration roles for other clients reading the same source.
+* Compare every instruction contribution when filtering differences, including later repeated loads and mixed loading states.
+* Inspect grouped contributions at their exact source occurrence and line, with loading reasons and keyboard focus in live and portable reports.
+* Share unique-source counting between overview cards and effective instruction comparisons, including repeated Gemini context segments.
+* Wrap long source paths in comparison rows and contribution details, with touch-sized source actions and an explicit empty-instruction state.
+* Inspect every active or conditional extension definition and preserve status differences across clients.
+* Retain complete extension names containing separator characters, including shell-pipeline permission rules.
+
 ## 0.3.35 — 2026-11-15
 
 * Show loaded instruction sources, effective bytes, conditional sources and truncation in the first terminal summary.

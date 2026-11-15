@@ -15,6 +15,196 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('extension comparison exposes every active and conditional definition and status-only differences', async ({ page }) => {
+  const userConfig = '[mcp_servers.fixture]\ncommand=' + JSON.stringify(process.execPath) + '\nargs=["user.js"]';
+  const w = await workspace({ 'AGENTS.md': 'PROJECT', '.codex/config.toml': '[mcp_servers.fixture]\nargs=["project.js"]' }, {
+    '.codex/config.toml': userConfig,
+    '.copilot/mcp-config.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: ['user.js'] } } }),
+  });
+  const server = await serve({ ...w, clients: ['codex', 'copilot'] });
+  try {
+    await page.goto(server.url + '#view=compare');
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('comparison-extension-candidates.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto(url + '#view=compare');
+        const row = page.locator('#comparison-extensions tbody tr').filter({ hasText: 'fixture' });
+        const cell = row.locator('td').nth(1);
+        await expect(cell.getByRole('button')).toHaveCount(2);
+        await cell.getByRole('button', { name: /^Conditional / }).click();
+        await expect(page.locator('#detail-dialog')).toContainText('project.js');
+        await page.keyboard.press('Escape');
+        await cell.getByRole('button', { name: /^Loaded / }).click();
+        await expect(page.locator('#detail-dialog')).toContainText('user.js');
+        await expect(page.locator('#detail-dialog')).not.toContainText('project.js');
+        await page.keyboard.press('Escape');
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
+    }
+    await page.context().setOffline(false);
+    await page.goto(server.url + '#view=compare');
+    await page.locator('#trust').selectOption('trusted');
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+    const cell = page.locator('#comparison-extensions tbody tr').filter({ hasText: 'fixture' }).locator('td').nth(1);
+    await expect(cell.getByRole('button')).toHaveCount(1);
+    await cell.getByRole('button', { name: /^Loaded / }).click();
+    await expect(page.locator('#detail-dialog')).toContainText('project.js');
+    await page.keyboard.press('Escape');
+    await writeFile(path.join(w.home, '.codex/config.toml'), '# User server removed');
+    await writeFile(path.join(w.repo, '.codex/config.toml'), userConfig);
+    await page.locator('#trust').selectOption('auto');
+    await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+    const row = page.locator('#comparison-extensions tbody tr').filter({ hasText: 'fixture' });
+    await expect(row.locator('td').nth(1).getByRole('button', { name: /^Conditional / })).toBeVisible();
+    await expect(row.locator('td').nth(2).getByRole('button', { name: /^Loaded / })).toBeVisible();
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('extension comparison preserves permission names containing a pipe', async ({ page }) => {
+  const rule = 'Bash(echo hi | cat)';
+  const w = await workspace({
+    'AGENTS.md': 'PROJECT', 'CLAUDE.md': 'CLAUDE', '.claude/settings.json': JSON.stringify({ permissions: { allow: [rule] } }),
+  });
+  const server = await serve({ ...w, clients: ['codex', 'claude'], user: false, trust: 'trusted' });
+  try {
+    await page.goto(server.url + '#view=compare');
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('comparison-permission-name.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.goto(url + '#view=compare');
+      const row = page.locator('#comparison-extensions tbody tr').filter({ hasText: rule });
+      await expect(row).toHaveCount(1);
+      await row.locator('td').nth(2).getByRole('button', { name: 'Loaded allow', exact: true }).click();
+      await expect(page.locator('#detail-dialog')).toContainText(rule);
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('instruction coverage includes structured imports and their client-specific roles', async ({ page }) => {
+  const secret = 'comparison-private-import-value';
+  const w = await workspace({
+    'CLAUDE.md': 'CLAUDE_BASE',
+    'GEMINI.md': 'BEGIN\n@./.claude/settings.json\n@./.gemini/settings.json\nEND',
+    '.claude/settings.json': JSON.stringify({ model: 'fixture-model', env: { NORMAL: secret } }),
+    '.gemini/settings.json': '{"model":{"name":"fixture-gemini-model"}}',
+  });
+  const server = await serve({ ...w, clients: ['claude', 'gemini'], user: false, trust: 'trusted' });
+  try {
+    await page.goto(server.url + '#view=compare');
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('comparison-structured-imports.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto(url + '#view=compare');
+        const claudeSettings = page.locator('#comparison-matrix tbody tr').filter({ hasText: '.claude/settings.json' });
+        await expect(claudeSettings).toHaveCount(1);
+        await claudeSettings.locator('td').nth(1).getByRole('button', { name: 'Settings', exact: true }).click();
+        await expect(page.locator('#effective-title')).toHaveText('Claude Code’s instructions');
+        await expect(page.locator('#source-title')).toHaveText('.claude/settings.json');
+        await expect(page.locator('#settings')).toContainText('fixture-model');
+        await page.goto(url + '#view=compare');
+        await claudeSettings.locator('td').nth(2).getByRole('button', { name: 'Loaded', exact: true }).click();
+        await expect(page.locator('#effective-title')).toHaveText('Gemini CLI’s instructions');
+        await expect(page.locator('#source-title')).toHaveText('.claude/settings.json');
+        await expect(page.locator('#why')).toContainText('Imported from GEMINI.md:2');
+        await page.goto(url + '#view=compare');
+        const geminiSettings = page.locator('#comparison-matrix tbody tr').filter({ hasText: '.gemini/settings.json' });
+        await geminiSettings.locator('td').nth(2).getByRole('button', { name: 'Loaded', exact: true }).click();
+        await expect(page.locator('#why')).toContainText('Imported from GEMINI.md:3');
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
+        expect(await page.content()).not.toContain(secret);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('instruction coverage retains mixed contribution states and exact occurrences', async ({ page }) => {
+  const w = await workspace({
+    'CLAUDE.md': 'CLAUDE_BASE', 'GEMINI.md': 'PROJECT', '.gemini/settings.json': '{"context":{"importFormat":"flat"}}',
+  }, { '.gemini/GEMINI.md': 'GLOBAL\n@./shared.md\nAFTER', '.gemini/shared.md': 'SHARED' });
+  const options = { ...w, clients: ['claude', 'gemini'] as const };
+  const report = await scan(options);
+  const contributions = report.clients.find(client => client.client === 'gemini')!.decisions.filter(source => source.path === path.join(w.home, '.gemini/GEMINI.md'));
+  expect(contributions.map(source => source.status)).toEqual(['active', 'active', 'conditional']);
+  const ordered = [...contributions].sort((left, right) => (left.order ?? Infinity) - (right.order ?? Infinity));
+  const conditionalOccurrence = ordered.indexOf(contributions[2]) + 1;
+  const laterOccurrence = ordered.indexOf(contributions[1]) + 1;
+  const server = await serve(options);
+  try {
+    await page.goto(server.url + '#view=compare');
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Export report/ }).click();
+    const file = test.info().outputPath('comparison-mixed-contributions.html');
+    await (await pending).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto(url + '#view=compare');
+        await expect(page.locator('#comparison-text .comparison-document').filter({ hasText: 'Gemini CLI' }).locator('.comparison-document-meta')).toContainText('2 sources loaded');
+        const row = page.locator('#comparison-matrix tbody tr').filter({ hasText: '.gemini/GEMINI.md' });
+        const cell = row.locator('td').nth(2);
+        await expect(cell).toContainText('2 contributions');
+        expect((await row.locator('.source-path').boundingBox())!.width).toBeLessThanOrEqual(320);
+        await cell.getByRole('button', { name: 'Conditional', exact: true }).click();
+        await expect(page.locator('#source-status')).toHaveText('Conditional');
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe(String(conditionalOccurrence));
+        await page.goto(url + '#view=compare');
+        await cell.getByRole('button', { name: 'Loaded 2 contributions', exact: true }).click();
+        await expect(page.locator('#detail-dialog')).toBeVisible();
+        expect(await page.locator('#detail-dialog').evaluate(dialog => dialog.scrollWidth <= dialog.clientWidth)).toBe(true);
+        expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+        await page.screenshot({ path: test.info().outputPath(`comparison-contributions-${url.startsWith('file:') ? 'offline' : 'live'}-${viewport.width}.png`) });
+        await page.getByRole('button', { name: new RegExp(`Occurrence ${laterOccurrence}\\b`) }).click();
+        await expect(page.locator('#detail-dialog')).not.toBeVisible();
+        await expect(page.locator('#source-status')).toHaveText('Loaded');
+        await expect(page.locator('#source-title')).toBeFocused();
+        await expect(page.locator('.code-line.highlight .line-number')).toHaveText(String(contributions[1].line));
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe(String(laterOccurrence));
+      }
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('instruction differences include later repeated contributions in current and legacy reports', async ({ page }) => {
+  const w = await workspace({
+    'AGENTS.md': 'SHARED', 'GEMINI.md': '@./AGENTS.md', '.gemini/settings.json': '{"context":{"fileName":"AGENTS.md"}}',
+  });
+  const options = { ...w, clients: ['claude', 'gemini'] as const, user: false, trust: 'trusted' as const };
+  const report = await scan(options);
+  delete report.instructionDiff;
+  const file = test.info().outputPath('comparison-legacy-contributions.html');
+  await writeFile(file, html(report));
+  const server = await serve(options);
+  try {
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      await page.goto(url + '#view=compare');
+      const row = page.locator('#comparison-matrix tbody tr').filter({ hasText: 'AGENTS.md' });
+      await expect(row).toHaveCount(1);
+      await expect(page.locator('#differences-only')).toBeChecked();
+      await row.locator('td').nth(2).getByRole('button', { name: 'Loaded 2 contributions', exact: true }).click();
+      await page.getByRole('button', { name: /Occurrence 2/ }).click();
+      await expect(page.locator('#source-title')).toHaveText('AGENTS.md');
+      await expect(page.locator('#why')).toContainText('Imported from GEMINI.md:1');
+      expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('2');
+    }
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('first scans explain conditional instruction loading through trust changes and offline export', async ({ page }) => {
   const w = await workspace({
     'AGENTS.md': 'PROJECT_INSTRUCTION', '.codex/config.toml': 'model="fixture-model"',
@@ -3086,6 +3276,11 @@ test('an unconfigured repository leads to a working private-data-free sample wor
     await page.goto(server.url);
     await expect(page.getByRole('heading', { name: 'Your first configuration starts here.' })).toBeVisible();
     await expect(page.locator('#priority-findings')).toContainText('No configuration to diagnose yet');
+    await page.locator('#compare-tab').click();
+    await expect(page.locator('#comparison-matrix')).toContainText('No instruction sources discovered');
+    await page.locator('#differences-only').uncheck();
+    await expect(page.locator('#comparison-matrix')).toContainText('No instruction sources discovered');
+    await page.locator('#overview-tab').click();
     await page.getByRole('link', { name: /Explore sample workspace/ }).click();
     await expect(page.locator('#mode-label')).toHaveText('Report snapshot');
     await expect(page.locator('#overview-heading')).toContainText('configuration issues found');

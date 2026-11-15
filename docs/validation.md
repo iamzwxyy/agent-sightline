@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.36
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
+
+* Three browser regressions failed before the correction. Captured settings files imported as Gemini instructions were absent from source coverage. Mixed active/conditional contributions showed their first state, and a later repeated contribution could be hidden by Differences only. The matrix now indexes every instruction contribution and preserves its ordered source occurrence.
+* Normal scan fixtures also reproduced concurrent active/conditional Codex MCP candidates and a valid shell-pipeline permission name. Extension comparison exposes each eligible candidate, includes loading status in differences and preserves complete kind/name identities. Trust refresh covers the selected project definition and status-only differences between matching definitions.
+* The 574-case core suite completed with 572 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. Production dependency audit reported zero vulnerabilities.
+* All 99 Chromium browser cases and six focused WebKit flows passed. Desktop/phone and live/offline checks cover structured instruction roles, private imported values, grouped contributions, source lines, keyboard focus and complete extension definitions. Legacy reports without instructionDiff and empty configuration retain their comparison behavior. Automated WCAG AA checks reported zero violations.
+* Phone visual review reproduced a clipped long path in the new contribution dialog. The dialog now uses the existing wrapping path presentation. Comparison source columns also wrap long paths, and actions for individual contributions have a 44 px minimum height.
+
 ## v0.3.35
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
