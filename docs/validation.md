@@ -12,6 +12,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 * A fresh-process synthetic scan of 10,000 files and 1,000 Skills captured 1,201 sources in 1,269 ms. Fixture creation warmed the filesystem cache.
 * Windows diagnostic comparisons exposed native denial of DOS short-path Reads and worktree identity differences between short-path and canonical launches. Read fixtures now launch in canonical directories. Dedicated short-path project/worktree cases retain native state selection checks. [Windows comparison](https://github.com/iamzwxyy/agent-sightline/actions/runs/43654342013)
 
+* Windows, macOS and Linux verification passed for the released source commit. Linux Firefox completed with 78 passes and three browser-gated skips. Anonymous download matched the recorded SHA-256 and 1,400,178-byte size, followed by a fresh empty-cache installation and the desktop/phone worktree approval journey. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43655388399)
+
 ## v0.3.28 candidate
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
