@@ -9,6 +9,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
 * The 574-case core suite completed with 572 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline installation passed. Production dependency audit reported zero vulnerabilities.
 * All 102 Chromium browser cases and four focused WebKit flows passed. Automated WCAG AA checks passed. The exported comparison received desktop and phone visual review. The example report and inspector capture were regenerated from the working CLI.
 
+* Tagged Linux, macOS and Windows verification jobs passed. A source-run macOS job encountered a GitHub connection timeout while downloading the historical website fixture and was retried. Anonymous download matched SHA-256 `84d9783744ad0d167de475ec92120929a7e8ac53b53342eb4a9f54ed56a70b17` and its 1,426,571-byte size. The exact public archive passed empty-cache installation, installed-CLI HTML generation and desktop/phone offline comparison selection, filters, expanded paragraphs and re-export with zero page errors. Fresh-cache public execution returned 0.3.37. [Tagged cross-platform verification](https://github.com/iamzwxyy/agent-sightline/actions/runs/43730421035)
+
 ## v0.3.36
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-15.
