@@ -76,7 +76,7 @@ test('starting-directory selection, fallback and clearing survive server scans, 
   for (const route of ['/?target=docs/a.ts&session=src', '/api/export?target=docs/a.ts&session=src']) {
     const content = await (await fetch(server.url + route)).text();
     const report = JSON.parse(content.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
-    assert.equal(report.inputs.sessionDirectory, route.startsWith('/api/export') ? '<repo>/src' : path.join(w.repo, 'src'));
+    assert.equal(report.inputs.sessionDirectory, route.startsWith('/api/export') ? path.join('<repo>', 'src') : path.join(w.repo, 'src'));
     assert.ok(report.clients[0].instructions.includes('Nested instructions.'));
   }
   for (const session of ['missing', 'src/a.ts', '..', 'x'.repeat(2049)]) {

@@ -108,6 +108,7 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
   }
   const env = options.env ?? process.env;
   const home = path.resolve(options.home ?? os.homedir());
+  const codexDefaultHome = process.platform === 'win32' && !options.home ? os.userInfo().homedir : home;
   const workingDirectory = process.platform === 'win32' ? directory : await realpath(directory);
   let geminiHome = path.join(home, '.gemini');
   if (!options.home && env.GEMINI_CLI_HOME) {
@@ -115,7 +116,7 @@ export async function makeContext(options: ScanOptions): Promise<Context> {
   }
   const ctx: Context = {
     repo, target, directory, targetDirectory, home, env, options, discovery, dirs: parents(repo, directory), sources: [], findings: [],
-    codexHome: !options.home && env.CODEX_HOME ? path.resolve(workingDirectory, env.CODEX_HOME) : path.join(home, '.codex'),
+    codexHome: !options.home && env.CODEX_HOME ? path.resolve(workingDirectory, env.CODEX_HOME) : path.join(codexDefaultHome, '.codex'),
     claudeHome: !options.home && env.CLAUDE_CONFIG_DIR ? path.resolve(workingDirectory, env.CLAUDE_CONFIG_DIR) : path.join(home, '.claude'),
     copilotHome: !options.home && env.COPILOT_HOME ? path.resolve(workingDirectory, env.COPILOT_HOME) : path.join(home, '.copilot'),
     geminiHome,

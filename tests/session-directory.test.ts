@@ -36,7 +36,7 @@ test('starting directory controls startup instructions while Claude follows an o
   assert.ok(sibling.clients[1].instructions.includes('Session Claude'));
   assert.ok(terminal(root).includes('Starts in:  ' + w.repo));
   assert.equal(portable(root).inputs?.sessionDirectory, '<repo>');
-  assert.equal(portable(sibling).inputs?.sessionDirectory, '<repo>/docs');
+  assert.equal(portable(sibling).inputs?.sessionDirectory?.replaceAll('\\', '/'), '<repo>/docs');
 });
 
 test('explicit starting directories require an existing in-repository directory and reject escaping symlinks', async t => {

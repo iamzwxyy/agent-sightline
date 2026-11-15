@@ -76,7 +76,7 @@ test('starting-directory selection survives targets, history, refresh and portab
       expect(exported).not.toContain(w.home);
       const captured = JSON.parse(exported.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)![1]);
       expect(captured.inputs.sessionDirectory).toBe('<repo>');
-      expect(captured.target).toBe('<repo>/docs/file.ts');
+      expect(captured.target.replaceAll('\\', '/')).toBe('<repo>/docs/file.ts');
       await page.context().setOffline(true);
       await page.goto(pathToFileURL(file).href);
       await expect(page.locator('#session-button')).toHaveText('Starts in .');

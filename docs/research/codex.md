@@ -80,3 +80,5 @@ Codex uses Rust str::trim for global trimming and instruction emptiness. Its Uni
 ## Independent starting directory
 
 Native comparisons retain a nested target while changing the starting directory. Startup configuration and instruction discovery follow the starting location. Relative and empty configuration-home overrides are compared with the pinned client and the public CLI launched from a different process directory. Empty overrides use the default user configuration location.
+
+Codex 0.167.2 ignores an empty CODEX_HOME value and uses dirs 6.0.0. Its Windows implementation selects the OS profile known folder through SHGetKnownFolderPath. USERPROFILE does not redirect that native default. Sightline uses the OS-reported user profile on Windows and preserves explicit --home for synthetic scans. The relative override has a native Windows comparison. Empty default-home behavior is source-checked with a context fixture on Windows because its OS profile cannot be redirected to the isolated environment fixture. [Pinned Codex home resolver](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/utils/home-dir/src/lib.rs)

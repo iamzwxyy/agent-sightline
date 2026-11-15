@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import os from 'node:os';
 import { createRequire } from 'node:module';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -8,6 +9,7 @@ import type { AddressInfo } from 'node:net';
 import { mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import readline from 'node:readline';
 import { scan } from '../packages/core/index.js';
+import { makeContext } from '../packages/core/discovery.js';
 import { codexMetadata } from '../packages/adapters/codex.js';
 import { workspace } from './helpers.js';
 
@@ -296,13 +298,18 @@ test('Codex user-only settings retain their scope inside a wider inspection boun
 test('Codex relative and empty configuration homes agree with native startup', { timeout: 60000 }, async t => {
   const w = await workspace({ 'docs/config-home/config.toml': 'model="relative-home-model"\n[analytics]\nenabled=false\n', 'src/file.ts': '' }, { '.codex/config.toml': 'model="fallback-home-model"\n[analytics]\nenabled=false\n' });
   t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
-  for (const home of ['config-home', '']) {
+  // Native Windows defaults use the OS profile known folder, beyond this isolated home.
+  const homes = process.platform === 'win32' ? ['config-home'] : ['config-home', ''];
+  for (const home of homes) {
     const env = { ...isolatedEnvironment(w.home), CODEX_HOME: home };
     const native = await readRuntime(path.join(w.repo, 'docs'), env);
     const report = JSON.parse(execFileSync(process.execPath, ['--import', import.meta.resolve('tsx'), path.resolve('packages/cli/index.ts'), 'explain', 'src/file.ts', '--repo', w.repo, '--session-dir', 'docs', '--client', 'codex', '--json'], { cwd: w.root, env, encoding: 'utf8', timeout: 30000 }));
     assert.equal(report.clients[0].settings.find((setting: any) => setting.key === 'model' && setting.status === 'active')?.value, native.config.model);
     assert.equal(native.config.model, home ? 'relative-home-model' : 'fallback-home-model');
   }
+  const context = await makeContext({ repo: w.repo, target: 'src/file.ts', sessionDirectory: 'docs', env: { ...isolatedEnvironment(w.home), CODEX_HOME: '' } });
+  assert.equal(context.codexHome, path.join(process.platform === 'win32' ? os.userInfo().homedir : os.homedir(), '.codex'));
+  assert.equal((await makeContext({ ...w, env: { CODEX_HOME: '' } })).codexHome, path.join(w.home, '.codex'));
 });
 
 for (const fixture of cases) test(`Codex runtime configuration matches Sightline for ${fixture.name}`, { timeout: 30000 }, async t => {
