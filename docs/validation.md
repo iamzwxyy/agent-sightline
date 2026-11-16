@@ -10,7 +10,9 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
 * All 121 Chromium cases and five focused WebKit flows passed. The WebKit navigation check uses macOS Option+Tab to include links and buttons, verified against both the previous public report and the current report. The 605-case core suite completed with 603 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline package smoke passed. Production dependency audit reported zero vulnerabilities.
 * Regenerated the standalone example and product captures from the working application. Linux CI exercises Firefox because the local Firefox profile cannot start.
 
-* The candidate archive passed empty-cache offline installation, installed CLI diagnostics, desktop/phone platform hints and visible modal copy feedback, selected-finding routes, history, source navigation, portable export/re-export and clipboard denial with zero page errors.
+* Linux, macOS and Windows verification passed for the released source, including Linux Firefox. An initial macOS attempt could not download the historical 0.1.2 fixture because GitHub timed out. The failed job completed successfully on retry. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43830788105)
+
+* Anonymous download matched SHA-256 `a7507401cd9842188ff1e093407e11ca4625dbf35c325b5d12fd0a4f322652a2` and its 1,594,871-byte size. The exact public archive passed empty-cache offline installation, installed CLI diagnostics, desktop/phone platform hints and visible modal copy feedback, selected-finding routes, history, source navigation, portable export/re-export and clipboard denial with zero page errors. Fresh-cache public execution returned 0.3.46.
 
 ## v0.3.45
 
