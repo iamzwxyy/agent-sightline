@@ -6,7 +6,7 @@ import { adapter, base, decision, finish, mcp, settings } from './common.js';
 import { resolveGeminiMemory } from './gemini-memory.js';
 
 export const geminiMetadata: AdapterMetadata = {
-  id: 'gemini', name: 'Gemini CLI', maturity: 'experimental', verifiedOn: '2026-11-15',
+  id: 'gemini', name: 'Gemini CLI', maturity: 'experimental', verifiedOn: '2026-11-16',
   ruleVersion: '0.68.0 startup, trust and context imports',
   evidence: [
     'https://geminicli.com/docs/reference/configuration/',
@@ -15,6 +15,7 @@ export const geminiMetadata: AdapterMetadata = {
     'https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/core/src/utils/trust.ts',
     'https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/core/src/utils/paths.ts',
     'https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/core/src/utils/memoryImportProcessor.ts',
+    'https://github.com/google-gemini/gemini-cli/blob/v0.68.0/packages/core/src/utils/memoryDiscovery.ts',
   ],
   limitations: [
     'User/project settings, persisted folder trust, bare context filenames and in-boundary context imports have executable comparisons with published 0.68.0 modules.',

@@ -7,6 +7,7 @@
 * Record an explicit trust assumption in optional inputs.trust metadata. Preserve its generated enum when private text contains auto, trusted or untrusted, and restore the matching browser control and visible offline scan-scope details.
 * Restore server-configured defaults for omitted target, starting-directory, profile and trust URL parameters. Invalid profile names receive the server's validation message and retain the last successful export.
 * Keep original request selections outside standalone HTML captures. Exported target/profile values and private source text retain their redaction, including after offline re-export.
+* Match Gemini 0.68.0 context-root deduplication by filesystem device and inode values. Shared identities retain the first loaded path and mark later context paths as ignored.
 * Rerun affected live scans with 0.3.42. Earlier exports retain their captured target, profile and trust assumptions.
 
 ## 0.3.41 — 2026-11-16

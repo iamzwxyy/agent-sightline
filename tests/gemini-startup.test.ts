@@ -5,7 +5,7 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { scan } from '../packages/core/index.js';
 import { html, json, portable, terminal } from '../packages/reporter/index.js';
@@ -109,6 +109,23 @@ for (const fixture of cases) test(`Gemini startup matches 0.68.0 for ${fixture.n
   for (const server of client.extensions.filter(extension => extension.kind === 'mcp' && extension.status !== 'shadowed')) assert.equal(server.status, fixture.state);
   if (native.trusted) assert.deepEqual(client.extensions.find(extension => extension.kind === 'mcp' && extension.status === 'active')?.config, native.servers.fixture);
   if (fixture.state === 'conditional') assert.ok(client.decisions.some(source => source.path === path.join(w.repo, 'TEAM.md') && source.status === 'conditional'));
+});
+
+for (const trusted of ['true', 'false']) test(`Gemini startup deduplicates context file identities with workspace trust ${trusted}`, async t => {
+  const w = await workspace({}, {
+    '.gemini/PERSONAL.md': 'SHARED_INSTRUCTION',
+    '.gemini/settings.json': JSON.stringify({ context: { fileName: 'PERSONAL.md' } }),
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true, maxRetries: 5 }));
+  const personal = path.join(w.home, '.gemini/PERSONAL.md');
+  await link(personal, path.join(w.home, '.gemini/GEMINI.md'));
+  await link(personal, path.join(w.repo, 'GEMINI.md'));
+  const env = { PATH: process.env.PATH, GEMINI_CLI_TRUST_WORKSPACE: trusted };
+  const native = nativeStartup(w.repo, w.home, env);
+  const report = await scan({ ...w, clients: ['gemini'], env });
+  assert.equal(report.clients[0].instructions, native.instructions);
+  assert.equal(report.clients[0].instructions.split('SHARED_INSTRUCTION').length - 1, 1);
+  assert.ok(report.clients[0].decisions.some(source => source.path === path.join(w.home, '.gemini/GEMINI.md') && source.status === 'ignored'));
 });
 
 test('Gemini saved trust follows native parent inheritance and longest normalized rule paths', async t => {

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { access, lstat, readFile, readlink, realpath } from 'node:fs/promises';
+import { access, lstat, readFile, readlink, realpath, stat } from 'node:fs/promises';
 import type { Context, Effective, Location, Source } from '../core/types.js';
 import { bytes, cmp, finding, slash, within } from '../core/utils.js';
 import { decision, effectiveValue } from './common.js';
@@ -247,7 +247,15 @@ export async function resolveGeminiMemory(e: Effective, ctx: Context, includePro
 
   const contexts: string[] = [];
   const redactedContexts: string[] = [];
+  const identities = new Set<string>();
   for (const source of roots) {
+    // Published 0.68.0 uses Number-valued dev/ino, including their Windows precision.
+    const identity = await stat(source.path).then(info => `${info.dev}:${info.ino}`, () => source.path);
+    if (identities.has(identity)) {
+      decision(e, source, 'ignored', 'Gemini already loaded a context path with the same filesystem identity.');
+      continue;
+    }
+    identities.add(identity);
     const root = await memoryRoot(ctx, path.dirname(source.path), markers);
     const scope = source.scope === 'user' ? userRoot : ctx.repo;
     const content = format === 'flat' ? await flat(source, root, scope) : await tree(source, root, scope, new Set());

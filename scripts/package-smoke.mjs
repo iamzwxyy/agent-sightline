@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 const temp = mkdtempSync(path.join(os.tmpdir(), 'sightline-install-'));
@@ -102,6 +102,17 @@ try {
   if (!aliasReport.clients.find(client => client.client === 'gemini').instructions.includes('GEMINI_FIRST')) throw new Error('Installed Gemini trust alias lost the selected workspace approval.');
   execFileSync(process.execPath, [cli, ...aliasArgs, '--format', 'html', '--output', geminiFile], { env: aliasEnvironment });
   if ([JSON.stringify(aliasReport), readFileSync(geminiFile, 'utf8')].some(output => output.includes('installed-gemini-alias-private-project'))) throw new Error('Installed Gemini trust alias exposed an unrelated project.');
+  const identityRepo = path.join(temp, 'gemini-identity-repository');
+  const identityHome = path.join(temp, 'gemini-identity-home');
+  mkdirSync(identityRepo);
+  mkdirSync(path.join(identityHome, '.gemini'), { recursive: true });
+  writeFileSync(path.join(identityHome, '.gemini/settings.json'), '{"context":{"fileName":"PERSONAL.md"}}');
+  const identitySource = path.join(identityHome, '.gemini/PERSONAL.md');
+  writeFileSync(identitySource, 'INSTALLED_SHARED_CONTEXT');
+  linkSync(identitySource, path.join(identityHome, '.gemini/GEMINI.md'));
+  linkSync(identitySource, path.join(identityRepo, 'GEMINI.md'));
+  const identityReport = JSON.parse(execFileSync(process.execPath, [cli, 'explain', '.', '--repo', identityRepo, '--home', identityHome, '--client', 'gemini', '--trust', 'trusted', '--json'], { encoding: 'utf8' }));
+  if (identityReport.clients[0].instructions.split('INSTALLED_SHARED_CONTEXT').length - 1 !== 1) throw new Error('Installed Gemini context identity deduplication failed.');
   const claudeHookRepo = path.join(temp, 'claude-hook-repository');
   const claudeHookHome = path.join(temp, 'claude-hook-home');
   mkdirSync(path.join(claudeHookRepo, '.claude'), { recursive: true });
