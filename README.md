@@ -1,5 +1,7 @@
 # Agent Sightline
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 **See what your coding agent actually sees.**
 
 One file. Several agents. Different instructions. Sightline shows every discovered source, why it applies, what is shadowed or truncated, and the effective configuration—with source lines you can inspect.
