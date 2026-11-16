@@ -9,6 +9,7 @@ import { applyClaudeMcpPolicy, claudeExclusiveMcpLocation, claudeMcpSettingsSour
 import { probeMcp, validateExtensions } from '../core/extensions.js';
 import { resolveClaudeMemory } from './claude-memory.js';
 import { claudeProjectStateRoot, claudeStatePath } from './claude-project.js';
+import { applyClaudeModelSettings } from './claude-model.js';
 
 export const claudeMetadata: AdapterMetadata = {
   id: 'claude', name: 'Claude Code', maturity: 'verified', ruleVersion: '2.1.322', verifiedOn: '2026-11-16',
@@ -16,7 +17,7 @@ export const claudeMetadata: AdapterMetadata = {
   limitations: [
     'Repository boundary excludes filesystem ancestors outside --repo; they may contribute instructions.',
     'No account-synced or plugin/managed-cloud configuration. AGENTS.md fallback models the documented 2.1.277+ default.',
-    'Path-scoped rules over 40,000 characters are conditional because model/context-specific limits cannot be inferred. No universal CLAUDE.md truncation budget is invented.',
+    'On-demand character budgets use captured model settings and environment inputs. Unpinned aliases, account-selected defaults, unknown context, automatic legacy Opus 4.0/4.1 remapping and managed model allowlists retain conditional limits. Startup instructions retain complete content within the inspection read limit.',
     'Nested skills may also be directory-qualified at runtime; bare-name preference is shown.',
     'Local permission grants without explicit workspace trust depend on native Git and session checks; shown as conditional. Session permission modes and the remaining tool inventory are outside this static inspection.',
     'Managed file-policy results assume the file-based tier is selected. Remote, MDM, registry and embedding-host selection require session evidence. Managed schema repairs cover the implemented Boolean controls, permission lists and MCP lists/provided entries.',
@@ -60,6 +61,7 @@ const claudeAdapter = adapter(claudeMetadata, discover, async ctx => {
     if (s.scope !== 'system' && mcpPolicy?.data.allowManagedMcpServersOnly === true) excluded.push('allowedMcpServers');
     const data = Object.fromEntries(Object.entries(s.data).filter(([key]) => !excluded.includes(key)));
     delete data.managedMcpServers;
+    delete data.modelPicker;
     if (!s.invalid && permissionPolicy?.data.allowManagedPermissionRulesOnly === true && s.scope !== 'system' && plainObject(data.permissions)) {
       data.permissions = { ...data.permissions };
       for (const key of ['allow', 'ask', 'deny']) if (Object.hasOwn(data.permissions, key)) {
@@ -91,9 +93,10 @@ const claudeAdapter = adapter(claudeMetadata, discover, async ctx => {
     }
     hooks(e, s, s.data.hooks, 'active'); permissions(e, s, 'active', { status: grantStatus, reason: grantReason }, s.permissionLocations);
   }
+  applyClaudeModelSettings(e, layers);
   const mode = layers.find(source => source.path === user?.path && !source.invalid)?.data.pluginConfigs?.['cc-plugin-agents-md@builtin']?.options?.instructionFiles ?? 'claude-md-or-agents-md';
   const globalMcp = ctx.options.user !== false ? ctx.sources.find(s => s.path === claudeStatePath(ctx)) : undefined;
-  await resolveClaudeMemory(e, ctx, mode, globalMcp);
+  await resolveClaudeMemory(e, ctx, mode, globalMcp, layers);
   const exclusiveMcp = claudeExclusiveMcpLocation(ctx);
   const ordinaryMcpStatus = exclusiveMcp ? 'ignored' : 'active';
   const exclusiveReason = 'The exclusive managed MCP file suppresses ordinary MCP sources.';

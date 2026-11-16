@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.47 — 2026-11-16
+
+* Conceal captured private values split at instruction truncation boundaries in effective text, source contributions, comparisons and exported reports. Retain complete earlier contributions when the same text appears again at a cutoff.
+* Rescan and replace affected earlier reports when a captured private value crossed an instruction truncation boundary. The public 0.3.46 package reproduces this exposure.
+* Resolve Claude's on-demand character budget from captured model and context settings, with pinned model/provider identities, environment precedence, model bindings and context controls. Trace exact loaded prefixes and original source boundaries in the inspector and portable reports.
+* Apply the same on-demand budget to descendant instruction files and rules. Startup instructions retain their complete content. Unknown session context retains conditional loading.
+* Follow native standalone HTML-comment removal, retain inline, indented and fenced comments, and preserve import source lines after removed comments.
+* Scan candidate assignment keys once during text redaction to keep long instruction lines responsive.
+
 ## 0.3.46 — 2026-11-16
 
 * Show and announce clipboard success inside the active dialog, with feedback retained in its visible header while scrolling long details. Page-level copy actions retain their existing feedback.

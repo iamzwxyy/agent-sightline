@@ -1,4 +1,4 @@
-import type { Effective, InstructionBlock, Source } from './types.js';
+import type { Decision, Effective, InstructionBlock, Source } from './types.js';
 import { stripComments } from './utils.js';
 
 function paragraphs(content: string): { content: string; startLine: number; endLine: number }[] {
@@ -25,7 +25,7 @@ function paragraphs(content: string): { content: string; startLine: number; endL
   return blocks;
 }
 
-export function compareInstructions(clients: Effective[], sources: Source[], scrub: (text: string) => string): InstructionBlock[] {
+export function compareInstructions(clients: Effective[], sources: Source[], scrub: (text: string) => string, privateContent?: WeakMap<Decision, string>): InstructionBlock[] {
   const blocks = new Map<string, InstructionBlock>();
   const sourceById = new Map(sources.map(source => [source.id, source]));
   for (const client of clients) {
@@ -38,6 +38,7 @@ export function compareInstructions(clients: Effective[], sources: Source[], scr
       const body = literal ? source.text : source?.body ?? '';
       const sourceText = (prefix + (client.client === 'claude' ? stripComments(body, true) : body)).replace(/\r\n/g, '\n');
       const contentLines = scrub(decision.content.replace(/\r\n/g, '\n')).split('\n');
+      const privateLines = privateContent?.get(decision)?.replace(/\r\n/g, '\n').split('\n');
       let cursor = 0;
       for (let line = 1; line < decision.line; line++) {
         const newline = sourceText.indexOf('\n', cursor);
@@ -54,6 +55,7 @@ export function compareInstructions(clients: Effective[], sources: Source[], scr
         const contextual = contentLines.slice(paragraph.startLine, paragraph.endLine + 1).join('\n');
         const block = blocks.get(content) ?? { content: redacted, clients: [], origins: [] };
         if (contextual !== redacted) block.content = '[REDACTED]';
+        if (privateLines && privateLines.slice(paragraph.startLine, paragraph.endLine + 1).join('\n') !== content) block.content = '[REDACTED]';
         if (!block.clients.includes(client.client)) block.clients.push(client.client);
         const origin: InstructionBlock['origins'][number] = {
           client: client.client, location: { path: decision.path, line: decision.line, column: 1 }, order: ++order,

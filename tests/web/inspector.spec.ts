@@ -15,6 +15,111 @@ import { createServer } from 'node:http';
 
 const sampleOptions = { repo: path.resolve('examples/broken-agent-config'), user: false, trust: 'trusted' as const, clients: ['codex', 'claude', 'copilot'] as const };
 
+test('Claude character limits retain original source boundaries through refresh and offline sharing', async ({ page }) => {
+  const secret = 'browser-memory-private-value';
+  const w = await workspace({
+    'CLAUDE.md': 'ROOT_INSTRUCTION\n', 'src/file.ts': '',
+    '.claude/settings.json': JSON.stringify({ model: 'claude-sonnet-4-6', env: { PRIVATE_MEMORY: secret } }),
+    '.claude/rules/large.md': '---\npaths: ["src/**/*.ts"]\n---\nMEMORY_HEAD_INSTRUCTION\n' + secret + '\n<!--\nHidden comment.\n-->\n\n' + ('x'.repeat(79) + '\n').repeat(650) + 'MEMORY_TAIL_INSTRUCTION\n',
+  });
+  const options = { ...w, target: 'src/file.ts', sessionDirectory: '.', user: false, clients: ['claude'] as const, trust: 'trusted' as const };
+  const report = await scan(options);
+  const source = report.clients[0].decisions.find(source => source.status === 'truncated')!;
+  expect(source.truncation?.limit).toBe(40000);
+  const route = '#view=effective&client=claude&source=.claude%2Frules%2Flarge.md';
+  const server = await serve(options);
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { (window as any).memoryCopy = text; } } }));
+  try {
+    await page.goto(server.url + route);
+    const downloading = page.waitForEvent('download');
+    await page.locator('#export').click();
+    const file = test.info().outputPath('claude-character-limit.html');
+    await (await downloading).saveAs(file);
+    for (const url of [server.url + route, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto(url);
+        await expect(page.locator('#source-status')).toHaveText('Truncated');
+        const marker = page.locator('.byte-limit-marker');
+        await expect(marker).toHaveText('Character limit reached · content below is not loaded');
+        await expect(page.locator('.code-line.unloaded .line-number').first()).toHaveText(String(source.truncation!.line));
+        await expect(page.locator('.code-note')).toContainText(`original line ${source.truncation!.line}, column 1`);
+        await marker.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: test.info().outputPath(`claude-character-limit-${url.startsWith('file:')}-${viewport.width}.png`) });
+        await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+        const effective = await page.locator('#effective-document .effective-text').textContent();
+        expect(effective).toBe(report.clients[0].instructions);
+        expect(effective?.includes('MEMORY_TAIL_INSTRUCTION')).toBe(false);
+        expect(effective?.includes(secret)).toBe(false);
+        await page.locator('#copy-effective').click();
+        expect(await page.evaluate(() => (window as any).memoryCopy)).toBe(effective);
+        expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
+    }
+    await page.context().setOffline(false);
+    await page.goto(server.url + route);
+    await writeFile(path.join(w.repo, '.claude/settings.json'), JSON.stringify({ model: 'claude-sonnet-4-6[1m]', env: { PRIVATE_MEMORY: secret } }));
+    await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
+    await expect(page.locator('#scan-status')).toContainText('Scan complete');
+    await expect(page.locator('#source-status')).toHaveText('Loaded');
+    await expect(page.locator('.byte-limit-marker')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
+    await expect(page.locator('#effective-document .effective-text')).toContainText('MEMORY_TAIL_INSTRUCTION');
+    await page.context().setOffline(true);
+    await page.goto(pathToFileURL(file).href);
+    await expect(page.locator('#source-status')).toHaveText('Truncated');
+    expect(errors).toEqual([]);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('private values split by instruction limits stay hidden in live and offline browser copies', async ({ page }) => {
+  const secret = 'browser-private-prefix-' + 'z'.repeat(200) + '-tail';
+  const body = 'BOUNDARY_HEAD' + 'x'.repeat(39920) + secret + '\n';
+  const w = await workspace({
+    'AGENTS.md': body, 'CLAUDE.md': 'ROOT_INSTRUCTION\n\n' + body, 'src/file.ts': '',
+    '.claude/settings.json': JSON.stringify({ model: 'claude-sonnet-4-6', env: { PRIVATE_BOUNDARY: secret } }),
+    '.claude/rules/large.md': '---\npaths: ["src/**/*.ts"]\n---\n' + body,
+    '.codex/config.toml': 'project_doc_max_bytes=40000\n',
+  }, { '.codex/AGENTS.md': body });
+  const server = await serve({ ...w, target: 'src/file.ts', sessionDirectory: '.', clients: ['codex', 'claude'], trust: 'trusted' });
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { (window as any).privatePrefixCopy = text; } } }));
+  try {
+    await page.goto(server.url);
+    const downloading = page.waitForEvent('download');
+    await page.locator('#export').click();
+    const file = test.info().outputPath('private-instruction-prefix.html');
+    await (await downloading).saveAs(file);
+    const exported = await readFile(file, 'utf8');
+    for (const value of [secret.slice(0, 40), secret.slice(-40), w.repo, w.home]) expect(exported.includes(value)).toBe(false);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        for (const client of ['codex', 'claude']) {
+          await page.goto(url + '#view=effective&client=' + client + '&text=effective');
+          const effective = await page.locator('#effective-document .effective-text').textContent();
+          expect(effective?.includes('[REDACTED]')).toBe(true);
+          await page.locator('#copy-effective').click();
+          const copied = await page.evaluate(() => (window as any).privatePrefixCopy);
+          expect(copied).toBe(effective);
+          for (const value of [secret.slice(0, 40), secret.slice(-40)]) {
+            expect(copied.includes(value)).toBe(false);
+            expect((await page.content()).includes(value)).toBe(false);
+          }
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        }
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('starting-directory selection survives targets, history, refresh and portable re-export', async ({ page }) => {
   const w = await workspace({
     'AGENTS.md': 'Root instructions.', 'src/AGENTS.md': 'Nested instructions.', 'docs/AGENTS.md': 'Docs instructions.',

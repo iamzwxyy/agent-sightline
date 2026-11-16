@@ -11,7 +11,7 @@
 Node.js 22 以降が必要です。プロジェクトのディレクトリでターミナルを開き、次のコマンドを実行します。
 
 ```sh
-npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.46/agent-sightline-0.3.46.tgz ui
+npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.47/agent-sightline-0.3.47.tgz ui
 ```
 
 ブラウザーにローカルの検査画面が開きます。まず Findings で診断結果を選び、原因と修正案を確認します。Inspect source を押すと、元ファイルの該当行に移動できます。対象ファイルの選択欄から、リポジトリ内の別のファイルも検査できます。アプリの画面と診断メッセージは英語です。
@@ -25,14 +25,14 @@ npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.46/
 繰り返し使う場合はグローバルにインストールできます。続けて付属サンプルを開くには、次のコマンドを実行します。
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.46/agent-sightline-0.3.46.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.47/agent-sightline-0.3.47.tgz
 agent-sightline demo --ui
 ```
 
 公開パッケージは GitHub Releases で配布しており、実行時の依存パッケージも含まれています。ダウンロード済みのファイルからはオフラインでインストールできます。
 
 ```sh
-npm install -g --offline ./agent-sightline-0.3.46.tgz
+npm install -g --offline ./agent-sightline-0.3.47.tgz
 ```
 
 npm レジストリへの初回公開は、アカウント認証の完了待ちです。[リリース一覧とダウンロード](https://github.com/iamzwxyy/agent-sightline/releases)
@@ -86,6 +86,8 @@ agent-sightline adapters
 ```
 
 ## ローカル実行とプライバシー
+
+v0.3.47 では、指示の切り詰め位置で分断された、識別済みの秘密情報も秘匿します。該当する以前のレポートは再検査して生成し直し、差し替えてください。
 
 既定の検査はローカルで読み取り専用として実行されます。出力時には、識別できた秘密情報に再度秘匿処理を適用し、取得済みのリポジトリ、ホームディレクトリ、設定のエイリアスパスを置き換えます。自由記述の文章には、識別できなかった機密情報が含まれる可能性があるため、共有前にレポートを確認してください。[セキュリティ方針](SECURITY.md)
 

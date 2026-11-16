@@ -4,14 +4,17 @@ import type { Context, Effective, Location, Source, Status } from '../core/types
 import { finding, locate, matches, parents, slash, stripComments, within } from '../core/utils.js';
 import { addInstruction, decision, effectiveValue, imports, pathPatterns, rootOf } from './common.js';
 import { claudeProjectStateRoot } from './claude-project.js';
+import { claudeMemoryLimit } from './claude-model.js';
 
 interface Contribution {
   status: Status;
   reason: string;
   importedFrom?: Location;
+  onDemand?: boolean;
 }
 
-export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: string, state?: Source): Promise<void> {
+export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: string, state?: Source, layers: Source[] = []): Promise<void> {
+  const memoryLimit = claudeMemoryLimit(e, ctx, layers);
   const excludes = effectiveValue(e, 'claudeMdExcludes', []);
   const excluded = (source: Source) => source.scope !== 'system' && Array.isArray(excludes) && matches(slash(source.path), excludes.filter(value => typeof value === 'string'));
   const hasClaude = ctx.sources.some(source => ctx.dirs.some(directory => ['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md'].some(name => source.path === path.join(directory, name))));
@@ -40,6 +43,40 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
   const expanded = new Set<string>();
   const scopedRules: { source: Source; patterns: string[]; contribution: Contribution }[] = [];
 
+  const addMemory = (source: Source, contribution: Contribution, reason: string) => {
+    const removed: { offset: number; length: number }[] = [];
+    const body = stripComments(source.body, false, removed);
+    let content = body;
+    let status = contribution.status;
+    if (contribution.onDemand && body.length > (memoryLimit.limit ?? 40000)) {
+      if (memoryLimit.limit === undefined) {
+        status = 'conditional';
+        reason += ' The on-demand character limit depends on model or session context that this inspection cannot determine.';
+        e.findings.push(finding('claude.conditional-truncation', 'warn', locate(source), 'On-demand instructions may be truncated by the model-specific character limit.', 'The captured files and environment do not determine the session character budget.', 'Select the model and context through supported file settings, or verify the active session limit.', 'claude', memoryLimit.locations));
+      } else {
+        let end = memoryLimit.limit;
+        if (/[\uD800-\uDBFF]/.test(body[end - 1] ?? '') && /[\uDC00-\uDFFF]/.test(body[end] ?? '')) end--;
+        const newline = body.lastIndexOf('\n', end - 1);
+        if (newline >= 0) end = newline + 1;
+        content = body.slice(0, end);
+        let offset = end;
+        for (const range of removed) if (range.offset <= offset) offset += range.length;
+        const prefix = source.body.slice(0, offset);
+        const location = { path: source.path, line: source.bodyLine + (prefix.match(/\n/g)?.length ?? 0), column: prefix.length - prefix.lastIndexOf('\n') };
+        status = contribution.status === 'active' ? 'truncated' : contribution.status;
+        reason += ` On-demand content is limited to ${memoryLimit.limit} characters and ends at a complete line when possible.`;
+        addInstruction(e, source, reason, content, status);
+        const entry = e.decisions.at(-1)!;
+        entry.truncation = { unit: 'characters', limit: memoryLimit.limit, line: location.line, column: location.column };
+        if (contribution.importedFrom) entry.importedFrom = contribution.importedFrom;
+        e.findings.push(finding('claude.instructions-truncated', 'warn', location, 'On-demand instructions exceed the model-specific character limit.', `Claude applies a ${memoryLimit.limit}-character per-file budget to content loaded after startup.`, 'Shorten this file or select the intended model and context window in Claude settings.', 'claude', memoryLimit.locations));
+        return;
+      }
+    }
+    addInstruction(e, source, reason, content, status);
+    if (contribution.importedFrom) e.decisions.at(-1)!.importedFrom = contribution.importedFrom;
+  };
+
   const expandSource = async (source: Source, contribution: Contribution, stack: string[] = [], depth = 0): Promise<void> => {
     if (contribution.status === 'ignored') {
       decision(e, source, 'ignored', contribution.reason, '', contribution.importedFrom);
@@ -54,11 +91,10 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
     if (contribution.status === 'active') expanded.add(canonical);
     const emptyPaths = Array.isArray(source.data.paths) && source.data.paths.length === 0;
     const patterns = source.kind === 'rules' && !emptyPaths ? pathPatterns(e, source, 'paths') : null;
-    const body = stripComments(source.body);
+    const body = stripComments(source.body, true).replace(/\0/g, ' ');
     if (patterns) scopedRules.push({ source, patterns, contribution });
     else {
-      addInstruction(e, source, contribution.reason, body, contribution.status);
-      if (contribution.importedFrom) e.decisions.at(-1)!.importedFrom = contribution.importedFrom;
+      addMemory(source, contribution, contribution.reason);
     }
 
     // Native discovery expands imports even when the referring rule waits for a matching file.
@@ -98,15 +134,15 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
         } else if (approvalLocation) reason += ` External imports are approved at ${approvalLocation.path}:${approvalLocation.line}.`;
       }
       const imported = await ctx.read(target, 'claude', 'instructions', source.scope === 'user' ? 'user' : 'import');
-      if (imported) await expandSource(imported, { status, reason, importedFrom: location }, [...stack, canonical], depth + 1);
+      if (imported) await expandSource(imported, { status, reason, importedFrom: location, onDemand: contribution.onDemand }, [...stack, canonical], depth + 1);
     }
   };
 
-  const loadRules = async (directory?: string) => {
+  const loadRules = async (directory?: string, onDemand = false) => {
     const sources = ctx.sources.filter(source => source.kind === 'rules' && source.owners.includes('claude') && (directory === undefined ? source.scope === 'user' : source.scope !== 'user' && rootOf(source, '.claude') === directory)).sort((left, right) => left.path.localeCompare(right.path));
     for (const source of sources) {
       if (excluded(source) || mode === 'managed-only') decision(e, source, 'ignored', 'Excluded by instruction mode or claudeMdExcludes.');
-      else await expandSource(source, { status: 'active', reason: 'Rule discovered in the user/project rules directory.' });
+      else await expandSource(source, { status: 'active', reason: 'Rule discovered in the user/project rules directory.', onDemand });
     }
   };
   const applyScopedRules = (rules: typeof scopedRules) => {
@@ -120,10 +156,7 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
         decision(e, source, 'ignored', 'paths frontmatter does not match the target file.', '', contribution.importedFrom);
         continue;
       }
-      const conditional = source.body.length > 40000;
-      if (conditional) e.findings.push(finding('claude.conditional-truncation', 'warn', locate(source), 'Path-scoped rule may be truncated by the model-specific character limit.', '2.1.309+ uses 40,000 characters for 200K context and larger limits for 1M context.', 'Shorten the rule or verify the session context limit.', 'claude'));
-      addInstruction(e, source, conditional ? 'On-demand rule exceeds the 200K-context per-file character limit; exact truncation depends on model/context size.' : contribution.reason + ' Its paths frontmatter matches the opened target file after startup instructions load.', stripComments(source.body), conditional ? 'conditional' : contribution.status);
-      if (contribution.importedFrom) e.decisions.at(-1)!.importedFrom = contribution.importedFrom;
+      addMemory(source, { ...contribution, onDemand: true }, contribution.reason + ' Its paths frontmatter matches the opened target file after startup instructions load.');
     }
   };
   for (const source of ctx.sources.filter(source => source.kind === 'instructions' && (source.scope === 'system' || source.path === path.join(ctx.claudeHome, 'CLAUDE.md')) && source.owners.includes('claude'))) {
@@ -146,10 +179,10 @@ export async function resolveClaudeMemory(e: Effective, ctx: Context, mode: stri
         continue;
       }
       if (excluded(source)) { decision(e, source, 'ignored', 'Excluded by claudeMdExcludes.'); continue; }
-      await expandSource(source, { status: 'active', reason: onDemand ? 'Instruction discovered when the target is opened after startup.' : 'Instruction file in the session starting directory’s ancestor chain.' });
+      await expandSource(source, { status: 'active', reason: onDemand ? 'Instruction discovered when the target is opened after startup.' : 'Instruction file in the session starting directory’s ancestor chain.', onDemand });
     }
     if (onDemand) {
-      await loadRules(directory);
+      await loadRules(directory, true);
       applyScopedRules(scopedRules.splice(startupRuleCount));
     } else startupRuleCount = scopedRules.length;
   }

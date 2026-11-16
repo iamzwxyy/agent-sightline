@@ -612,18 +612,20 @@
     $('source-status').replaceChildren(badge(source.status));
     const preview = sourceText(source);
     const content = [];
-    if (source.status === 'truncated') content.push(node('div', `Only ${source.loadedBytes} of ${source.bytes} bytes reach this client. The code below shows the ${preview.label === 'Source preview' ? 'source file' : 'loaded prefix'}.`, 'code-note'));
+    const characterLimit = source.status === 'truncated' && source.truncation?.unit === 'characters' ? source.truncation : null;
+    if (source.status === 'truncated') content.push(node('div', characterLimit ? `The ${characterLimit.limit}-character limit ends at original line ${characterLimit.line}, column ${characterLimit.column}. ${source.loadedBytes} bytes enter the instruction text. The code below shows the ${preview.label === 'Source preview' ? 'source file' : 'loaded prefix'}.` : `Only ${source.loadedBytes} of ${source.bytes} bytes reach this client. The code below shows the ${preview.label === 'Source preview' ? 'source file' : 'loaded prefix'}.`, 'code-note'));
     if (source.status === 'ignored' || source.status === 'shadowed' || source.status === 'conditional') content.push(node('div', source.reason, 'code-note'));
     const code = node('div', undefined, 'code-view');
     code.setAttribute('aria-label', preview.label);
     let bytesRead = 0;
     let cutoffShown = false;
-    const showByteLimit = source.status === 'truncated' && preview.label === 'Source preview';
+    const showByteLimit = source.status === 'truncated' && !characterLimit && preview.label === 'Source preview';
+    const showCharacterLimit = characterLimit && preview.label === 'Source preview';
     if (preview.text) preview.text.split('\n').forEach((line, index) => {
       const lineNumber = preview.firstLine === null ? '' : preview.firstLine + index;
       const encoder = new TextEncoder();
       const lineBytes = encoder.encode(line);
-      const beyondLimit = showByteLimit && bytesRead >= source.loadedBytes;
+      const beyondLimit = showCharacterLimit ? lineNumber > characterLimit.line || lineNumber === characterLimit.line && characterLimit.column === 1 : showByteLimit && bytesRead >= source.loadedBytes;
       const row = node('div', undefined, `code-line${/^#+\s/.test(line) ? ' heading' : ''}${lineNumber === state.highlightLine ? ' highlight' : ''}${beyondLimit ? ' unloaded' : ''}`);
       const text = node('span', line || ' ', 'line-text');
       if (showByteLimit && !beyondLimit && bytesRead + lineBytes.length > source.loadedBytes) {
@@ -638,7 +640,9 @@
         text.replaceChildren(node('span', line.slice(0, loadedLength)), node('span', line.slice(loadedLength), 'unloaded-text'));
       }
       row.append(node('span', String(lineNumber), 'line-number'), text);
+      if (showCharacterLimit && lineNumber === characterLimit.line && characterLimit.column === 1) code.append(node('div', 'Character limit reached · content below is not loaded', 'byte-limit-marker'));
       code.append(row);
+      if (showCharacterLimit && lineNumber === characterLimit.line && characterLimit.column > 1) code.append(node('div', `Character limit reached within original line ${characterLimit.line} at column ${characterLimit.column}`, 'byte-limit-marker'));
       bytesRead += lineBytes.length + 1;
       if (showByteLimit && bytesRead >= source.loadedBytes && !cutoffShown) {
         cutoffShown = true;

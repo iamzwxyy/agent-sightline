@@ -13,12 +13,33 @@ export const hash = (s: string): string => createHash('sha256').update(s).digest
 export function trimRustWhitespace(text: string): string {
   return text.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '');
 }
-export function stripComments(body: string, preserveOffsets = false): string {
+export function stripComments(body: string, preserveOffsets = false, removed?: { offset: number; length: number }[]): string {
+  if (!body.includes('<!--')) return body;
   let fence = false;
-  return body.split(/(^\s*```.*$|^\s*~~~.*$)/m).map(part => {
-    if (/^\s*(```|~~~)/.test(part)) { fence = !fence; return part; }
-    return fence ? part : part.replace(/<!--[\s\S]*?-->/g, comment => preserveOffsets ? comment.replace(/[^\r\n]/g, '\0') : '');
-  }).join('');
+  let offset = 0;
+  const ranges: { offset: number; length: number }[] = [];
+  for (const part of body.split(/(^\s*```.*$|^\s*~~~.*$)/m)) {
+    if (/^\s*(```|~~~)/.test(part)) fence = !fence;
+    else if (!fence) for (const match of part.matchAll(/^<!--[\s\S]*?-->(?:[ \t]*<!--[\s\S]*?-->)*(?:[ \t]*(?:\r?\n|$))*/gm)) {
+      ranges.push({ offset: offset + match.index, length: match[0].length });
+    }
+    offset += part.length;
+  }
+  const parts: string[] = [];
+  const append = (start: number, end: number) => {
+    const text = body.slice(start, end);
+    if (!preserveOffsets) for (const match of text.matchAll(/\r(?=\n)/g)) removed?.push({ offset: start + match.index, length: 1 });
+    parts.push(preserveOffsets ? text : text.replace(/\r\n/g, '\n'));
+  };
+  let cursor = 0;
+  for (const range of ranges) {
+    append(cursor, range.offset);
+    if (preserveOffsets) parts.push(body.slice(range.offset, range.offset + range.length).replace(/[^\r\n]/g, '\0'));
+    else removed?.push(range);
+    cursor = range.offset + range.length;
+  }
+  append(cursor, body.length);
+  return parts.join('');
 }
 export function within(root: string, file: string): boolean {
   const rel = path.relative(root, file);

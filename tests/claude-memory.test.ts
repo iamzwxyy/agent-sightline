@@ -4,13 +4,17 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { scan } from '../packages/core/index.js';
-import { portable } from '../packages/reporter/index.js';
+import { html, portable } from '../packages/reporter/index.js';
 import { claudeMetadata } from '../packages/adapters/claude.js';
+import type { Status } from '../packages/core/types.js';
 import { workspace } from './helpers.js';
+import { hash } from '../packages/core/utils.js';
+import claudeModels from '../packages/adapters/claude-models.json' with { type: 'json' };
 
 const require = createRequire(import.meta.url);
 const platformPackage = `@anthropic-ai/claude-code-${process.platform}-${process.arch}`;
@@ -31,6 +35,8 @@ interface MemoryScenario {
   worktree?: boolean;
   canonicalPaths?: boolean;
   separateGitDir?: boolean;
+  environment?: NodeJS.ProcessEnv;
+  expectedMemory?: { path: string; status: Status; limit?: number };
 }
 
 function blockText(block: any): string {
@@ -290,6 +296,109 @@ test('Claude instruction order and imports agree with the pinned native request'
       }
     },
   ];
+  const longBody = 'LIMIT_HEAD_INSTRUCTION\n' + ('x'.repeat(79) + '\n').repeat(2750) + 'LIMIT_TAIL_INSTRUCTION\n';
+  const scopedRule = (body: string) => '---\npaths: ["src/**/*.ts"]\n---\n' + body;
+  const modelScenarios = [
+    { name: 'legacy model uses a 40000-character budget', user: { model: 'claude-sonnet-4-6' }, limit: 40000 },
+    { name: 'legacy 1M model uses a 200000-character budget', user: { model: 'claude-sonnet-4-6[1m]' }, limit: 200000 },
+    { name: 'current model uses its three-character token estimate', user: { model: 'claude-opus-5-5' }, limit: 150000 },
+    { name: 'unknown model takes its file-configured context window', user: { model: 'fixture-model', env: { CLAUDE_CODE_MAX_CONTEXT_TOKENS: '500000' } }, limit: 75000 },
+    { name: 'known model retains its catalog window over a context override', user: { model: 'claude-sonnet-4-6', env: { CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1000000' } }, limit: 40000 },
+    { name: 'disabled compaction permits a known model context override', user: { model: 'claude-sonnet-4-6', env: { CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1000000', DISABLE_COMPACT: '1' } }, limit: 200000 },
+    { name: 'disabled long context removes a model suffix', user: { model: 'claude-sonnet-4-6[1m]', env: { CLAUDE_CODE_DISABLE_1M_CONTEXT: '1' } }, limit: 40000 },
+    { name: 'model environment values override the model setting', user: { model: 'claude-sonnet-4-6', env: { ANTHROPIC_MODEL: 'fixture-model', CLAUDE_CODE_MAX_CONTEXT_TOKENS: '500000' } }, limit: 75000 },
+    { name: 'process environment selects the modeled context', user: { model: 'claude-sonnet-4-6' }, environment: { ANTHROPIC_MODEL: 'fixture-model', CLAUDE_CODE_MAX_CONTEXT_TOKENS: '500000' }, limit: 75000 },
+    { name: 'a model alias follows its file environment pin', user: { model: 'sonnet', env: { ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-4-6[1m]' } }, limit: 200000 },
+    { name: 'provider model overrides retain the canonical context', user: { model: 'fixture-model[1m]', modelOverrides: { 'claude-sonnet-4-6': 'fixture-model' } }, limit: 200000 },
+    { name: 'a personal model picker supplies canonical behavior', user: { model: 'fixture-model[1m]', modelPicker: { options: [{ model: 'fixture-model', behavesAs: 'claude-sonnet-4-6' }] } }, limit: 200000 },
+    { name: 'an explicit compaction override precedes a 1M suffix', user: { model: 'claude-sonnet-4-6[1m]', env: { CLAUDE_CODE_MAX_CONTEXT_TOKENS: '500000', DISABLE_COMPACT: 'true' } }, limit: 100000 },
+    { name: 'a dated legacy model keeps its four-character estimate', user: { model: 'claude-3-opus-20240229', env: { CLAUDE_CODE_MAX_CONTEXT_TOKENS: '500000', DISABLE_COMPACT: 'true' } }, limit: 100000 },
+    { name: 'a legacy model suffix keeps its four-character estimate', user: { model: 'claude-3-opus[1m]' }, limit: 200000 },
+  ];
+  for (const scenario of modelScenarios) scenarios.push({
+    name: scenario.name, directory: '.', sessionDirectory: '.', readTarget: true,
+    files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', '.claude/rules/large.md': scopedRule(longBody) },
+    home: { '.claude/settings.json': JSON.stringify(scenario.user) }, environment: scenario.environment,
+    expectedMemory: { path: '.claude/rules/large.md', status: 'truncated', limit: scenario.limit },
+  });
+  scenarios.push({
+    name: 'project and local model environment settings override process and personal choices',
+    directory: '.', sessionDirectory: '.', readTarget: true,
+    files: {
+      'CLAUDE.md': 'ROOT_INSTRUCTION\n', '.claude/rules/large.md': scopedRule(longBody),
+      '.claude/settings.json': '{"model":"claude-opus-5-5"}',
+      '.claude/settings.local.json': '{"env":{"ANTHROPIC_MODEL":"fixture-model","CLAUDE_CODE_MAX_CONTEXT_TOKENS":"500000"}}',
+    },
+    home: { '.claude/settings.json': '{"model":"claude-sonnet-4-6"}' },
+    environment: { ANTHROPIC_MODEL: 'claude-sonnet-4-6[1m]' },
+    expectedMemory: { path: '.claude/rules/large.md', status: 'truncated', limit: 75000 },
+  }, {
+    name: 'an empty project model override map retains the personal mapping',
+    directory: '.', sessionDirectory: '.', readTarget: true,
+    files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', '.claude/rules/large.md': scopedRule(longBody), '.claude/settings.json': '{"modelOverrides":{}}' },
+    home: { '.claude/settings.json': '{"model":"fixture-model[1m]","modelOverrides":{"claude-sonnet-4-6":"fixture-model"}}' },
+    expectedMemory: { path: '.claude/rules/large.md', status: 'truncated', limit: 200000 },
+  }, {
+    name: 'an unrelated project model override retains the personal mapping',
+    directory: '.', sessionDirectory: '.', readTarget: true,
+    files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', '.claude/rules/large.md': scopedRule(longBody), '.claude/settings.json': '{"modelOverrides":{"claude-opus-5-5":"other-model"}}' },
+    home: { '.claude/settings.json': '{"model":"fixture-model[1m]","modelOverrides":{"claude-sonnet-4-6":"fixture-model"}}' },
+    expectedMemory: { path: '.claude/rules/large.md', status: 'truncated', limit: 200000 },
+  }, {
+    name: 'a project model override replaces the same personal mapping',
+    directory: '.', sessionDirectory: '.', readTarget: true,
+    files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', '.claude/rules/large.md': scopedRule(longBody), '.claude/settings.json': '{"modelOverrides":{"claude-sonnet-4-6":"another-model"}}' },
+    home: { '.claude/settings.json': '{"model":"fixture-model[1m]","modelOverrides":{"claude-sonnet-4-6":"fixture-model"}}' },
+    expectedMemory: { path: '.claude/rules/large.md', status: 'truncated', limit: 150000 },
+  }, {
+    name: 'project model picker declarations retain personal model behavior',
+    directory: '.', sessionDirectory: '.', readTarget: true,
+    files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', '.claude/rules/large.md': scopedRule(longBody), '.claude/settings.json': '{"modelPicker":{"options":[{"model":"fixture-model","behavesAs":"claude-opus-5-5"}]}}' },
+    home: { '.claude/settings.json': '{"model":"fixture-model[1m]","modelPicker":{"options":[{"model":"fixture-model","behavesAs":"claude-sonnet-4-6"}]}}' },
+    expectedMemory: { path: '.claude/rules/large.md', status: 'truncated', limit: 200000 },
+  });
+  for (const model of claudeModels) scenarios.push({
+    name: 'catalog character budget for ' + model.id,
+    directory: '.', sessionDirectory: '.', readTarget: true,
+    files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', '.claude/rules/large.md': scopedRule(longBody) },
+    home: { '.claude/settings.json': JSON.stringify({ model: model.id, env: { CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP: 'true' } }) },
+    expectedMemory: { path: '.claude/rules/large.md', status: 'truncated', limit: Math.max(40000, model.contextWindow * 0.05 * model.charactersPerToken) },
+  });
+  for (const [name, body] of [
+    ['inline comment', 'head <!-- retained --> tail'],
+    ['multiline inline comment', 'head <!-- retained\ncomment --> tail'],
+    ['indented comment', '  <!-- retained -->'],
+    ['fenced comment', '```html\n<!-- retained -->\n```'],
+    ['standalone comment', '<!-- removed -->'],
+    ['adjacent comments', '<!-- removed --> <!-- removed too -->'],
+    ['standalone comment with trailing text', '<!-- removed --> retained tail'],
+    ['unclosed comment', '<!-- retained'],
+  ]) scenarios.push({
+    name: 'native content retains the ' + name + ' behavior',
+    directory: '.', sessionDirectory: '.', readTarget: true,
+    files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', '.claude/rules/large.md': scopedRule('LIMIT_HEAD_INSTRUCTION\n' + body + '\nLIMIT_TAIL_INSTRUCTION\n') },
+    home: { '.claude/settings.json': '{"model":"claude-sonnet-4-6"}' },
+    expectedMemory: { path: '.claude/rules/large.md', status: 'active' },
+  });
+  for (const filename of ['src/CLAUDE.md', 'src/.claude/rules/large.md']) scenarios.push({
+    name: 'on-demand unconditional source is truncated at ' + filename,
+    directory: '.', sessionDirectory: '.', readTarget: true,
+    files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', [filename]: longBody },
+    home: { '.claude/settings.json': '{"model":"claude-sonnet-4-6"}' },
+    expectedMemory: { path: filename, status: 'truncated', limit: 40000 },
+  });
+  scenarios.push({
+    name: 'startup instructions retain their complete content above the on-demand budget',
+    directory: '.', sessionDirectory: '.', readTarget: true,
+    files: { 'CLAUDE.md': longBody }, home: { '.claude/settings.json': '{"model":"claude-sonnet-4-6"}' },
+    expectedMemory: { path: 'CLAUDE.md', status: 'active' },
+  }, {
+    name: 'removed HTML comments consume no on-demand character budget',
+    directory: '.', sessionDirectory: '.', readTarget: true,
+    files: { 'CLAUDE.md': 'ROOT_INSTRUCTION\n', '.claude/rules/large.md': scopedRule('LIMIT_HEAD_INSTRUCTION\n<!--' + 'comment\n'.repeat(8000) + '-->\nLIMIT_TAIL_INSTRUCTION\n') },
+    home: { '.claude/settings.json': '{"model":"claude-sonnet-4-6"}' },
+    expectedMemory: { path: '.claude/rules/large.md', status: 'active' },
+  });
   let requests: any[] = [];
   let readPath: string | undefined;
   const server = createServer(async (request, response) => {
@@ -332,6 +441,7 @@ test('Claude instruction order and imports agree with the pinned native request'
       XDG_CONFIG_HOME: path.join(w.home, '.config'), GIT_CONFIG_NOSYSTEM: '1', NO_COLOR: '1',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_TELEMETRY: '1', DISABLE_ERROR_REPORTING: '1',
       ANTHROPIC_API_KEY: 'synthetic-fixture-key', ANTHROPIC_BASE_URL: 'http://127.0.0.1:' + (server.address() as AddressInfo).port,
+      ...scenario.environment,
     };
     const mainRepository = w.repo;
     if (scenario.noGit) await rm(path.join(w.repo, '.git'), { recursive: true });
@@ -376,7 +486,7 @@ test('Claude instruction order and imports agree with the pinned native request'
         assert.ok(!startup.includes('SCOPED_INSTRUCTION'));
       }
       const memory = requests.at(-1).messages.filter((message: any) => message.role === 'user').flatMap((message: any) => message.content).map(blockText).join('\n');
-      const report = await scan({ ...w, target: scenario.target ?? (scenario.directory ? 'src/file.ts' : '.'), sessionDirectory: scenario.sessionDirectory, clients: ['claude'], trust: 'trusted' });
+      const report = await scan({ ...w, env: { ...w.env, ...scenario.environment }, target: scenario.target ?? (scenario.directory ? 'src/file.ts' : '.'), sessionDirectory: scenario.sessionDirectory, clients: ['claude'], trust: 'trusted' });
       assert.ok(!JSON.stringify(report).includes('private-state-sentinel@example.test'));
       const nativeState = JSON.parse(await readFile(path.join(w.home, '.claude.json'), 'utf8'));
       const nativeMessages = requests.at(-1).messages;
@@ -391,14 +501,28 @@ test('Claude instruction order and imports agree with the pinned native request'
           trusted: entry.hasTrustDialogAccepted ?? null,
         })),
         environment: nativeMessages.filter((message: any) => message.role === 'system').flatMap((message: any) => message.content).map(blockText).join('\n'),
-        toolResults: nativeMessages.filter((message: any) => message.role === 'user').flatMap((message: any) => message.content).filter((block: any) => block.type === 'tool_result').map(blockText),
+        toolResults: nativeMessages.filter((message: any) => message.role === 'user').flatMap((message: any) => message.content).filter((block: any) => block.type === 'tool_result').map(blockText).map((text: string) => text.length > 1200 ? text.slice(0, 600) + '\n[…]\n' + text.slice(-600) : text),
         permissionDenials: JSON.parse(output).permission_denials,
       };
       assert.deepEqual(diagnostics.permissionDenials, [], JSON.stringify(diagnostics));
       assert.deepEqual(report.clients[0].instructions.match(/[A-Z_]+_INSTRUCTION/g) ?? [], memory.match(/[A-Z_]+_INSTRUCTION/g) ?? [], JSON.stringify(diagnostics));
       const nativeFiles = await Promise.all([...memory.matchAll(/^Contents of (.+?)(?: \([^\n]*\))?:$/gm)].map(match => realpath(match[1])));
-      const reportedFiles = await Promise.all(report.clients[0].decisions.filter(source => ['instructions', 'rules'].includes(source.kind) && source.status === 'active' && source.content.trim()).map(source => realpath(source.path)));
+      const fixturePaths = new Map(Object.keys(scenario.files).map(filename => {
+        const absolute = path.join(w.repo, filename);
+        return [hash(absolute), absolute];
+      }));
+      const reportedFiles = await Promise.all(report.clients[0].decisions.filter(source => ['instructions', 'rules'].includes(source.kind) && ['active', 'truncated'].includes(source.status) && source.content.trim()).map(source => realpath(fixturePaths.get(source.sourceId) ?? source.path)));
       assert.deepEqual(reportedFiles, nativeFiles);
+      if (scenario.expectedMemory) {
+        const expected = scenario.expectedMemory;
+        const contribution = report.clients[0].decisions.find(source => source.sourceId === hash(path.join(w.repo, expected.path)))!;
+        assert.equal(contribution.status, expected.status);
+        const marker = memory.indexOf('LIMIT_HEAD_INSTRUCTION');
+        const suffix = memory.slice(marker);
+        const nativeContent = suffix.split('\n> Only the start of this file is shown.')[0].split('\n</system-reminder>')[0];
+        assert.equal(createHash('sha256').update(contribution.content.trimEnd()).digest('hex'), createHash('sha256').update(nativeContent.trimEnd()).digest('hex'));
+        assert.equal(contribution.truncation?.limit, expected.limit);
+      }
       if (scenario.worktree) {
         const exported = JSON.stringify(portable(report));
         for (const privatePath of [mainRepository, await realpath(mainRepository)]) {
@@ -427,6 +551,70 @@ test('excluding personal configuration withholds saved external-import approval'
   assert.ok(!excluded.clients[0].instructions.includes('IMPORTED_INSTRUCTION'));
   assert.equal(excluded.clients[0].decisions.find(source => source.path.endsWith('policy.md'))?.status, 'conditional');
   assert.ok(excluded.sources.every(source => !source.path.startsWith(w.home)));
+});
+
+test('uncaptured Claude model choices retain conditional on-demand content', async t => {
+  const w = await workspace({
+    'CLAUDE.md': 'ROOT_INSTRUCTION\n', 'src/file.ts': '',
+    '.claude/settings.json': '{}',
+    '.claude/rules/large.md': '---\npaths: ["src/**/*.ts"]\n---\nCONDITIONAL_HEAD\n' + 'x'.repeat(50000),
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  for (const settings of [{}, { model: 'sonnet' }, { model: 'claude-unknown-fixture', env: { CLAUDE_CODE_MAX_CONTEXT_TOKENS: '500000' } }]) {
+    await writeFile(path.join(w.repo, '.claude/settings.json'), JSON.stringify(settings));
+    const report = await scan({ ...w, target: 'src/file.ts', sessionDirectory: '.', user: false, clients: ['claude'], trust: 'trusted' });
+    const source = report.clients[0].decisions.find(source => source.kind === 'rules')!;
+    assert.equal(source.status, 'conditional');
+    assert.equal(source.truncation, undefined);
+    assert.ok(!report.clients[0].instructions.includes('CONDITIONAL_HEAD'));
+  }
+});
+
+test('Claude model mapping provenance merges entries while picker ownership follows eligible sources', async t => {
+  const w = await workspace({
+    '.claude/settings.json': '{"modelOverrides":{},"modelPicker":{"options":[{"model":"project-model"}]}}',
+  }, {
+    '.claude/settings.json': '{"modelOverrides":{"claude-sonnet-4-6":"old-model"},"modelPicker":{"options":[{"model":"personal-model"}]}}',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['claude'], trust: 'trusted' });
+  const settings = report.clients[0].settings;
+  assert.equal(settings.find(setting => setting.key === 'modelOverrides.claude-sonnet-4-6')?.status, 'active');
+  const active = settings.find(setting => setting.key === 'modelOverrides' && setting.status === 'active')!;
+  assert.deepEqual(active.value, {});
+  assert.deepEqual(active.overrides, []);
+  assert.deepEqual(settings.find(setting => setting.key === 'modelPicker.options' && setting.status === 'active')?.value, [{ model: 'personal-model' }]);
+  assert.deepEqual(settings.find(setting => setting.key === 'modelPicker.options' && setting.status === 'ignored')?.value, [{ model: 'project-model' }]);
+});
+
+test('Claude import origins retain original lines after standalone comments', async t => {
+  const w = await workspace({ 'CLAUDE.md': '<!-- hidden -->\n\nROOT_INSTRUCTION\n@docs/policy.md\n', 'docs/policy.md': 'POLICY_INSTRUCTION\n' });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  assert.equal(report.clients[0].decisions.find(source => source.path.endsWith('policy.md'))?.importedFrom?.line, 4);
+});
+
+test('truncated instruction prefixes conceal captured private values at the cutoff', async t => {
+  const secret = 'private-boundary-captured-value-' + 'z'.repeat(200) + '-tail';
+  const body = 'LIMIT_HEAD_INSTRUCTION' + 'x'.repeat(39920) + secret + '\n';
+  const w = await workspace({
+    'AGENTS.md': body, 'CLAUDE.md': 'ROOT_INSTRUCTION\n\n' + body, 'src/file.ts': '',
+    '.claude/rules/large.md': '---\npaths: ["src/**/*.ts"]\n---\n' + body,
+    '.claude/settings.json': JSON.stringify({ model: 'claude-sonnet-4-6', env: { PRIVATE_BOUNDARY: secret } }),
+    '.codex/config.toml': 'project_doc_max_bytes = 40000\n',
+  }, { '.codex/AGENTS.md': body });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, target: 'src/file.ts', sessionDirectory: '.', clients: ['codex', 'claude'], trust: 'trusted' });
+  for (const client of report.clients) {
+    const contribution = client.decisions.find(source => source.status === 'truncated')!;
+    assert.ok(contribution, client.client);
+    assert.ok(!contribution.content.includes(secret.slice(0, 40)), client.client + ' exposes a private prefix in instruction content.');
+    assert.ok(contribution.content.includes('[REDACTED]'), client.client);
+  }
+  for (const output of [JSON.stringify(report), JSON.stringify(portable(report)), html(report)]) {
+    assert.ok(!output.includes(secret.slice(0, 40)), 'A public output contains a private instruction prefix.');
+    assert.ok(!output.includes(secret.slice(-40)), 'A public output contains a private instruction suffix.');
+  }
 });
 
 test('unresolvable Git metadata makes external approval conditional only when needed', async t => {

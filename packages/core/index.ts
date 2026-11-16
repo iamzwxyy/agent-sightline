@@ -4,10 +4,10 @@ import { adapters } from '../adapters/index.js';
 import { finish, sourceInScope } from '../adapters/common.js';
 import { discoverRepository, makeContext, selectedClients } from './discovery.js';
 import { diagnose } from './diagnostics.js';
-import { createRedactor, isSensitiveKey, isPrivateMapping, redactScanReport, redactSourcePreview, scalarText } from './redact.js';
+import { createRedactor, isSensitiveKey, isPrivateMapping, redactScanReport, redactSourcePreview, redactTruncatedInstruction, scalarText } from './redact.js';
 import { collectPathMappings } from './paths.js';
 import { compareInstructions } from './comparison.js';
-import { cmp } from './utils.js';
+import { cmp, stripComments } from './utils.js';
 import { VERSION } from './version.js';
 import type { Context, Effective, Report, ScanOptions, Source } from './types.js';
 export type * from './types.js';
@@ -80,6 +80,35 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
   });
   const findings = [...discoveryFindings, ...clients.flatMap(e => e.findings), ...diagnose(ctx, clients)];
   const unique = [...new Map(findings.map(f => [f.id, f])).values()].sort((a, b) => ({ error: 0, warn: 1, info: 2 }[a.severity] - { error: 0, warn: 1, info: 2 }[b.severity] || cmp(a.location.path, b.location.path) || a.location.line - b.location.line || a.location.column - b.location.column || cmp(a.ruleId, b.ruleId) || cmp(a.client ?? '', b.client ?? '')));
+  const privateValues = privateData(ctx);
+  const scrub = createRedactor(privateValues.values);
+  const sourceById = new Map(ctx.sources.map(source => [source.id, source]));
+  for (const client of clients) {
+    let clipped = false;
+    for (const contribution of client.decisions) {
+      if (contribution.status !== 'truncated' || !contribution.content) continue;
+      const source = sourceById.get(contribution.sourceId);
+      if (!source) continue;
+      const complete = client.client === 'claude' ? stripComments(source.body) : source.text;
+      const redacted = redactTruncatedInstruction(contribution.content, complete, privateValues.values);
+      if (redacted !== contribution.content) {
+        (ctx.redactedInstructionContent ??= new WeakMap()).set(contribution, redacted);
+        clipped = true;
+      }
+    }
+    if (!clipped) continue;
+    const parts: string[] = [];
+    let cursor = 0;
+    for (const contribution of client.decisions) {
+      if (!['active', 'truncated'].includes(contribution.status) || !['instructions', 'rules'].includes(contribution.kind) || !contribution.content.trim()) continue;
+      const start = client.instructions.indexOf(contribution.content, cursor);
+      if (start < 0) continue;
+      parts.push(client.instructions.slice(cursor, start), ctx.redactedInstructionContent?.get(contribution) ?? contribution.content);
+      cursor = start + contribution.content.length;
+    }
+    parts.push(client.instructions.slice(cursor));
+    client.instructions = parts.join('');
+  }
   const diff = new Map<string, Report['diff'][number]>();
   for (const e of clients) for (const d of e.decisions) if (['active', 'truncated'].includes(d.status) && d.content.trim()) {
     const key = d.content.trim(); const entry = diff.get(key) ?? { content: key, clients: [], sources: [] };
@@ -89,8 +118,6 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
     if (!entry.sources.some(x => x.path === d.path && x.line === d.line && x.column === (d.column ?? 1))) entry.sources.push({ path: d.path, line: d.line, column: d.column ?? 1 });
     diff.set(key, entry);
   }
-  const privateValues = privateData(ctx);
-  const scrub = createRedactor(privateValues.values);
   const privateSourceScrubbers = new Map<string, ReturnType<typeof createRedactor>>();
   for (const [filename, values] of ctx.privateSourceValues ?? []) {
     const state = ctx.sources.find(source => source.path === filename)!;
@@ -99,7 +126,7 @@ export async function scan(options: ScanOptions & { probe?: boolean } = {}): Pro
       if (source.path === filename || state.canonicalPath && source.canonicalPath === state.canonicalPath) privateSourceScrubbers.set(source.path, stateScrub);
     }
   }
-  const instructionDiff = compareInstructions(clients, ctx.sources, scrub);
+  const instructionDiff = compareInstructions(clients, ctx.sources, scrub, ctx.redactedInstructionContent);
   for (const client of clients) for (const contribution of client.decisions) {
     const redacted = ctx.redactedInstructionContent?.get(contribution);
     if (redacted !== undefined) contribution.content = redacted;

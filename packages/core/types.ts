@@ -24,6 +24,7 @@ export interface Decision {
   column?: number;
   status: Status; reason: string; order: number | null; bytes: number; loadedBytes: number;
   estimatedTokens: number; content: string; importedFrom?: Location;
+  truncation?: { unit: 'characters'; limit: number; line: number; column: number };
 }
 export interface Setting {
   key: string; value: unknown; status: Status; location: Location;

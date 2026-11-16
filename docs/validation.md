@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.47
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
+
+* Reproduced a captured private value prefix in the public v0.3.46 package when an instruction limit split that value. The regression failed before correction. Split private values are now concealed in contributions, effective instructions, comparisons, JSON and HTML. Existing affected exports retain their captured content and need regeneration.
+* Privacy fixtures cover UTF-8 replacement characters, multiline values and repeated complete contributions preceding a truncated copy. A long single-line assignment fixture verifies retained nested sensitive assignments and responsive scanning.
+* Ninety-eight scripted native Claude Code 2.1.322 scenarios compare instruction loading and exact body hashes, including all 24 recorded model identities, environment precedence, explicit model pins, context controls, per-entry model mapping precedence, personal picker ownership, startup/descendant scopes and native comment handling. Unresolved session model/context inputs retain conditional limits.
+* Desktop and phone browser journeys verify original character-boundary lines, effective copying, model refresh, unchanged captured snapshots and concealed private prefixes for both Codex and Claude. Live and offline reports pass WCAG AA checks and visual review.
+* All 123 Chromium cases and five focused WebKit flows passed. The 667-case core suite completed with 665 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline package smoke passed. Production dependency audit reported zero vulnerabilities.
+* Regenerated the standalone example and product captures from the working application. Linux CI exercises Firefox because the local Firefox profile cannot start.
+
 ## v0.3.46
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

@@ -7,7 +7,32 @@ import { workspace } from './helpers.js';
 import { html, json, portable, terminal } from '../packages/reporter/index.js';
 import { adapters } from '../packages/adapters/index.js';
 import { VERSION } from '../packages/core/version.js';
-import { createRedactor, redactScanReport } from '../packages/core/redact.js';
+import { createRedactor, redactScanReport, redactText, redactTruncatedInstruction } from '../packages/core/redact.js';
+
+test('assignment redaction handles long words and nested sensitive assignments', () => {
+  const word = 'x'.repeat(100000);
+  assert.equal(redactText(word), word);
+  for (const source of [
+    word + 'API_KEY=unrecognized-private-value',
+    'normal=token=unrecognized-private-value',
+    'note="api_key=unrecognized-private-value"',
+    'safe.value={"credential":"unrecognized-private-value"}',
+  ]) assert.ok(!redactText(source).includes('unrecognized-private-value'));
+});
+
+test('private instruction prefixes retain masking across UTF-8 and multiline cutoffs', () => {
+  for (const secret of ['private-fragment-😀-value', 'private-fragment\r\nsecond-line\r\nlast-line']) {
+    const complete = 'Safe prefix.\n' + secret + '\nSafe ending.';
+    const start = Buffer.byteLength('Safe prefix.\nprivate-fragment');
+    for (const budget of [start + 1, start + 2, start + 3, start + 4]) {
+      const content = Buffer.from(complete).subarray(0, budget).toString('utf8');
+      const redacted = redactTruncatedInstruction(content, complete, [secret]);
+      assert.ok(!redacted.includes('private-fragment'));
+      assert.ok(redacted.includes('[REDACTED]'));
+      assert.equal(redacted.match(/\n/g)?.length, content.match(/\n/g)?.length);
+    }
+  }
+});
 
 test('private scalar values and their source spellings stay hidden when copied into instructions', async t => {
   const cases = [

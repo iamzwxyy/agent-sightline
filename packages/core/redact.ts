@@ -16,12 +16,23 @@ const lineBreaks = (text: string): string => text.match(/\r\n|\r|\n/g)?.join('')
 const mask = (text: string, label = '[REDACTED]'): string => label + lineBreaks(text);
 
 export function redactText(text: string): string {
-  return text
+  const prepared = text
     .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, value => mask(value, '[REDACTED PRIVATE KEY]'))
     .replace(/\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,}|AKIA[A-Z0-9]{16})\b/g, '[REDACTED]')
     .replace(/((?:Authorization|Cookie|Set-Cookie)\s*:\s*)[^\r\n]+/gi, '$1[REDACTED]')
-    .replace(/(\b(?:Bearer|Basic)\s+)[A-Za-z0-9+/_=.-]+/gi, '$1[REDACTED]')
-    .replace(/((?:[A-Za-z0-9_.-]*(?:secret|token|password|passwd|api[_-]?key|cookie|authorization|credential|private[_-]?key)[A-Za-z0-9_.-]*)["']?\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\s,;}]+)/gi, (_match, prefix: string, value: string) => prefix + mask(value))
+    .replace(/(\b(?:Bearer|Basic)\s+)[A-Za-z0-9+/_=.-]+/gi, '$1[REDACTED]');
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const match of prepared.matchAll(/(?<![A-Za-z0-9_.-])([A-Za-z0-9_.-]+)["']?\s*[:=]\s*/g)) {
+    if (match.index < cursor || !sensitiveKey.test(match[1])) continue;
+    const start = match.index + match[0].length;
+    const value = prepared.slice(start).match(/^("(?:\\.|[^"\\])*"|'[^']*'|[^\s,;}]+)/)?.[0];
+    if (value === undefined) continue;
+    parts.push(prepared.slice(cursor, start), mask(value));
+    cursor = start + value.length;
+  }
+  parts.push(prepared.slice(cursor));
+  return parts.join('')
     .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[REDACTED]@')
     .replace(/([?&](?:token|key|api_key|secret|password|access_token)=)[^&\s"'<>]+/gi, '$1[REDACTED]')
     .replace(/(--(?:token|password|api-key|secret)(?:=|\s+))("[^"]*"|'[^']*'|[^\s]+)/gi, (_match, prefix: string, value: string) => prefix + mask(value));
@@ -46,6 +57,20 @@ export function createRedactor(envValues: string[] = []): <T>(value: T) => T {
 }
 export function redact<T>(value: T, envValues: string[] = []): T {
   return createRedactor(envValues)(value);
+}
+
+export function redactTruncatedInstruction(content: string, complete: string, privateValues: string[]): string {
+  let prefix = content;
+  if (!complete.startsWith(prefix) && prefix.endsWith('\uFFFD')) prefix = prefix.slice(0, -1);
+  if (!prefix || !complete.startsWith(prefix)) return content;
+  let privateOffset = prefix.length;
+  const values = new Set(privateValues.flatMap(value => [value, value.replace(/\r\n/g, '\n')]));
+  for (const value of values) {
+    if (!value) continue;
+    const start = complete.indexOf(value, Math.max(0, prefix.length - value.length + 1));
+    if (start >= 0 && start < prefix.length && start + value.length > prefix.length) privateOffset = Math.min(privateOffset, start);
+  }
+  return privateOffset === prefix.length ? content : content.slice(0, privateOffset) + mask(content.slice(privateOffset));
 }
 
 export function redactSourcePreview(source: Source, scrub: ReturnType<typeof createRedactor>): string {

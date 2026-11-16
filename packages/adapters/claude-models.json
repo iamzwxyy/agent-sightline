@@ -1,0 +1,219 @@
+[
+  {
+    "id": "claude-3-5-haiku",
+    "aliases": [
+      "claude-3-5-haiku-20241022",
+      "claude-3-5-haiku@20241022",
+      "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+    ],
+    "contextWindow": 200000,
+    "charactersPerToken": 4
+  },
+  {
+    "id": "claude-haiku-4-5",
+    "aliases": [
+      "anthropic.claude-haiku-4-5",
+      "claude-haiku-4-5-20251001",
+      "claude-haiku-4-5@20251001",
+      "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    ],
+    "contextWindow": 200000,
+    "charactersPerToken": 4
+  },
+  {
+    "id": "claude-haiku-5-5",
+    "aliases": [
+      "anthropic.claude-haiku-5-5",
+      "us.anthropic.claude-haiku-5-5"
+    ],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-3-5-sonnet",
+    "aliases": [
+      "claude-3-5-sonnet-20241022",
+      "claude-3-5-sonnet-v2@20241022",
+      "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+    ],
+    "contextWindow": 200000,
+    "charactersPerToken": 4
+  },
+  {
+    "id": "claude-3-7-sonnet",
+    "aliases": [
+      "claude-3-7-sonnet-20250219",
+      "claude-3-7-sonnet@20250219",
+      "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+    ],
+    "contextWindow": 200000,
+    "charactersPerToken": 4
+  },
+  {
+    "id": "claude-sonnet-4-0",
+    "aliases": [
+      "claude-sonnet-4",
+      "claude-sonnet-4-20250514",
+      "claude-sonnet-4@20250514",
+      "us.anthropic.claude-sonnet-4-20250514-v1:0"
+    ],
+    "contextWindow": 200000,
+    "charactersPerToken": 4
+  },
+  {
+    "id": "claude-sonnet-4-5",
+    "aliases": [
+      "claude-sonnet-4-5-20250929",
+      "claude-sonnet-4-5@20250929",
+      "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    ],
+    "contextWindow": 200000,
+    "charactersPerToken": 4
+  },
+  {
+    "id": "claude-sonnet-4-6",
+    "aliases": [
+      "us.anthropic.claude-sonnet-4-6"
+    ],
+    "contextWindow": 200000,
+    "charactersPerToken": 4
+  },
+  {
+    "id": "claude-sonnet-5",
+    "aliases": [
+      "anthropic.claude-sonnet-5",
+      "us.anthropic.claude-sonnet-5"
+    ],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-sonnet-5-5",
+    "aliases": [
+      "anthropic.claude-sonnet-5-5",
+      "us.anthropic.claude-sonnet-5-5"
+    ],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-opus-4-0",
+    "aliases": [
+      "claude-opus-4",
+      "claude-opus-4-20250514",
+      "claude-opus-4@20250514",
+      "us.anthropic.claude-opus-4-20250514-v1:0"
+    ],
+    "contextWindow": 200000,
+    "charactersPerToken": 4
+  },
+  {
+    "id": "claude-opus-4-1",
+    "aliases": [
+      "claude-opus-4-1-20250805",
+      "claude-opus-4-1@20250805",
+      "us.anthropic.claude-opus-4-1-20250805-v1:0"
+    ],
+    "contextWindow": 200000,
+    "charactersPerToken": 4
+  },
+  {
+    "id": "claude-opus-4-5",
+    "aliases": [
+      "claude-opus-4-5-20251101",
+      "claude-opus-4-5@20251101",
+      "us.anthropic.claude-opus-4-5-20251101-v1:0"
+    ],
+    "contextWindow": 200000,
+    "charactersPerToken": 4
+  },
+  {
+    "id": "claude-opus-4-6",
+    "aliases": [
+      "us.anthropic.claude-opus-4-6-v1"
+    ],
+    "contextWindow": 200000,
+    "charactersPerToken": 4
+  },
+  {
+    "id": "claude-opus-4-7",
+    "aliases": [
+      "anthropic.claude-opus-4-7",
+      "us.anthropic.claude-opus-4-7"
+    ],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-opus-4-8",
+    "aliases": [
+      "anthropic.claude-opus-4-8",
+      "us.anthropic.claude-opus-4-8"
+    ],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-opus-5",
+    "aliases": [
+      "anthropic.claude-opus-5",
+      "us.anthropic.claude-opus-5"
+    ],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-opus-5-5",
+    "aliases": [
+      "anthropic.claude-opus-5-5",
+      "us.anthropic.claude-opus-5-5"
+    ],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-fable-5",
+    "aliases": [
+      "anthropic.claude-fable-5",
+      "us.anthropic.claude-fable-5"
+    ],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-fable-5-1",
+    "aliases": [
+      "anthropic.claude-fable-5-1",
+      "us.anthropic.claude-fable-5-1"
+    ],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-fable-5-2",
+    "aliases": [
+      "anthropic.claude-fable-5-2",
+      "us.anthropic.claude-fable-5-2"
+    ],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-mythos-5",
+    "aliases": [],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-mythos-5-1",
+    "aliases": [],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  },
+  {
+    "id": "claude-mythos-5-2",
+    "aliases": [],
+    "contextWindow": 1000000,
+    "charactersPerToken": 3
+  }
+]

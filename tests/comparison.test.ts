@@ -116,7 +116,7 @@ test('instruction comparison retains repeated paragraphs, fences, whitespace and
   assert.ok(report.instructionDiff?.some(block => block.content === 'Indented.'));
 });
 
-test('instruction origins skip removed comments and frontmatter and disclose transformed source ranges', async t => {
+test('instruction origins skip standalone comments and frontmatter while retaining inline comments', async t => {
   const w = await workspace({
     'CLAUDE.md': '<!-- Run the checks.\nHidden duplicate. -->\n\nRun the checks.\n\nBefore<!-- removed\ncomment -->after.\n\nLast paragraph.',
     '.claude/rules/general.md': '---\ndescription: Frontmatter text.\n---\n\nFrontmatter text.',
@@ -126,13 +126,12 @@ test('instruction origins skip removed comments and frontmatter and disclose tra
   const common = report.instructionDiff?.find(block => block.content === 'Run the checks.');
   assert.equal(common?.origins[0].location.line, 4);
   assert.equal(common?.origins[0].endLine, 4);
-  const transformed = report.instructionDiff?.find(block => block.content === 'Beforeafter.');
-  assert.equal(transformed?.origins[0].endLine, undefined);
-  assert.equal(transformed?.origins[0].location.line, 1);
+  const inline = report.instructionDiff?.find(block => block.content === 'Before<!-- removed\ncomment -->after.');
+  assert.equal(inline?.origins[0].location.line, 6);
+  assert.equal(inline?.origins[0].endLine, 7);
   const frontmatter = report.instructionDiff?.find(block => block.content === 'Frontmatter text.');
   assert.equal(frontmatter?.origins[0].location.line, 5);
   assert.equal(frontmatter?.origins[0].endLine, 5);
-  assert.ok(terminal(report, 'diff').includes('(source starts here)'));
 });
 
 test('instruction comparison excludes conditional and ignored content while retaining only the loaded byte prefix', async t => {

@@ -1,8 +1,14 @@
 # Claude evidence ledger
 
-Verified 2026-11-15 against Claude Code 2.1.322. Instruction order and imports have scripted native request comparisons. MCP, permission precedence and configured hook gates also have native CLI comparisons. Other settings and skill metadata retain official-document fixtures.
+Verified 2026-11-16 against Claude Code 2.1.322. Instruction order and imports have scripted native request comparisons. MCP, permission precedence and configured hook gates also have native CLI comparisons. Other settings and skill metadata retain official-document fixtures.
 
 Sources: [memory/instructions](https://code.claude.com/docs/en/memory), [settings](https://code.claude.com/docs/en/settings), [MCP](https://code.claude.com/docs/en/mcp), [skills](https://code.claude.com/docs/en/skills), [permissions](https://code.claude.com/docs/en/permissions), [hooks](https://code.claude.com/docs/en/hooks).
+
+The 2.1.322 distribution supplies the recorded model/provider identities and context defaults in `packages/adapters/claude-models.json`. Scripted native requests compare the loaded instruction text against the resolver, including configured model aliases, model bindings, environment overrides and compaction/context controls. The per-file character budget is the larger of 40,000 and 5% of the context window multiplied by the model's native three- or four-character token estimate. Original source positions account for removed standalone comments and CRLF normalization. Unpinned aliases, account-selected defaults, unknown context, automatic legacy Opus 4.0/4.1 remapping and managed model allowlists retain conditional limits. [Pinned distribution](https://www.npmjs.com/package/@anthropic-ai/claude-code/v/2.1.322)
+
+Native requests verify that `modelOverrides` merges individual model entries across personal, project and local settings. Empty and unrelated higher-priority maps retain existing entries. A higher-priority entry for the same canonical model replaces its mapping. `modelPicker` uses the highest personal or managed declaration and ignores project declarations.
+
+Native 2.1.322 removes comment blocks starting at the beginning of a line, including following blank lines. Inline, indented and fenced comments remain part of the instruction text. Content containing HTML-comment syntax normalizes CRLF to LF. Import locations retain original source lines.
 
 | Concern | Implemented contract |
 | --- | --- |
@@ -19,7 +25,7 @@ Sources: [memory/instructions](https://code.claude.com/docs/en/memory), [setting
 | Hooks/permissions | Hook event/matcher definitions discovered. Proven whole-rule masking follows deny → ask → allow, retaining every highest-priority origin. Bash(*) is tool-wide. EndConversation ask entries are ignored and denial depends on the remaining tool inventory |
 | Permission trust | User/system grants are independent of workspace trust. Shared project allow/additionalDirectories entries require explicit trusted state; unknown trust is conditional. Local grants without explicit trust retain native Git/session conditions. Restrictive ask/deny entries remain applicable |
 | Managed gates | Managed-only permission rules exclude ordinary allow/ask/deny and personal/project skill allowed-tools. Managed-only hooks exclude ordinary handlers. disableAllHooks follows scalar precedence and protects managed hooks from ordinary disabling |
-| Limits | No global 32 KiB cap. On-demand path rules beyond 40,000 characters are conditional because context/model limits vary in 2.1.309+ |
+| Limits | Startup content remains complete within the inspection read limit. On-demand instruction files and rules use the captured model/context character budget, retain complete lines where possible and expose the first omitted original-source position |
 | Invalid formats | JSON, YAML metadata, duplicate keys and known deterministic field/type errors produce findings |
 
 Fixture: `fixtures/claude/chain.json`. Tests also cover AGENTS fallback modes, imports, cycles, depth, exclusions, raw Markdown and permission masking.
