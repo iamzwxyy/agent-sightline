@@ -142,8 +142,10 @@ export const gemini = adapter(geminiMetadata, discover, async ctx => {
       await resolveGeminiMemory(candidate, ctx);
       for (const entry of candidate.decisions.filter(entry => entry.kind === 'instructions')) {
         if (e.decisions.some(current => current.sourceId === entry.sourceId && current.line === entry.line && current.column === entry.column && current.content === entry.content)) continue;
-        entry.status = 'conditional';
-        entry.reason = 'Context contribution in native trusted loading order, after workspace approval.';
+        if (entry.status === 'active') {
+          entry.status = 'conditional';
+          entry.reason = 'Context contribution in native trusted loading order, after workspace approval.';
+        }
         e.decisions.push(entry);
       }
       e.findings.push(...candidate.findings.map(item => ({ ...item, why: 'After workspace approval, ' + item.why[0].toLowerCase() + item.why.slice(1) })));

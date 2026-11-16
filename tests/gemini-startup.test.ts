@@ -111,7 +111,7 @@ for (const fixture of cases) test(`Gemini startup matches 0.68.0 for ${fixture.n
   if (fixture.state === 'conditional') assert.ok(client.decisions.some(source => source.path === path.join(w.repo, 'TEAM.md') && source.status === 'conditional'));
 });
 
-for (const trusted of ['true', 'false']) test(`Gemini startup deduplicates context file identities with workspace trust ${trusted}`, async t => {
+for (const trusted of ['true', 'false', undefined]) test(`Gemini startup deduplicates context file identities with workspace trust ${trusted ?? 'pending'}`, async t => {
   const w = await workspace({}, {
     '.gemini/PERSONAL.md': 'SHARED_INSTRUCTION',
     '.gemini/settings.json': JSON.stringify({ context: { fileName: 'PERSONAL.md' } }),
@@ -126,6 +126,7 @@ for (const trusted of ['true', 'false']) test(`Gemini startup deduplicates conte
   assert.equal(report.clients[0].instructions, native.instructions);
   assert.equal(report.clients[0].instructions.split('SHARED_INSTRUCTION').length - 1, 1);
   assert.ok(report.clients[0].decisions.some(source => source.path === path.join(w.home, '.gemini/GEMINI.md') && source.status === 'ignored'));
+  assert.ok(!report.clients[0].decisions.some(source => source.path === path.join(w.repo, 'GEMINI.md') && source.status === 'conditional'));
 });
 
 test('Gemini saved trust follows native parent inheritance and longest normalized rule paths', async t => {
