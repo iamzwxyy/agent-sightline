@@ -10,6 +10,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
 * All 119 Chromium cases and four focused WebKit flows passed. Desktop and phone diagnosis dialogs passed WCAG AA checks and visual review. The 605-case core suite completed with 603 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline package smoke passed. Production dependency audit reported zero vulnerabilities.
 * Regenerated the standalone example and product captures from the working application. Linux CI exercises Firefox because the local Firefox profile cannot start.
 
+* Linux, macOS and Windows verification passed for the released source, including Linux Firefox. Anonymous download matched SHA-256 `6b97eff219e1476d5996cbb7782ba9e8bd5df729cb904f266742c26534443b7a` and its 1,590,499-byte size. The exact public archive passed empty-cache offline installation, installed CLI diagnostics, desktop/phone finding routes, history and focus restoration, portable diagnosis copying with source lines, reload, source inspection, selected-finding export/re-export and clipboard fallback with zero page errors. Fresh-cache public execution returned 0.3.45. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43812276556)
+
 ## v0.3.44
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
