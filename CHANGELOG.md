@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.45 — 2026-11-16
+
+* Link directly to a selected finding and retain its details through reload, browser Back/Forward, portable export and offline re-export. Source inspection returns to that diagnosis through browser history.
+* Copy a portable diagnosis with its rule, severity, target, client names, source location, available source line, explanation, suggested resolution and related sources. Copy uses the retained redacted report snapshot.
+* Export a complete report from the diagnosis dialog with that finding selected for the recipient.
+* Restore keyboard focus after closing a finding, wrap dialog actions on phones and report when a linked finding is unavailable after a new scan.
+
 ## 0.3.44 — 2026-11-16
 
 * Retain an opaque source reference when private-value redaction or portable path replacement gives different files the same displayed path. Findings, related locations, settings, extension origins and comparison links carry the reference.

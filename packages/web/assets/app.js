@@ -11,6 +11,7 @@
     client: report.clients.find(client => client.detected)?.client ?? report.clients[0]?.client,
     source: null,
     sourceId: null,
+    findingId: null,
     sourceOccurrence: 1,
     sourceFilter: 'relevant',
     instructionView: 'sources',
@@ -198,6 +199,7 @@
   }
   function inspectionHash(sourcePath = state.source && short(state.source), occurrence = state.sourceOccurrence, sourceId = state.sourceId) {
     const hash = new URLSearchParams({ view: state.view });
+    if (state.findingId) hash.set('finding', state.findingId);
     if (state.view === 'effective') {
       hash.set('client', state.client);
       if (sourcePath) hash.set('source', sourcePath);
@@ -221,6 +223,9 @@
   function navigate(view, client, source, line = null, occurrence = 1, sourceId = null) {
     const viewChanged = state.view !== view;
     const navigationWasOpen = document.body.classList.contains('nav-open');
+    state.findingId = null;
+    delete $('detail-dialog').dataset.finding;
+    if ($('detail-dialog').open) $('detail-dialog').close();
     if (client) state.client = client;
     if (source) {
       state.source = source;
@@ -272,6 +277,7 @@
   }
   function issueRow(finding) {
     const element = button('', () => showFinding(finding), 'finding');
+    element.dataset.findingId = finding.id;
     const severity = node('span', finding.severity === 'error' ? '!' : finding.severity === 'warn' ? '!' : 'i', `severity-icon ${finding.severity}`);
     severity.setAttribute('aria-label', finding.severity);
     const title = node('div');
@@ -360,7 +366,13 @@
     $('trust-notice').replaceChildren();
     if (pending) $('trust-notice').append(node('span', `${conditionalCount} ${conditionalCount === 1 ? 'source has' : 'sources have'} conditional loading decisions. `), button('Inspect conditional loading', () => inspectSourceLocation({ path: pending.source.path, line: pending.source.line }, pending.client, pending.occurrence), 'text-button'));
   }
-  function showFinding(finding) {
+  function showFinding(finding, restoring = false) {
+    if (!restoring) {
+      state.findingId = finding.id;
+      const hash = inspectionHash();
+      if (location.hash !== hash) history.pushState({ sightlineFinding: true }, '', hash);
+    }
+    $('detail-dialog').dataset.finding = state.findingId;
     $('detail-category').textContent = finding.ruleId;
     const content = node('div', undefined, 'dialog-content');
     content.append(badge(finding.severity), node('h2', finding.message), node('p', `${short(finding.location.path)} · line ${finding.location.line}, column ${finding.location.column}${finding.location.sourceId ? ` · source ${finding.location.sourceId}` : ''}`, 'path'));
@@ -382,10 +394,33 @@
     const client = sourceClient(finding.location, finding.clients[0]);
     if (client) actions.append(button('Inspect source →', () => inspectSourceLocation(finding.location, client), 'button button-primary'));
     actions.append(button('Copy location', () => copy(`${finding.location.path}:${finding.location.line}:${finding.location.column}${finding.location.sourceId ? ` · source ${finding.location.sourceId}` : ''}`), 'button'));
+    actions.append(button('Copy diagnosis', () => copyDiagnosis(finding)), button('Export diagnosis report', exportReport));
     content.append(actions);
     $('detail-body').replaceChildren(content);
     if (!$('detail-dialog').open) $('detail-dialog').showModal();
     $('detail-dialog').scrollTop = 0;
+  }
+  function copyDiagnosis(finding) {
+    const snapshot = new window.DOMParser().parseFromString(exportDocument, 'text/html');
+    const captured = JSON.parse(snapshot.getElementById('report-data').textContent);
+    const ids = new Set(finding.originals.map(item => item.id));
+    const findings = captured.findings.filter(item => ids.has(item.id));
+    const item = findings.find(item => item.id === finding.id) ?? findings[0];
+    if (!item) { toast('Refresh the report before copying this diagnosis.'); return; }
+    const formatLocation = location => `${location.path}:${location.line}:${location.column}${location.sourceId ? ` · source ${location.sourceId}` : ''}`;
+    const clients = [...new Set(findings.map(item => names[item.client]).filter(Boolean))];
+    const sources = captured.sources.filter(source => item.location.sourceId ? source.id === item.location.sourceId : source.path === item.location.path);
+    const sourceLine = sources.length === 1 ? sources[0].preview?.split('\n')[item.location.line - 1] : undefined;
+    const text = [
+      `Agent Sightline ${captured.tool.version}`, `${item.severity.toUpperCase()} · ${item.ruleId}`, item.message,
+      'Target\n' + captured.target, 'Clients\n' + (clients.join(', ') || 'Workspace'),
+      'Location\n' + formatLocation(item.location),
+    ];
+    if (sourceLine !== undefined) text.push('Source line\n' + sourceLine);
+    text.push('Why this happens\n' + item.why, 'How to resolve it\n' + item.suggestion);
+    const related = [...new Map(findings.flatMap(item => item.related).map(location => [JSON.stringify(location), location])).values()];
+    if (related.length) text.push('Related sources\n' + related.map(formatLocation).join('\n'));
+    void copy(text.join('\n\n'), 'Diagnosis copied');
   }
   function renderFindings() {
     const groups = groupFindings();
@@ -467,7 +502,7 @@
       $('instructions').replaceChildren(empty('No configuration discovered', 'Create an instruction file in this client’s supported location, then refresh the scan.'));
       $('why').replaceChildren(node('p', client.metadata.limitations.join(' ')));
     }
-    if (state.view === 'effective') history.replaceState(null, '', inspectionHash());
+    if (state.view === 'effective') history.replaceState(history.state, '', inspectionHash());
     renderNavigation();
   }
   function renderEffectiveDocument(client) {
@@ -632,7 +667,11 @@
     const related = groupFindings().filter(finding => locationMatchesSource(finding.location, source) && (!finding.clients.length || finding.clients.includes(state.client)));
     if (related.length) {
       const list = node('div', undefined, 'why-findings'); list.append(node('h3', `${related.length} related findings`));
-      related.forEach(finding => list.append(button(finding.message, () => showFinding(finding), 'text-button')));
+      related.forEach(finding => {
+        const action = button(finding.message, () => showFinding(finding), 'text-button');
+        action.dataset.findingId = finding.id;
+        list.append(action);
+      });
       why.push(list);
     }
     $('why').replaceChildren(...why);
@@ -695,7 +734,6 @@
     }
     const entry = entries.find(entry => entry.occurrence === occurrence) ?? entries[0];
     if (!entry) return;
-    $('detail-dialog').close();
     state.sourceFilter = 'all';
     $('source-search').value = '';
     navigate('effective', client, entry.source.path, location.line ?? null, entry.occurrence, entry.source.sourceId);
@@ -1201,6 +1239,14 @@
     if (state.view === 'findings') renderFindings();
     if (state.view === 'compare') renderCompare();
     if (state.view === 'extensions') renderExtensions();
+    const finding = state.findingId && groups.find(finding => finding.originals.some(item => item.id === state.findingId));
+    if (finding) showFinding(finding, true);
+    else if ($('detail-dialog').dataset.finding) {
+      const findingId = $('detail-dialog').dataset.finding;
+      delete $('detail-dialog').dataset.finding;
+      $('detail-dialog').close();
+      [...$(state.view).querySelectorAll('[data-finding-id]')].find(element => element.dataset.findingId === findingId)?.focus({ preventScroll: true });
+    }
   }
   function renderScanStatus(succeeded = true) {
     const incomplete = report.discovery?.complete === false;
@@ -1277,7 +1323,7 @@
       else address.searchParams.set('profile', profile);
       if (trust === null) address.searchParams.delete('trust');
       else address.searchParams.set('trust', trust);
-      history.replaceState(null, '', address);
+      history.replaceState(history.state, '', address);
       render();
       succeeded = true;
     } catch (error) {
@@ -1297,8 +1343,26 @@
   document.querySelectorAll('[data-go]').forEach(element => { element.onclick = () => navigate(element.dataset.go); });
   document.querySelectorAll('[data-source-filter]').forEach(element => { element.onclick = () => { state.sourceFilter = element.dataset.sourceFilter; renderSourceList(); }; });
   document.querySelectorAll('[data-kind]').forEach(element => { element.onclick = () => { state.extensionKind = element.dataset.kind; renderExtensions(); }; });
-  document.querySelectorAll('[data-close-dialog]').forEach(element => { element.onclick = () => element.closest('dialog').close(); });
-  document.querySelectorAll('dialog').forEach(dialog => { dialog.onclick = event => { if (event.target === dialog) { const bounds = dialog.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close(); } }; });
+  function closeDialog(dialog) {
+    if (dialog.id === 'detail-dialog' && dialog.dataset.finding) {
+      if (history.state?.sightlineFinding) { history.back(); return; }
+      state.findingId = null;
+      delete dialog.dataset.finding;
+      history.replaceState(null, '', inspectionHash());
+    }
+    dialog.close();
+  }
+  document.querySelectorAll('[data-close-dialog]').forEach(element => { element.onclick = () => closeDialog(element.closest('dialog')); });
+  $('detail-dialog').addEventListener('cancel', event => {
+    if (!$('detail-dialog').dataset.finding) return;
+    event.preventDefault();
+    closeDialog($('detail-dialog'));
+  });
+  $('detail-dialog').addEventListener('close', () => {
+    if ($('detail-dialog').open || !$('detail-dialog').dataset.finding) return;
+    closeDialog($('detail-dialog'));
+  });
+  document.querySelectorAll('dialog').forEach(dialog => { dialog.onclick = event => { if (event.target === dialog) { const bounds = dialog.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientY < bounds.top || event.clientX > bounds.right || event.clientY > bounds.bottom) closeDialog(dialog); } }; });
   $('mobile-menu').onclick = () => setNavigationOpen(!document.body.classList.contains('nav-open'));
   $('navigation-scrim').onclick = () => setNavigationOpen(false);
   $('close-navigation').onclick = () => setNavigationOpen(false);
@@ -1384,7 +1448,7 @@
   $('refresh').onclick = () => void refresh();
   $('trust').onchange = () => void refresh();
   $('profile-form').onsubmit = event => { event.preventDefault(); void refresh(); };
-  $('export').onclick = () => {
+  function exportReport() {
     const snapshot = new window.DOMParser().parseFromString(exportDocument, 'text/html');
     const captured = JSON.parse(snapshot.getElementById('report-data').textContent);
     const client = selectedClient();
@@ -1400,7 +1464,8 @@
     const content = '<!doctype html>\n' + snapshot.documentElement.outerHTML;
     const url = URL.createObjectURL(new Blob([content], { type: 'text/html' }));
     const anchor = node('a'); anchor.href = url; anchor.download = 'sightline-report.html'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
+  }
+  $('export').onclick = exportReport;
   document.addEventListener('keydown', event => {
     const navigationOpen = document.body.classList.contains('nav-open');
     if (event.key === 'Escape' && navigationOpen) setNavigationOpen(false);
@@ -1461,6 +1526,12 @@
     state.sourceOccurrence = entry?.occurrence ?? 1;
     const line = Number(hash.get('line'));
     state.highlightLine = state.source && Number.isSafeInteger(line) && line > 0 ? line : null;
+    const findingId = hash.get('finding');
+    state.findingId = groupFindings().some(finding => finding.originals.some(item => item.id === findingId)) ? findingId : null;
+    if (findingId && !state.findingId) {
+      history.replaceState(null, '', inspectionHash());
+      toast('This finding is unavailable in this report.');
+    }
   }
   const snapshotLocation = document.querySelector('meta[name="sightline-view"]')?.content;
   if (!live && !location.hash && snapshotLocation?.startsWith('#')) history.replaceState(null, '', snapshotLocation);

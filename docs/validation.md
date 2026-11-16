@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.45
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
+
+* Reproduced diagnosis loss on reload. Opening a finding left the URL at its surrounding view, and the detail dialog offered source inspection and location copying. A browser regression failed before implementation.
+* Finding fragments now resolve each grouped client's original ID, restore selected details through reload and browser history, and preserve the selected finding in exported and re-exported reports. Source inspection returns to the diagnosis. Closing restores its visible control, and unavailable findings show a status message.
+* Portable diagnosis copying uses the retained redacted snapshot. It includes the target, client names, source reference, available source line, explanation, suggestion and related locations. Clipboard denial offers a focused, selected text field. Exports retain the complete report and open the chosen issue.
+* All 119 Chromium cases and four focused WebKit flows passed. Desktop and phone diagnosis dialogs passed WCAG AA checks and visual review. The 605-case core suite completed with 603 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline package smoke passed. Production dependency audit reported zero vulnerabilities.
+* Regenerated the standalone example and product captures from the working application. Linux CI exercises Firefox because the local Firefox profile cannot start.
+
 ## v0.3.44
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

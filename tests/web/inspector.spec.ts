@@ -2400,11 +2400,16 @@ test('source jumps reveal long-file lines and retain them through reload and his
         await expect(highlighted).toBeInViewport({ ratio: 1 });
         expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('line')).toBe(String(secondLine));
         await page.goBack();
+        await expect(page.locator('#detail-dialog')).toBeVisible();
+        await page.goBack();
+        await expect(page.locator('#detail-dialog')).not.toBeVisible();
         await expect(page.locator('#findings')).toBeVisible();
         await page.goBack();
         await expect(highlighted.locator('.line-number')).toHaveText(String(firstLine));
         await expect(highlighted).toBeInViewport({ ratio: 1 });
         await page.goForward();
+        await page.goForward();
+        await expect(page.locator('#detail-dialog')).toBeVisible();
         await page.goForward();
         await expect(highlighted.locator('.line-number')).toHaveText(String(secondLine));
         await expect(highlighted).toBeInViewport({ ratio: 1 });
@@ -2464,9 +2469,14 @@ test('redacted source identities keep findings, refresh and offline navigation a
         await expect(page.locator('#instructions')).toContainText(text);
         await expect(page.locator('#why .why-findings button').filter({ hasText: '"paths" must be a string or an array of strings.' })).toHaveCount(1);
         await page.goBack();
+        await expect(page.locator('#detail-dialog')).toBeVisible();
+        await page.getByRole('button', { name: 'Close details', exact: true }).click();
+        await expect(page.locator('#detail-dialog')).not.toBeVisible();
         await expect(page.locator('#findings')).toBeVisible();
       }
       await page.goForward();
+      await expect(page.locator('#detail-dialog')).toBeVisible();
+      await page.getByRole('button', { name: 'Inspect source →', exact: true }).click();
       await expect(page.locator('#instructions')).toContainText('SECOND_SOURCE_GUIDANCE');
       if (viewport.width === 1440) {
         await writeFile(path.join(w.repo, '.claude/rules/middle-label.md'), '---\npaths: 42\n---\nMIDDLE_SOURCE_GUIDANCE');
@@ -2545,6 +2555,129 @@ test('legacy ambiguous findings retain separate errors and offer a source choice
       }
     }
   } finally { await page.context().setOffline(false); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('finding routes and exported diagnosis reports retain the selected issue and portable copy', async ({ page }) => {
+  const secret = 'browser-diagnosis-private-value';
+  const target = 'src/browser-private-target.ts';
+  const w = await workspace({
+    'CLAUDE.md': `@./${secret}.md\n\n@./another-missing.md`,
+    [target]: '',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, env: { PRIVATE: secret, TARGET: 'browser-private-target' } } } }),
+  });
+  const options = { ...w, target, user: false, clients: ['claude'] as const, trust: 'trusted' as const };
+  const report = await scan(options);
+  const findings = report.findings.filter(finding => finding.ruleId === 'include.missing');
+  expect(findings).toHaveLength(2);
+  const server = await serve(options);
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+    writeText: async (text: string) => { (window as any).copiedDiagnosis = text; },
+  } }));
+  const saveReport = async (filename: string) => {
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export diagnosis report', exact: true }).click();
+    const file = test.info().outputPath(filename);
+    await (await downloading).saveAs(file);
+    const content = await readFile(file, 'utf8');
+    for (const value of [secret, 'browser-private-target', w.repo, w.home]) expect(content).not.toContain(JSON.stringify(value).slice(1, -1));
+    return pathToFileURL(file).href;
+  };
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.context().setOffline(false);
+      await page.setViewportSize(viewport);
+      await page.goto(server.url + '#view=findings');
+      await page.locator('#severity').selectOption('error');
+      const rows = page.locator('#findings-list .finding');
+      await expect(rows).toHaveCount(2);
+      for (const [index, finding] of findings.entries()) {
+        await rows.nth(index).click();
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('finding')).toBe(finding.id);
+        await page.reload();
+        await expect(page.locator('#detail-dialog')).toBeVisible();
+        await expect(page.locator('#detail-body .path').first()).toContainText(`line ${finding.location.line},`);
+        await page.goBack();
+        await expect(page.locator('#detail-dialog')).not.toBeVisible();
+        await expect(rows.nth(index)).toBeFocused();
+        await page.goForward();
+        await expect(page.locator('#detail-dialog')).toBeVisible();
+        await page.getByRole('button', { name: 'Inspect source →', exact: true }).click();
+        await expect(page.locator('.code-line.highlight .line-number')).toHaveText(String(finding.location.line));
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).has('finding')).toBe(false);
+        await page.goBack();
+        await expect(page.locator('#detail-dialog')).toBeVisible();
+        await expect(page.locator('#detail-body .path').first()).toContainText(`line ${finding.location.line},`);
+        await page.getByRole('button', { name: 'Copy diagnosis', exact: true }).click();
+        const copied = await page.evaluate(() => (window as any).copiedDiagnosis);
+        expect(copied).toContain(index === 0 ? '@./[REDACTED].md' : '@./another-missing.md');
+        for (const value of [finding.ruleId, finding.message, finding.why, finding.suggestion, 'Claude Code', '<repo>/src/[REDACTED].ts', '<repo>/CLAUDE.md']) expect(copied).toContain(value);
+        for (const value of [secret, 'browser-private-target', w.repo, w.home]) expect(copied).not.toContain(value);
+        expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+        expect(await page.locator('#detail-dialog').evaluate(dialog => dialog.scrollWidth <= dialog.clientWidth)).toBe(true);
+        await page.screenshot({ path: test.info().outputPath(`diagnosis-${viewport.width}-${index}.png`), fullPage: true });
+        const exported = await saveReport(`diagnosis-${viewport.width}-${index}.html`);
+        await page.context().setOffline(true);
+        await page.goto(exported);
+        await expect(page.locator('#detail-dialog')).toBeVisible();
+        await expect(page.locator('#detail-body .path').first()).toContainText(`line ${finding.location.line},`);
+        await page.getByRole('button', { name: 'Copy diagnosis', exact: true }).click();
+        expect(await page.evaluate(() => (window as any).copiedDiagnosis)).toBe(copied);
+        const reshared = await saveReport(`diagnosis-reshared-${viewport.width}-${index}.html`);
+        await page.goto(reshared);
+        await expect(page.locator('#detail-dialog')).toBeVisible();
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('finding')).toBe(finding.id);
+        await page.getByRole('button', { name: 'Close details', exact: true }).click();
+        await expect(page.locator('#detail-dialog')).not.toBeVisible();
+        await page.reload();
+        await expect(page.locator('#detail-dialog')).not.toBeVisible();
+        await page.context().setOffline(false);
+        await page.goto(server.url + '#view=findings');
+        await page.locator('#severity').selectOption('error');
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('finding links resolve grouped client IDs, unavailable issues and clipboard fallback', async ({ page }) => {
+  const w = await workspace({ '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'missing-diagnosis-command' } } }) });
+  const options = { ...w, user: false, clients: ['claude', 'copilot'] as const, trust: 'trusted' as const };
+  const report = await scan(options);
+  const findings = report.findings.filter(finding => finding.ruleId === 'mcp.command-missing');
+  expect(findings.length).toBeGreaterThan(1);
+  const server = await serve(options);
+  await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+    writeText: async () => { throw new Error('Clipboard unavailable in this browser.'); },
+  } }));
+  try {
+    for (const finding of findings) {
+      await page.goto(server.url + '#view=findings&finding=' + finding.id);
+      await expect(page.locator('#detail-dialog')).toBeVisible();
+      await expect(page.locator('#detail-title')).toHaveText(finding.message);
+      await page.getByRole('button', { name: 'Copy diagnosis', exact: true }).click();
+      const field = page.getByRole('textbox', { name: 'Text to copy', exact: true });
+      await expect(field).toBeFocused();
+      const text = await field.inputValue();
+      for (const value of ['Claude Code', 'GitHub Copilot', finding.ruleId, '<repo>/.mcp.json']) expect(text).toContain(value);
+      expect(text).not.toContain(w.repo);
+      expect(await field.evaluate(input => (input as HTMLTextAreaElement).selectionEnd)).toBe(text.length);
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#detail-dialog')).not.toBeVisible();
+      expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).has('finding')).toBe(false);
+    }
+    await page.goto(server.url + '#view=findings&finding=' + findings[0].id);
+    await expect(page.locator('#detail-dialog')).toBeVisible();
+    await writeFile(path.join(w.repo, '.mcp.json'), '{"mcpServers":{}}');
+    await page.reload();
+    await expect(page.locator('#detail-dialog')).not.toBeVisible();
+    await expect(page.locator('#toast')).toHaveText('This finding is unavailable in this report.');
+    expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).has('finding')).toBe(false);
+    await page.goto(server.url + '#view=findings&finding=unavailable%3Cscript%3E');
+    await expect(page.locator('#detail-dialog')).not.toBeVisible();
+    await expect(page.locator('#findings')).toBeVisible();
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 
 test('source line links survive refresh and discard unavailable sources and invalid line numbers', async ({ page }) => {

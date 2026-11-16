@@ -325,7 +325,7 @@ dialog::backdrop { background: #252f2338; backdrop-filter: blur(3px); }
 .dialog-content pre { font: 13px/1.8 var(--mono); color: #626b59; background: #f8faf4; border: 1px solid var(--line); border-radius: 6px; padding: 14px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .copy-text { display: block; width: 100%; max-height: 45vh; resize: vertical; font: 13px/1.8 var(--mono); color: #626b59; background: #f8faf4; border: 1px solid #c9d2bf; border-radius: 6px; padding: 14px; }
 .copy-text:focus-visible { outline: 2px solid #627a4f; outline-offset: 2px; }
-.dialog-actions { display: flex; gap: 10px; margin-top: 24px; }
+.dialog-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
 .scope-list { padding-left: 17px; font-size: 13px; color: #626b59; line-height: 1.9; }
 .adapter-detail { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px; }
 .adapter-detail summary { cursor: pointer; font-size: 12px; color: #626b59; }
