@@ -10,6 +10,9 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
 * All 117 Chromium cases and four focused WebKit flows passed. Source inspection and the legacy chooser passed WCAG AA checks and visual review. The 605-case core suite completed with 603 passes and two platform-gated skips. Lint and strict TypeScript passed.
 * The bundled package passed empty-cache offline installation and installed CLI/browser provenance checks. Production dependency audit reported zero vulnerabilities. The standalone example and product captures were regenerated from the application. Linux CI exercises Firefox because the local Firefox profile cannot start.
 
+* The Windows tag workflow exposed a fixture assumption in the existing Gemini trust browser test. Gemini 0.68.0 uses Number-valued device/inode identities, which can collide across distinct Windows files. Browser expectations now derive the loaded context roots from those filesystem values and verify the resulting loading decision, import text and privacy. The corrected focused case, lint and TypeScript passed locally.
+* Linux, macOS and Windows verification passed for the released source, including Linux Firefox. Anonymous download matched SHA-256 `97f65477bdffd0c542df9d45f9df76378a0d7c40d26ba71d2a2ab707c0648187` and its 1,587,665-byte size. The exact public archive passed empty-cache offline installation, installed CLI error counts and source references, desktop/phone source navigation, refresh after a third colliding file, history, reload, legacy source choice and offline export/re-export with zero page errors. Fresh-cache public execution returned 0.3.44. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43804758155)
+
 ## v0.3.43
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

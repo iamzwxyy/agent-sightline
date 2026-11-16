@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { serve } from '../../packages/web/server.js';
 import { workspace } from '../helpers.js';
 import { trustWorkspace } from '../copilot-trust-fixture.js';
-import { mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { html, portable } from '../../packages/reporter/index.js';
 import type { Report, ScanOptions } from '../../packages/core/types.js';
@@ -1153,6 +1153,29 @@ test('Gemini saved workspace trust refreshes custom context, clipboard and priva
     '.gemini/TEAM.md': 'GLOBAL_TEAM_INSTRUCTION',
     '.gemini/settings.json': JSON.stringify({ context: { fileName: 'PERSONAL.md' } }),
   });
+  const contextRoots = [
+    { filename: path.join(w.home, '.gemini/TEAM.md'), markers: ['GLOBAL_TEAM_INSTRUCTION'] },
+    { filename: path.join(w.repo, 'GEMINI.md'), markers: ['DEFAULT_PROJECT_INSTRUCTION'] },
+    { filename: path.join(w.repo, 'TEAM.md'), markers: ['PROJECT_INSTRUCTION', 'IMPORTED_INSTRUCTION'] },
+  ];
+  const identities = new Set<string>();
+  const loadedRoots = new Set<string>();
+  const approvedMarkers: string[] = [];
+  for (const { filename, markers } of contextRoots) {
+    // Gemini 0.68.0 uses Number-valued stat IDs, which can collide on Windows.
+    const info = await stat(filename);
+    const identity = `${info.dev}:${info.ino}`;
+    if (identities.has(identity)) continue;
+    identities.add(identity);
+    loadedRoots.add(filename);
+    approvedMarkers.push(...markers);
+  }
+  const projectLoaded = loadedRoots.has(path.join(w.repo, 'GEMINI.md'));
+  const trustStates = [
+    { state: 'pending', status: projectLoaded ? 'Conditional' : 'Not loaded', reason: projectLoaded ? 'after workspace approval' : 'same filesystem identity' },
+    { state: 'approved', status: projectLoaded ? 'Loaded' : 'Not loaded', reason: projectLoaded ? 'context' : 'same filesystem identity' },
+    { state: 'rejected', status: 'Not loaded', reason: 'rejects this workspace' },
+  ];
   const trustFile = path.join(w.home, '.gemini/trustedFolders.json');
   const saveTrust = (level?: string) => writeFile(trustFile, JSON.stringify({
     [path.join(w.root, 'UNRELATED_GEMINI_PRIVATE_PROJECT')]: 'DO_NOT_TRUST',
@@ -1170,20 +1193,19 @@ test('Gemini saved workspace trust refreshes custom context, clipboard and priva
       await saveTrust();
       await page.goto(server.url + location);
       await page.reload();
-      for (const state of ['pending', 'approved', 'rejected']) {
+      for (const { state, status, reason } of trustStates) {
         if (state !== 'pending') {
           await saveTrust(state === 'approved' ? 'TRUST_FOLDER' : 'DO_NOT_TRUST');
           await page.getByRole('button', { name: 'Refresh scan', exact: true }).click();
           await expect(page.locator('#scan-status')).toHaveText('Scan complete');
         }
-        const status = state === 'approved' ? 'Loaded' : state === 'rejected' ? 'Not loaded' : 'Conditional';
         await expect(page.locator('#source-title')).toHaveText('GEMINI.md');
         await expect(page.locator('#source-status')).toHaveText(status);
-        await expect(page.locator('#why')).toContainText(state === 'pending' ? 'after workspace approval' : state === 'approved' ? 'context' : 'rejects this workspace');
+        await expect(page.locator('#why')).toContainText(reason);
         await page.getByRole('button', { name: 'Read effective text', exact: true }).click();
         const text = await page.locator('#effective-document .effective-text').textContent();
         expect(text?.match(/[A-Z_]+_INSTRUCTION/g)).toEqual(state === 'approved'
-          ? ['GLOBAL_TEAM_INSTRUCTION', 'DEFAULT_PROJECT_INSTRUCTION', 'PROJECT_INSTRUCTION', 'IMPORTED_INSTRUCTION']
+          ? approvedMarkers
           : ['GLOBAL_INSTRUCTION']);
         const portableText = portable(await scan({ ...w, clients: ['gemini'] })).clients[0].instructions;
         await page.getByRole('button', { name: 'Copy effective text', exact: true }).click();
