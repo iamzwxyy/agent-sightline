@@ -10,6 +10,7 @@
     view: 'overview',
     client: report.clients.find(client => client.detected)?.client ?? report.clients[0]?.client,
     source: null,
+    sourceId: null,
     sourceOccurrence: 1,
     sourceFilter: 'relevant',
     instructionView: 'sources',
@@ -162,8 +163,15 @@
   }
   function groupFindings() {
     const groups = new Map();
+    const paths = new Map();
+    for (const source of report.sources) {
+      const ids = paths.get(source.path) ?? new Set();
+      ids.add(source.id);
+      paths.set(source.path, ids);
+    }
     for (const finding of report.findings) {
-      const key = JSON.stringify([finding.ruleId, finding.severity, finding.message, finding.location, finding.why, finding.suggestion, finding.related]);
+      const ambiguous = [finding.location, ...finding.related].some(location => !location.sourceId && paths.get(location.path)?.size > 1);
+      const key = JSON.stringify([finding.ruleId, finding.severity, finding.message, finding.location, finding.why, finding.suggestion, finding.related, ambiguous ? finding.id : null]);
       if (!groups.has(key)) groups.set(key, { ...finding, clients: [], originals: [] });
       const group = groups.get(key);
       group.originals.push(finding);
@@ -188,11 +196,12 @@
       if (restoreFocus) $('mobile-menu').focus({ preventScroll: true });
     }
   }
-  function inspectionHash(sourcePath = state.source && short(state.source), occurrence = state.sourceOccurrence) {
+  function inspectionHash(sourcePath = state.source && short(state.source), occurrence = state.sourceOccurrence, sourceId = state.sourceId) {
     const hash = new URLSearchParams({ view: state.view });
     if (state.view === 'effective') {
       hash.set('client', state.client);
       if (sourcePath) hash.set('source', sourcePath);
+      if (sourcePath && sourceId) hash.set('sourceId', sourceId);
       if (sourcePath && occurrence > 1) hash.set('occurrence', String(occurrence));
       if (sourcePath && state.highlightLine !== null) hash.set('line', String(state.highlightLine));
       if (state.instructionView === 'document') hash.set('text', 'effective');
@@ -209,13 +218,14 @@
     }
     return '#' + hash.toString();
   }
-  function navigate(view, client, source, line = null, occurrence = 1) {
+  function navigate(view, client, source, line = null, occurrence = 1, sourceId = null) {
     const viewChanged = state.view !== view;
     const navigationWasOpen = document.body.classList.contains('nav-open');
     if (client) state.client = client;
     if (source) {
       state.source = source;
       state.sourceOccurrence = occurrence;
+      state.sourceId = sourceId ?? sourceEntries().find(entry => entry.source.path === source && entry.occurrence === occurrence)?.source.sourceId ?? null;
       state.instructionView = 'sources';
       state.highlightLine = line;
     }
@@ -248,6 +258,7 @@
     $('clients').replaceChildren(...(clients.length ? clients : report.clients).map(client => {
       const element = button('', () => {
         state.source = null;
+        state.sourceId = null;
         state.highlightLine = null;
         $('source-search').value = '';
         navigate('effective', client.client);
@@ -264,7 +275,7 @@
     const severity = node('span', finding.severity === 'error' ? '!' : finding.severity === 'warn' ? '!' : 'i', `severity-icon ${finding.severity}`);
     severity.setAttribute('aria-label', finding.severity);
     const title = node('div');
-    title.append(node('h3', finding.message), node('span', `${short(finding.location.path)} · line ${finding.location.line}, column ${finding.location.column}`, 'finding-location'));
+    title.append(node('h3', finding.message), node('span', `${short(finding.location.path)} · line ${finding.location.line}, column ${finding.location.column}${finding.location.sourceId ? ` · source ${finding.location.sourceId}` : ''}`, 'finding-location'));
     const recipients = node('span', undefined, 'finding-clients');
     finding.clients.forEach(client => recipients.append(avatar(client, true)));
     element.append(severity, title, recipients, node('span', '›', 'row-arrow'));
@@ -331,6 +342,7 @@
     $('client-overview').replaceChildren(...detected.map(client => {
       const element = button('', () => {
         state.source = null;
+        state.sourceId = null;
         $('source-search').value = '';
         navigate('effective', client.client);
       }, 'client-card');
@@ -351,7 +363,7 @@
   function showFinding(finding) {
     $('detail-category').textContent = finding.ruleId;
     const content = node('div', undefined, 'dialog-content');
-    content.append(badge(finding.severity), node('h2', finding.message), node('p', `${short(finding.location.path)} · line ${finding.location.line}, column ${finding.location.column}`, 'path'));
+    content.append(badge(finding.severity), node('h2', finding.message), node('p', `${short(finding.location.path)} · line ${finding.location.line}, column ${finding.location.column}${finding.location.sourceId ? ` · source ${finding.location.sourceId}` : ''}`, 'path'));
     content.querySelector('h2').id = 'detail-title';
     content.append(node('h3', 'Why this happens'), node('p', finding.why), node('h3', 'How to resolve it'), node('p', finding.suggestion, 'fix-suggestion'));
     const related = [...new Map(finding.originals.flatMap(item => item.related).map(location => [JSON.stringify(location), location])).values()];
@@ -369,7 +381,7 @@
     const actions = node('div', undefined, 'dialog-actions');
     const client = sourceClient(finding.location, finding.clients[0]);
     if (client) actions.append(button('Inspect source →', () => inspectSourceLocation(finding.location, client), 'button button-primary'));
-    actions.append(button('Copy location', () => copy(`${finding.location.path}:${finding.location.line}:${finding.location.column}`), 'button'));
+    actions.append(button('Copy location', () => copy(`${finding.location.path}:${finding.location.line}:${finding.location.column}${finding.location.sourceId ? ` · source ${finding.location.sourceId}` : ''}`), 'button'));
     content.append(actions);
     $('detail-body').replaceChildren(content);
     if (!$('detail-dialog').open) $('detail-dialog').showModal();
@@ -406,8 +418,9 @@
       });
   }
   function selectedSourceEntry(entries = sourceEntries()) {
-    return entries.find(({ source, occurrence }) => source.path === state.source && occurrence === state.sourceOccurrence)
-      ?? entries.find(({ source }) => source.path === state.source)
+    const matches = ({ source }) => state.sourceId ? source.sourceId === state.sourceId : source.path === state.source;
+    return entries.find(entry => matches(entry) && entry.occurrence === state.sourceOccurrence)
+      ?? entries.find(matches)
       ?? entries.find(({ source }) => ['active', 'truncated'].includes(source.status) && ['instructions', 'rules'].includes(source.kind))
       ?? entries[0];
   }
@@ -438,8 +451,9 @@
     const entries = sourceEntries(client);
     const selection = selectedSourceEntry(entries);
     const selected = selection?.source;
-    if (selected?.path !== state.source || selection?.occurrence !== state.sourceOccurrence) state.highlightLine = null;
+    if (state.sourceId ? selected?.sourceId !== state.sourceId : selected?.path !== state.source || selection?.occurrence !== state.sourceOccurrence) state.highlightLine = null;
     state.source = selected?.path ?? null;
+    state.sourceId = selected?.sourceId ?? null;
     state.sourceOccurrence = selection?.occurrence ?? 1;
     $('copy-source').disabled = !selected;
     renderSourceList(true);
@@ -453,6 +467,7 @@
       $('instructions').replaceChildren(empty('No configuration discovered', 'Create an instruction file in this client’s supported location, then refresh the scan.'));
       $('why').replaceChildren(node('p', client.metadata.limitations.join(' ')));
     }
+    if (state.view === 'effective') history.replaceState(null, '', inspectionHash());
     renderNavigation();
   }
   function renderEffectiveDocument(client) {
@@ -538,8 +553,8 @@
     if (preview !== undefined) return { text: preview, firstLine: 1, label: 'Source preview' };
     if (source.content) return { text: source.content, firstLine: source.line, label: source.status === 'conditional' ? 'Instruction content if loaded' : source.status === 'truncated' ? 'Loaded prefix' : 'Loaded instruction content' };
     const client = selectedClient();
-    const settings = client.settings.filter(setting => setting.location.path === source.path);
-    const extensions = client.extensions.filter(extension => extension.location.path === source.path);
+    const settings = client.settings.filter(setting => locationMatchesSource(setting.location, source));
+    const extensions = client.extensions.filter(extension => locationMatchesSource(extension.location, source));
     if (settings.length || extensions.length) return { text: JSON.stringify({ settings: settings.map(setting => ({ key: setting.key, value: setting.value })), extensions: extensions.map(extension => ({ kind: extension.kind, name: extension.name, config: extension.config })) }, null, 2), firstLine: null, label: 'Parsed configuration' };
     return { text: '', firstLine: null, label: 'Source unavailable' };
   }
@@ -588,7 +603,7 @@
     $('instructions').replaceChildren(...content);
     $('copy-source').disabled = !preview.text;
     $('copy-source').onclick = () => copy(preview.text, 'Source content copied');
-    const settings = client.settings.filter(setting => setting.location.path === source.path);
+    const settings = client.settings.filter(setting => locationMatchesSource(setting.location, source));
     $('settings').replaceChildren(...settings.map(setting => {
       const element = node('div', undefined, 'setting');
       const key = node('div', undefined, 'setting-key');
@@ -600,6 +615,9 @@
     $('settings').parentElement.hidden = !settings.length;
     const why = [badge(source.status), node('h3', basename(source.path)), node('p', short(source.path), 'path'), node('p', source.reason)];
     const metadata = node('dl', undefined, 'detail-meta');
+    if (report.sources.some(candidate => candidate.path === source.path && candidate.id !== source.sourceId)) {
+      const reference = node('div'); reference.append(node('dt', 'Source reference'), node('dd', source.sourceId)); metadata.append(reference);
+    }
     const conditional = source.status === 'conditional';
     for (const [label, value] of [['Scope', source.scope], [conditional ? 'Position if loaded' : 'Load position', source.order ?? 'Outside chain'], ['Source size', `${source.bytes} bytes`], [conditional ? 'Size if loaded' : 'Loaded size', `${source.loadedBytes} bytes`], ['Token estimate', `~${source.estimatedTokens}`], ['Starts at', `Line ${source.line}`]]) {
       const pair = node('div'); pair.append(node('dt', label), node('dd', String(value))); metadata.append(pair);
@@ -611,7 +629,7 @@
       why.push(owner ? button(label, () => inspectSourceLocation(source.importedFrom, owner), 'source-link') : node('p', label, 'path'));
     }
     why.push(button('Copy source path', () => copy(source.path), 'text-button'));
-    const related = groupFindings().filter(finding => finding.location.path === source.path && (!finding.clients.length || finding.clients.includes(state.client)));
+    const related = groupFindings().filter(finding => locationMatchesSource(finding.location, source) && (!finding.clients.length || finding.clients.includes(state.client)));
     if (related.length) {
       const list = node('div', undefined, 'why-findings'); list.append(node('h3', `${related.length} related findings`));
       related.forEach(finding => list.append(button(finding.message, () => showFinding(finding), 'text-button')));
@@ -644,19 +662,43 @@
     if (!$('detail-dialog').open) $('detail-dialog').showModal();
     $('detail-dialog').scrollTop = 0;
   }
+  function locationMatchesSource(location, source) {
+    return location.sourceId ? location.sourceId === source.sourceId : source.path === location.path;
+  }
   function sourceClient(location, preferred) {
-    const clients = report.clients.filter(client => client.decisions.some(source => source.path === location.path));
+    const clients = report.clients.filter(client => client.decisions.some(source => locationMatchesSource(location, source)));
     return clients.find(client => client.client === preferred)?.client
-      ?? clients.find(client => client.decisions.some(source => source.path === location.path && source.status !== 'ignored'))?.client
+      ?? clients.find(client => client.decisions.some(source => locationMatchesSource(location, source) && source.status !== 'ignored'))?.client
       ?? clients[0]?.client;
   }
-  function inspectSourceLocation(location, preferred, occurrence = 1) {
+  function inspectSourceLocation(location, preferred, occurrence) {
     const client = sourceClient(location, preferred);
     if (!client) return;
+    const entries = sourceEntries(report.clients.find(candidate => candidate.client === client)).filter(entry => locationMatchesSource(location, entry.source));
+    if (!location.sourceId && occurrence === undefined && new Set(entries.map(entry => entry.source.sourceId)).size > 1) {
+      $('detail-category').textContent = 'Source selection';
+      const content = node('div', undefined, 'dialog-content');
+      const title = node('h2', 'Choose a source'); title.id = 'detail-title';
+      content.append(title, node('p', 'Several sources share this displayed path. Choose the source to inspect.'), node('p', short(location.path), 'path'));
+      const list = node('div', undefined, 'contribution-list');
+      for (const entry of [...new Map(entries.map(entry => [entry.source.sourceId, entry])).values()]) {
+        const row = node('div');
+        row.append(button(`Source ${entry.source.sourceId}`, () => inspectSourceLocation({ ...location, sourceId: entry.source.sourceId }, client, entry.occurrence), 'source-link'));
+        row.append(node('pre', sourceText(entry.source).text.slice(0, 240)));
+        list.append(row);
+      }
+      content.append(list);
+      $('detail-body').replaceChildren(content);
+      if (!$('detail-dialog').open) $('detail-dialog').showModal();
+      $('detail-dialog').scrollTop = 0;
+      return;
+    }
+    const entry = entries.find(entry => entry.occurrence === occurrence) ?? entries[0];
+    if (!entry) return;
     $('detail-dialog').close();
     state.sourceFilter = 'all';
     $('source-search').value = '';
-    navigate('effective', client, location.path, location.line ?? null, occurrence);
+    navigate('effective', client, entry.source.path, location.line ?? null, entry.occurrence, entry.source.sourceId);
     $('source-title').focus({ preventScroll: true });
     if (!$('instructions').querySelector('.code-line.highlight')) $('source-title').scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
@@ -884,7 +926,7 @@
       trace.disabled = !client;
       trace.setAttribute('aria-label', client ? `Inspect ${names[client.client]} sources` : 'Inspect sources');
       trace.onclick = () => {
-        state.source = null; state.instructionView = 'sources'; $('source-search').value = '';
+        state.source = null; state.sourceId = null; state.instructionView = 'sources'; $('source-search').value = '';
         navigate('effective', client.client);
       };
     }
@@ -943,6 +985,7 @@
       else panel.append(node('p', 'No proven active instruction text for this target.', 'comparison-document-text subtle'));
       panel.append(button('Trace this instruction chain →', () => {
         state.source = null;
+        state.sourceId = null;
         state.instructionView = 'sources';
         $('source-search').value = '';
         navigate('effective', client.client);
@@ -1352,7 +1395,7 @@
     const occurrence = sourceEntries(capturedClient).find(entry => entry.source === source)?.occurrence ?? 1;
     const destination = snapshot.querySelector('meta[name="sightline-view"]') ?? snapshot.createElement('meta');
     destination.name = 'sightline-view';
-    destination.content = inspectionHash(source ? short(source.path, captured.repository) : null, occurrence);
+    destination.content = inspectionHash(source ? short(source.path, captured.repository) : null, occurrence, source?.sourceId ?? null);
     snapshot.head.append(destination);
     const content = '<!doctype html>\n' + snapshot.documentElement.outerHTML;
     const url = URL.createObjectURL(new Blob([content], { type: 'text/html' }));
@@ -1410,8 +1453,12 @@
     const sourcePath = hash.get('source');
     const occurrence = Number(hash.get('occurrence'));
     state.sourceOccurrence = Number.isSafeInteger(occurrence) && occurrence > 0 ? occurrence : 1;
-    const entry = sourceEntries().find(entry => short(entry.source.path) === sourcePath && entry.occurrence === state.sourceOccurrence);
-    state.source = entry?.source.path ?? (sourcePath ? report.sources.find(source => short(source.path) === sourcePath)?.path ?? null : null);
+    const sourceId = hash.get('sourceId');
+    const entries = sourceEntries().filter(entry => sourceId ? entry.source.sourceId === sourceId : short(entry.source.path) === sourcePath);
+    const entry = entries.find(entry => entry.occurrence === state.sourceOccurrence) ?? entries[0];
+    state.source = entry?.source.path ?? null;
+    state.sourceId = entry?.source.sourceId ?? null;
+    state.sourceOccurrence = entry?.occurrence ?? 1;
     const line = Number(hash.get('line'));
     state.highlightLine = state.source && Number.isSafeInteger(line) && line > 0 ? line : null;
   }

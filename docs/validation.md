@@ -1,5 +1,15 @@
 # Release validation
 
+## v0.3.44
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
+
+* Reproduced two configuration files becoming one displayed path after private-value masking. Their two `glob.type` findings collapsed into one browser and terminal group, and source inspection opened the first file. Two core regressions failed before implementation.
+* Semantic locations retain existing opaque source IDs before redaction or portable path replacement makes paths ambiguous. JSON serialization and portable re-export retain those IDs, while structured configuration values with path/line/column fields preserve their shape. Legacy ambiguous locations retain independent finding counts and offer source selection.
+* Desktop and phone browser journeys verify each file's preview, highlighted line, source reference, reload, history and offline export/re-export. Adding a third same-path file before the selected file retains its source identity and line after refresh. Existing repeated contributions and legacy occurrence links passed.
+* All 117 Chromium cases and four focused WebKit flows passed. Source inspection and the legacy chooser passed WCAG AA checks and visual review. The 605-case core suite completed with 603 passes and two platform-gated skips. Lint and strict TypeScript passed.
+* The bundled package passed empty-cache offline installation and installed CLI/browser provenance checks. Production dependency audit reported zero vulnerabilities. The standalone example and product captures were regenerated from the application. Linux CI exercises Firefox because the local Firefox profile cannot start.
+
 ## v0.3.43
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

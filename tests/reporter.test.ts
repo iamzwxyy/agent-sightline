@@ -155,6 +155,64 @@ test('terminal loading counts preserve distinct sources after private path redac
   assert.match(terminal(report), /Claude Code\s+2 loaded · \d+ bytes/);
 });
 
+test('redacted source collisions retain distinct finding references and terminal counts', async t => {
+  const w = await workspace({
+    '.claude/rules/first-label.md': '---\npaths: 42\n---\nFIRST_SOURCE_GUIDANCE',
+    '.claude/rules/second-label.md': '---\npaths: 42\n---\nSECOND_SOURCE_GUIDANCE',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, env: { FIRST: 'first-label', SECOND: 'second-label' } } } }),
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['claude'], user: false, trust: 'trusted' });
+  const errors = report.findings.filter(finding => finding.ruleId === 'glob.type');
+  const rules = report.sources.filter(source => source.kind === 'rules');
+  assert.equal(errors.length, 2);
+  assert.equal(new Set(rules.map(source => source.path)).size, 1);
+  assert.deepEqual(new Set(errors.map(finding => finding.location.sourceId)), new Set(rules.map(source => source.id)));
+  assert.match(terminal(report), /Errors 2 · Warnings 0/);
+  for (const source of rules) assert.ok(terminal(report).includes(`source ${source.id}`));
+  const exported = portable(JSON.parse(json(report)));
+  assert.deepEqual(portable(exported), exported);
+  assert.deepEqual(new Set(exported.findings.filter(finding => finding.ruleId === 'glob.type').map(finding => finding.location.sourceId)), new Set(rules.map(source => source.id)));
+  const legacy = structuredClone(report);
+  for (const findings of [legacy.findings, ...legacy.clients.map(client => client.findings)]) {
+    for (const finding of findings) {
+      delete finding.location.sourceId;
+      for (const location of finding.related) delete location.sourceId;
+    }
+  }
+  assert.match(terminal(legacy), /Errors 2 · Warnings 0/);
+  for (const output of [json(report), html(report), terminal(report)]) {
+    assert.ok(!output.includes('first-label'));
+    assert.ok(!output.includes('second-label'));
+  }
+});
+
+test('portable path collisions bind location identities while configuration objects retain their shape', async t => {
+  const w = await workspace({
+    '.claude/rules/first.md': '---\npaths: 42\n---\nFIRST_SOURCE_GUIDANCE',
+    '.claude/rules/second.md': '---\npaths: 42\n---\nSECOND_SOURCE_GUIDANCE',
+  });
+  t.after(() => rm(w.root, { recursive: true, force: true }));
+  const report = await scan({ ...w, clients: ['claude'], user: false, trust: 'trusted' });
+  const rules = report.sources.filter(source => source.kind === 'rules');
+  assert.equal(rules.length, 2);
+  assert.ok(report.findings.filter(finding => finding.ruleId === 'glob.type').every(finding => finding.location.sourceId === undefined));
+  report.pathMappings = [...report.pathMappings ?? [], ...rules.map(source => ({ path: source.path, replacement: '<private-source>' }))];
+  report.clients[0].settings.push({
+    key: 'custom', value: { path: rules[0].path, line: 2, column: 1 }, status: 'active',
+    location: { path: rules[0].path, line: 2, column: 1 }, reason: 'Captured structured value.', overrides: [],
+  });
+  const exported = portable(report);
+  const errors = exported.findings.filter(finding => finding.ruleId === 'glob.type');
+  assert.equal(new Set(errors.map(finding => finding.location.path)).size, 1);
+  assert.deepEqual(new Set(errors.map(finding => finding.location.sourceId)), new Set(rules.map(source => source.id)));
+  const setting = exported.clients[0].settings.find(setting => setting.key === 'custom')!;
+  assert.equal(setting.location.sourceId, rules[0].id);
+  assert.deepEqual(setting.value, { path: '<private-source>', line: 2, column: 1 });
+  assert.match(terminal(exported), /Errors 2 · Warnings 0/);
+  assert.deepEqual(portable(exported), exported);
+});
+
 test('portable reports replace JSON-escaped Windows and POSIX repository paths', () => {
   for (const repository of ['D:\\projects\\checkout', 'C:\\Users\\example\\checkout', '/tmp/quoted"project', '/tmp/back\\slash-project', '/tmp/ending\\']) {
     const filename = repository + '/instructions.md';

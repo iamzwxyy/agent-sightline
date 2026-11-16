@@ -3,7 +3,7 @@ export type ClientId = typeof CLIENTS[number];
 export type Severity = 'error' | 'warn' | 'info';
 export type Status = 'active' | 'conditional' | 'shadowed' | 'ignored' | 'truncated' | 'invalid';
 export type Kind = 'instructions' | 'rules' | 'settings' | 'mcp' | 'skill' | 'hooks';
-export interface Location { path: string; line: number; column: number; key?: string }
+export interface Location { path: string; line: number; column: number; key?: string; sourceId?: string }
 export interface Finding {
   id: string; ruleId: string; severity: Severity; client?: ClientId;
   message: string; location: Location; related: Location[]; why: string; suggestion: string;

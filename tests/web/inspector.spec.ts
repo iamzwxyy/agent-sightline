@@ -2401,6 +2401,130 @@ test('source jumps reveal long-file lines and retain them through reload and his
   } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 
+test('redacted source identities keep findings, refresh and offline navigation attached to each file', async ({ page }) => {
+  const w = await workspace({
+    '.claude/rules/first-label.md': '---\npaths: 42\n---\nFIRST_SOURCE_GUIDANCE',
+    '.claude/rules/second-label.md': '---\npaths: 42\n---\nSECOND_SOURCE_GUIDANCE',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, env: { FIRST: 'first-label', SECOND: 'second-label', MIDDLE: 'middle-label' } } } }),
+  });
+  const options = { ...w, user: false, clients: ['claude'] as const, trust: 'trusted' as const };
+  const report = await scan(options);
+  const rules = report.sources.filter(source => source.kind === 'rules');
+  const first = rules.find(source => source.preview?.includes('FIRST_SOURCE_GUIDANCE'))!;
+  const second = rules.find(source => source.preview?.includes('SECOND_SOURCE_GUIDANCE'))!;
+  const server = await serve(options);
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const exportReport = async (filename: string) => {
+    const downloading = page.waitForEvent('download');
+    await page.locator('#export').click();
+    const file = test.info().outputPath(filename);
+    await (await downloading).saveAs(file);
+    const content = await readFile(file, 'utf8');
+    for (const value of ['first-label', 'second-label', 'middle-label', w.repo, w.home]) expect(content).not.toContain(JSON.stringify(value).slice(1, -1));
+    return file;
+  };
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.context().setOffline(false);
+      await page.setViewportSize(viewport);
+      await page.goto(server.url + '#view=findings');
+      await page.locator('#severity').selectOption('error');
+      await expect(page.locator('#findings-list .finding')).toHaveCount(viewport.width === 1440 ? 2 : 3);
+      for (const [source, text] of [[first, 'FIRST_SOURCE_GUIDANCE'], [second, 'SECOND_SOURCE_GUIDANCE']] as const) {
+        await page.locator('#findings-list .finding').filter({ hasText: source.id }).click();
+        await expect(page.locator('#detail-body')).toContainText(`source ${source.id}`);
+        await page.locator('#detail-body').getByRole('button', { name: 'Inspect source →', exact: true }).click();
+        await expect(page.locator('#instructions')).toContainText(text);
+        await expect(page.locator('.code-line.highlight .line-number')).toHaveText('2');
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('sourceId')).toBe(source.id);
+        await page.reload();
+        await expect(page.locator('#instructions')).toContainText(text);
+        await expect(page.locator('#why .why-findings button').filter({ hasText: '"paths" must be a string or an array of strings.' })).toHaveCount(1);
+        await page.goBack();
+        await expect(page.locator('#findings')).toBeVisible();
+      }
+      await page.goForward();
+      await expect(page.locator('#instructions')).toContainText('SECOND_SOURCE_GUIDANCE');
+      if (viewport.width === 1440) {
+        await writeFile(path.join(w.repo, '.claude/rules/middle-label.md'), '---\npaths: 42\n---\nMIDDLE_SOURCE_GUIDANCE');
+        await page.locator('#refresh').click();
+        await expect(page.locator('#scan-status')).toHaveText('Scan complete');
+        await expect(page.locator('#instructions')).toContainText('SECOND_SOURCE_GUIDANCE');
+        await expect(page.locator('.code-line.highlight .line-number')).toHaveText('2');
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('occurrence')).toBe('3');
+      }
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+      await page.screenshot({ path: test.info().outputPath(`source-identity-${viewport.width}.png`), fullPage: true });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      const file = await exportReport(`source-identity-${viewport.width}.html`);
+      await page.context().setOffline(true);
+      await page.goto(pathToFileURL(file).href);
+      await expect(page.locator('#instructions')).toContainText('SECOND_SOURCE_GUIDANCE');
+      expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('sourceId')).toBe(second.id);
+      const reexported = await exportReport(`source-identity-reshared-${viewport.width}.html`);
+      await page.goto(pathToFileURL(reexported).href);
+      await expect(page.locator('#instructions')).toContainText('SECOND_SOURCE_GUIDANCE');
+      await page.reload();
+      await expect(page.locator('.code-line.highlight .line-number')).toHaveText('2');
+      await page.goto(pathToFileURL(reexported).href + '#view=findings');
+      await page.locator('#severity').selectOption('error');
+      await expect(page.locator('#findings-list .finding')).toHaveCount(3);
+      await page.locator('#findings-list .finding').filter({ hasText: first.id }).click();
+      await page.locator('#detail-body').getByRole('button', { name: 'Inspect source →', exact: true }).click();
+      await expect(page.locator('#instructions')).toContainText('FIRST_SOURCE_GUIDANCE');
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('legacy ambiguous findings retain separate errors and offer a source choice', async ({ page }) => {
+  const w = await workspace({
+    '.claude/rules/first-label.md': '---\npaths: 42\n---\nFIRST_SOURCE_GUIDANCE',
+    '.claude/rules/second-label.md': '---\npaths: 42\n---\nSECOND_SOURCE_GUIDANCE',
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: process.execPath, env: { FIRST: 'first-label', SECOND: 'second-label' } } } }),
+  });
+  try {
+    const report = await scan({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+    report.tool.version = '0.3.43';
+    for (const findings of [report.findings, ...report.clients.map(client => client.findings)]) {
+      for (const finding of findings) {
+        delete finding.location.sourceId;
+        for (const location of finding.related) delete location.sourceId;
+      }
+    }
+    const rules = report.sources.filter(source => source.kind === 'rules');
+    const file = test.info().outputPath('legacy-ambiguous-findings.html');
+    await writeFile(file, html(report));
+    await page.context().setOffline(true);
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      for (const [index, source] of rules.entries()) {
+        await page.goto(pathToFileURL(file).href + '#view=findings');
+        await page.locator('#severity').selectOption('error');
+        await expect(page.locator('#findings-list .finding')).toHaveCount(2);
+        await page.locator('#findings-list .finding').nth(index).click();
+        await page.locator('#detail-body').getByRole('button', { name: 'Inspect source →', exact: true }).click();
+        await expect(page.locator('#detail-title')).toHaveText('Choose a source');
+        await expect(page.locator('#detail-body .source-link')).toHaveCount(2);
+        await expect(page.locator('#detail-body')).toContainText('FIRST_SOURCE_GUIDANCE');
+        await expect(page.locator('#detail-body')).toContainText('SECOND_SOURCE_GUIDANCE');
+        expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+        await page.screenshot({ path: test.info().outputPath(`legacy-source-choice-${viewport.width}-${index}.png`), fullPage: true });
+        const choice = page.getByRole('button', { name: `Source ${source.id}`, exact: true });
+        await choice.focus();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('#detail-dialog')).not.toBeVisible();
+        await expect(page.locator('#instructions')).toContainText(source.preview!.split('\n').at(-1)!);
+        await expect(page.locator('.code-line.highlight .line-number')).toHaveText('2');
+        expect(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('sourceId')).toBe(source.id);
+        await page.reload();
+        await expect(page.locator('#instructions')).toContainText(source.preview!.split('\n').at(-1)!);
+      }
+    }
+  } finally { await page.context().setOffline(false); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('source line links survive refresh and discard unavailable sources and invalid line numbers', async ({ page }) => {
   const w = await workspace({ 'CLAUDE.md': 'First line.\nSecond line.\nThird line.', '.claude/settings.json': '{\n"model":"fixture-model"\n}' });
   const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });

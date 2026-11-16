@@ -35,6 +35,27 @@ export function locate(s: Source, key?: string): Location {
   if (key) { let p = key; while (p) { if (s.lines[p]) { line = s.lines[p]; break; } p = p.includes('.') ? p.slice(0, p.lastIndexOf('.')) : ''; } }
   return { path: s.path, line, column: 1, ...(key ? { key } : {}) };
 }
+/** Retain source identity before a path transformation makes distinct files indistinguishable. */
+export function sourceLocationResolver(sources: { id: string; path: string }[], formatPath: (path: string) => string): (location: Location) => Location {
+  const originals = new Map<string, Set<string>>();
+  const formatted = new Map<string, Set<string>>();
+  const paths = new Map<string, string>();
+  for (const source of sources) {
+    const output = paths.get(source.path) ?? formatPath(source.path);
+    paths.set(source.path, output);
+    const originalIds = originals.get(source.path) ?? new Set<string>();
+    originalIds.add(source.id);
+    originals.set(source.path, originalIds);
+    const formattedIds = formatted.get(output) ?? new Set<string>();
+    formattedIds.add(source.id);
+    formatted.set(output, formattedIds);
+  }
+  return location => {
+    const ids = originals.get(location.path);
+    if (location.sourceId || ids?.size !== 1 || (formatted.get(paths.get(location.path)!)?.size ?? 0) < 2) return location;
+    return { ...location, sourceId: ids.values().next().value! };
+  };
+}
 export function finding(ruleId: string, severity: Severity, location: Location, message: string, why: string, suggestion: string, client?: ClientId, related: Location[] = []): Finding {
   return { id: hash(`${ruleId}:${client ?? ''}:${location.path}:${location.line}:${location.column}:${location.key ?? ''}:${message}`), ruleId, severity, client, message, location, related, why, suggestion };
 }

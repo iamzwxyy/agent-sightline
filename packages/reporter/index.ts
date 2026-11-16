@@ -4,7 +4,8 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import type { Extension, Finding, Report, Severity } from '../core/types.js';
 import { CLIENTS } from '../core/types.js';
-import { redact, redactText } from '../core/redact.js';
+import { redact, redactText, redactScanReport } from '../core/redact.js';
+import { sourceLocationResolver } from '../core/utils.js';
 export function json(report: Report): string { return JSON.stringify(redact(report), null, 2) + '\n'; }
 export function filter(report: Report, severity?: Severity): Report {
   const levels = { error: 0, warn: 1, info: 2 };
@@ -22,8 +23,15 @@ export function terminal(report: Report, mode = 'scan'): string {
     ...extension.origins?.map(origin => `    ${origin.key} ← ${origin.location.path}:${origin.location.line}`) ?? [],
   ];
   const grouped = new Map<string, { item: Finding; clients: string[] }>();
+  const sourcePaths = new Map<string, Set<string>>();
+  for (const source of report.sources) {
+    const ids = sourcePaths.get(source.path) ?? new Set<string>();
+    ids.add(source.id);
+    sourcePaths.set(source.path, ids);
+  }
   for (const finding of report.findings) {
-    const key = JSON.stringify([finding.ruleId, finding.severity, finding.message, finding.location, finding.why, finding.suggestion, finding.related]);
+    const ambiguous = [finding.location, ...finding.related].some(location => !location.sourceId && (sourcePaths.get(location.path)?.size ?? 0) > 1);
+    const key = JSON.stringify([finding.ruleId, finding.severity, finding.message, finding.location, finding.why, finding.suggestion, finding.related, ambiguous ? finding.id : null]);
     let group = grouped.get(key);
     if (!group) {
       group = { item: finding, clients: [] };
@@ -80,10 +88,10 @@ export function terminal(report: Report, mode = 'scan'): string {
   }
   const findings = mode === 'scan' ? groups.slice(0, 12).map(group => ({ ...group.item, clientLabel: group.clients.join(', ') })) : report.findings.map(f => ({ ...f, clientLabel: f.client }));
   for (const finding of findings) {
-    lines.push(`${finding.severity.toUpperCase().padEnd(5)} ${finding.message}${finding.clientLabel ? ` [${finding.clientLabel}]` : ''}`, `      ${finding.location.path}:${finding.location.line}:${finding.location.column} · ${finding.ruleId}`);
+    lines.push(`${finding.severity.toUpperCase().padEnd(5)} ${finding.message}${finding.clientLabel ? ` [${finding.clientLabel}]` : ''}`, `      ${finding.location.path}:${finding.location.line}:${finding.location.column}${finding.location.sourceId ? ` · source ${finding.location.sourceId}` : ''} · ${finding.ruleId}`);
     const related = new Map(finding.related.map(location => [JSON.stringify(location), location]));
     related.delete(JSON.stringify(finding.location));
-    for (const location of related.values()) lines.push(`      Related ${location.path}:${location.line}:${location.column}`);
+    for (const location of related.values()) lines.push(`      Related ${location.path}:${location.line}:${location.column}${location.sourceId ? ` · source ${location.sourceId}` : ''}`);
     lines.push(`      ${finding.why}`, `      Next: ${finding.suggestion}`, '');
   }
   if (!report.findings.length && report.discovery?.complete !== false) {
@@ -150,7 +158,8 @@ export function portable(report: Report): Report {
     }
     return value;
   };
-  const result = walk(data) as Report;
+  const identified = redactScanReport(data, value => value, new Set(), new Map(), sourceLocationResolver(data.sources, scrub));
+  const result = walk(identified) as Report;
   result.repository = '<repo>';
   return result;
 }

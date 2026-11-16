@@ -16,6 +16,7 @@ try {
     await page.screenshot({ path: 'website/public/images/instructions.png' });
     await page.screenshot({ path: 'docs/assets/inspector.png' });
     await page.locator('#compare-tab').click();
+    await page.locator('.comparison-character-change').first().waitFor();
     await page.screenshot({ path: 'website/public/images/compare.png' });
     await page.locator('#findings-tab').click();
     await page.locator('#findings-list .finding').filter({ hasText: 'Imported instruction file does not exist' }).first().click();

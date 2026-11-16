@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.44 — 2026-11-16
+
+* Retain an opaque source reference when private-value redaction or portable path replacement gives different files the same displayed path. Findings, related locations, settings, extension origins and comparison links carry the reference.
+* Keep independent findings and terminal error counts for same-path sources. Display source references in finding locations and source details.
+* Open the referenced source and preserve its selection and highlighted line through refresh, reload, browser history, export and offline re-export, including after another same-path source is discovered.
+* Offer a source chooser for ambiguous locations captured in earlier reports. A fresh scan supplies the references needed for direct source navigation.
+
 ## 0.3.43 — 2026-11-16
 
 * Highlight word replacements and fine-grained character changes within similar words to locate command, path and text differences.

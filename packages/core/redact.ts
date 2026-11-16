@@ -1,4 +1,5 @@
 import type { Finding, Location, Report, Source } from './types.js';
+import { sourceLocationResolver } from './utils.js';
 
 const sensitiveKey = /(?:secret|token|password|passwd|api[_-]?key|cookie|authorization|credential|private[_-]?key|client[_-]?secret)/i;
 const privateMappings: ReadonlySet<string> = new Set(['env', 'headers', 'http_headers']);
@@ -66,7 +67,7 @@ export function redactSourcePreview(source: Source, scrub: ReturnType<typeof cre
 }
 
 /** Apply captured private values to scan payloads while retaining engine-generated report structure. */
-export function redactScanReport(report: Report, scrub: ReturnType<typeof createRedactor>, privateSettings: ReadonlySet<string>, privateSources: ReadonlyMap<string, ReturnType<typeof createRedactor>> = new Map()): Report {
+export function redactScanReport(report: Report, scrub: ReturnType<typeof createRedactor>, privateSettings: ReadonlySet<string>, privateSources: ReadonlyMap<string, ReturnType<typeof createRedactor>> = new Map(), resolveLocation = sourceLocationResolver(report.sources, scrub)): Report {
   const sourced = <T>(value: T, paths: string[]): T => {
     let result = scrub(value);
     const scrubbers = new Set(paths.map(path => privateSources.get(path)));
@@ -74,7 +75,7 @@ export function redactScanReport(report: Report, scrub: ReturnType<typeof create
     return result;
   };
   const location = (value: Location): Location => ({
-    ...value, path: scrub(value.path), ...(value.key === undefined ? {} : { key: sourced(value.key, [value.path]) }),
+    ...resolveLocation(value), path: scrub(value.path), ...(value.key === undefined ? {} : { key: sourced(value.key, [value.path]) }),
   });
   const finding = (value: Finding): Finding => {
     const paths = [value.location, ...value.related].map(origin => origin.path);
