@@ -254,6 +254,9 @@ button.stat:hover { background: #fafbf8; }
 .comparison-line.removed .comparison-line-marker { color: #90382d; }
 .comparison-line.added .comparison-line-marker { color: #346048; }
 .comparison-line-text { padding: 2px 12px 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; min-width: 0; }
+.comparison-character-change { color: inherit; text-decoration: underline; text-underline-offset: 2px; border-radius: 2px; }
+.comparison-line.removed .comparison-character-change { background: #f1c7be; }
+.comparison-line.added .comparison-character-change { background: #c8dfcc; }
 .line-ending-note { display: block; font: 11px/1.8 var(--sans); color: var(--muted); }
 .line-comparison-more { margin-top: 12px; min-height: 44px; }
 @media (max-width: 760px) {

@@ -37,6 +37,8 @@
   let targetItems = [];
   let targetIndex = -1;
   let lineComparison;
+  const graphemes = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+  const words = graphemes ? new Intl.Segmenter(undefined, { granularity: 'word' }) : null;
   const $ = id => document.getElementById(id);
   function updateHeaderHeights() {
     document.documentElement.style.setProperty('--workspace-header-height', `${$('workspace-header').getBoundingClientRect().height}px`);
@@ -761,6 +763,49 @@
     if (!text) return 0;
     return text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
   }
+  function alignReplacement(removed, added, budget) {
+    if (removed.inlineLines !== undefined) return removed.inlineLines !== null;
+    removed.inlineLines = null;
+    added.inlineLines = null;
+    if (!graphemes || removed.value.length + added.value.length > 16000 || budget <= 0) return false;
+    const deadline = window.performance.now() + budget;
+    const changes = window.Diff.diffArrays(
+      Array.from(words.segment(removed.value), part => part.segment),
+      Array.from(words.segment(added.value), part => part.segment),
+      { timeout: budget },
+    );
+    if (!changes) return false;
+    const refined = [];
+    for (let index = 0; index < changes.length; index++) {
+      const part = changes[index];
+      const next = changes[index + 1];
+      const remaining = deadline - window.performance.now();
+      if (part.removed && next?.added && part.value.length === 1 && next.value.length === 1 && remaining > 0) {
+        const left = Array.from(graphemes.segment(part.value[0]), part => part.segment);
+        const right = Array.from(graphemes.segment(next.value[0]), part => part.segment);
+        const detail = window.Diff.diffArrays(left, right, { timeout: remaining });
+        const shared = detail?.filter(part => !part.added && !part.removed).reduce((count, part) => count + part.count, 0) ?? 0;
+        if (detail && shared >= Math.max(left.length, right.length) / 2) {
+          refined.push(...detail);
+          index++;
+          continue;
+        }
+      }
+      refined.push(part);
+    }
+    for (const [change, excluded] of [[removed, 'added'], [added, 'removed']]) {
+      const lines = [[]];
+      for (const part of refined) {
+        if (part[excluded]) continue;
+        for (const [index, text] of part.value.join('').split('\n').entries()) {
+          if (index) lines.push([]);
+          if (text) lines.at(-1).push({ text, changed: Boolean(part.added || part.removed) });
+        }
+      }
+      change.inlineLines = lines;
+    }
+    return true;
+  }
   function renderLineRows(comparison) {
     const { left, right, changes } = comparison;
     const removed = changes.filter(change => change.removed).reduce((total, change) => total + change.count, 0);
@@ -771,9 +816,16 @@
     const rows = [];
     let leftLine = 1;
     let rightLine = 1;
-    for (const change of changes) {
+    let coarseCharacters = false;
+    const characterDeadline = window.performance.now() + 40;
+    for (const [index, change] of changes.entries()) {
+      const next = changes[index + 1];
+      if (!comparison.coarse && change.removed && next?.added) {
+        if (!alignReplacement(change, next, characterDeadline - window.performance.now())) coarseCharacters = true;
+      }
       const unchanged = !change.added && !change.removed;
       if (unchanged && !showUnchanged) { leftLine += change.count; rightLine += change.count; continue; }
+      let lineIndex = 0;
       for (const match of change.value.matchAll(/[^\n]*\n|[^\n]+$/g)) {
         if (rows.length >= state.lineLimit) break;
         const text = match[0];
@@ -784,7 +836,13 @@
         const marker = node('span', change.removed ? '−' : change.added ? '+' : ' ', 'comparison-line-marker');
         [leftNumber, rightNumber, marker].forEach(element => element.setAttribute('aria-hidden', 'true'));
         const label = change.removed ? `Removal from ${names[left.client]}, effective line ${leftLine}. ` : change.added ? `Addition in ${names[right.client]}, effective line ${rightLine}. ` : `${names[left.client]} line ${leftLine}, ${names[right.client]} line ${rightLine}. `;
-        const code = node('code', text.endsWith('\n') ? text.slice(0, -1) : text, 'comparison-line-text');
+        const code = node('code', undefined, 'comparison-line-text');
+        const content = node('span', undefined, 'comparison-line-content');
+        const characters = change.inlineLines?.[lineIndex++];
+        if (characters) {
+          for (const part of characters) content.append(part.changed ? node('mark', part.text, 'comparison-character-change') : document.createTextNode(part.text));
+        } else content.textContent = text.endsWith('\n') ? text.slice(0, -1) : text;
+        code.append(content);
         if (!text.endsWith('\n')) code.append(node('span', 'No newline at end of text', 'line-ending-note'));
         row.append(leftNumber, rightNumber, marker, node('span', label, 'sr-only'), code);
         rows.push(row);
@@ -795,6 +853,7 @@
     }
     const content = [];
     if (comparison.coarse) content.push(node('p', 'Alignment time limit reached. Complete text replacements are shown.', 'code-note'));
+    else if (coarseCharacters) content.push(node('p', 'Line-level highlighting is used when character alignment reaches a browser or calculation limit.', 'code-note'));
     if (rows.length) {
       const legend = node('div', undefined, 'line-comparison-legend');
       legend.append(node('span', `− ${names[left.client]}`, 'removed'), node('span', `+ ${names[right.client]}`, 'added'));

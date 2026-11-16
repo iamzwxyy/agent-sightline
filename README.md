@@ -7,18 +7,18 @@ One file. Several agents. Different instructions. Sightline shows every discover
 Open a terminal in your project folder and run one command to inspect your repository in the browser.
 
 ```sh
-npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.42/agent-sightline-0.3.42.tgz ui
+npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.43/agent-sightline-0.3.43.tgz ui
 ```
 
 For repeated use, install the CLI. The bundled demo provides a sample workspace with intentional configuration problems.
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.42/agent-sightline-0.3.42.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.43/agent-sightline-0.3.43.tgz
 agent-sightline demo --clients codex,claude,copilot --severity warn
 agent-sightline demo --ui
 ```
 
-Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.42.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
+Node.js 22+. Download and run the package from the public GitHub Release. The website also hosts package downloads. Runtime dependencies are bundled, so a downloaded package installs with `npm install -g --offline ./agent-sightline-0.3.43.tgz`. Public npm-registry publication is pending. [Explore the browser demo](https://iamzwxyy.github.io/agent-sightline/demo/) or read the [installation guide](https://iamzwxyy.github.io/agent-sightline/guide.html).
 
 ![Actual bundled-demo terminal output (excerpt)](docs/assets/terminal.png)
 
@@ -68,7 +68,7 @@ Read effective text shows the exact accumulated instructions with clickable sour
 
 MCP extension details link each configured field to its contributing file and line. A Codex server can inherit its command from user settings and its arguments from a project layer. Findings and terminal explanations retain those separate origins. Terminal explanations and comparisons include each extension’s loading reason.
 
-Line-by-line comparison aligns two clients’ redacted effective text. It marks additions and removals in the alignment and can show unchanged context. Select either client, inspect its sources and preserve the pair through refresh and offline sharing. Line numbers refer to the displayed effective text. The first 200 comparison lines render initially, with more available on demand.
+Line-by-line comparison aligns two clients’ redacted effective text. It marks additions and removals, highlights word replacements and precise character changes within similar words and can show unchanged context. Emoji and combining characters stay together. Select either client, inspect its sources and preserve the pair through refresh and offline sharing. Line numbers refer to the displayed effective text. The first 200 comparison lines render initially, with more available on demand. Large or complex replacements retain complete line-level highlighting.
 
 Instruction coverage includes structured files imported as context. It shows each source's loading states across clients, with configuration roles for clients reading the file as settings. Select a state with multiple contributions to inspect every occurrence, its source line and loading reason. Differences only includes later repeated contributions and mixed states.
 
@@ -127,7 +127,7 @@ npm run check
 npx playwright install chromium
 npm run test:web
 npm pack
-npm install -g ./agent-sightline-0.3.42.tgz
+npm install -g ./agent-sightline-0.3.43.tgz
 agent-sightline demo
 ```
 
@@ -149,6 +149,6 @@ Sightline diagnoses configuration; it does not synchronize it or switch API prov
 
 Static reports exclude session toggles, other command-line overrides, account/managed-cloud policy and bundled/plugin state unless expressly supported by an adapter. Experimental adapters describe their gaps rather than claiming complete resolution. Sightline inspects files up to 2 MiB each. Discovery defaults to 50,000 repository entries and 4,000 matching files per user configuration root. Adjust these budgets with `--max-entries` and `--max-user-files`. Reports retain an incomplete-discovery status when limits or inaccessible locations leave sources uninspected, including filtered and exported reports.
 
-The next increments toward v1.0 are broader real-client conformance coverage, plugin/managed-policy provenance and character-level highlighting inside changed lines. See [architecture](docs/architecture.md), [adapter guide](docs/adapters.md), [contributing](CONTRIBUTING.md), [release procedure](docs/release.md), [30-second demo](docs/demo.md), and [launch drafts](docs/launch-drafts.md).
+The next increments toward v1.0 are broader real-client conformance coverage and plugin/managed-policy provenance. See [architecture](docs/architecture.md), [adapter guide](docs/adapters.md), [contributing](CONTRIBUTING.md), [release procedure](docs/release.md), [30-second demo](docs/demo.md), and [launch drafts](docs/launch-drafts.md).
 
 MIT. Codex schema attribution: [third-party notices](docs/third-party.md).

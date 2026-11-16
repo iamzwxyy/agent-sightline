@@ -330,6 +330,106 @@ test('workspace trust remains selected when private text matches the trust name'
   } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 
+test('line comparison highlights complete graphemes and preserves redacted text online and offline', async ({ page }) => {
+  const left = '# Project\nTitle: Payment override.\nRun npm test in src/payments/v1/refund.ts before committing.\nText: cafe\u0301 👩🏽‍💻 金额.\nWhitespace:\tkeep  two spaces. \nSafe <b>left</b>.\ninline-private-left';
+  const right = '# Project\nTitle: Claude project guidance.\nRun pnpm test in src/payments/v2/refund.ts before committing.\nText: cafe\u0300 👨🏽‍💻 金額.\nWhitespace: keep two spaces.\nSafe <b>right</b>.\ninline-private-right';
+  const w = await workspace({
+    'AGENTS.md': left, 'CLAUDE.md': right,
+    '.mcp.json': JSON.stringify({ mcpServers: { fixture: { command: 'node', env: { LEFT: 'inline-private-left', RIGHT: 'inline-private-right' } } } }),
+  });
+  const options: ScanOptions = { ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' };
+  const baseline = await scan(options);
+  const server = await serve(options);
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const check = async () => {
+    await expect(page.locator('#line-comparison-summary')).toContainText('removed');
+    const removed = await page.locator('.comparison-line.removed .comparison-character-change').allTextContents();
+    const added = await page.locator('.comparison-line.added .comparison-character-change').allTextContents();
+    for (const text of ['Payment', 'override', '1', 'e\u0301', '👩🏽‍💻', '额']) expect(removed).toContain(text);
+    for (const text of ['Claude', 'project guidance', 'p', '2', 'e\u0300', '👨🏽‍💻', '額']) expect(added).toContain(text);
+    await page.locator('#show-unchanged-lines').check();
+    const reconstructed = await page.locator('.comparison-line').evaluateAll(rows => {
+      let left = '', right = '';
+      for (const row of rows) {
+        const code = row.querySelector('.comparison-line-text')!;
+        const text = (code.firstChild?.textContent ?? '') + (code.querySelector('.line-ending-note') ? '' : '\n');
+        if (!row.classList.contains('added')) left += text;
+        if (!row.classList.contains('removed')) right += text;
+      }
+      return { left, right };
+    });
+    expect(reconstructed).toEqual({ left: baseline.clients[0].instructions, right: baseline.clients[1].instructions });
+    await expect(page.locator('.comparison-line-text b')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  };
+  const exportReport = async (name: string) => {
+    const downloading = page.waitForEvent('download');
+    await page.locator('#export').click();
+    const file = test.info().outputPath(name);
+    await (await downloading).saveAs(file);
+    const exported = await readFile(file, 'utf8');
+    for (const privateText of ['inline-private-left', 'inline-private-right', w.repo, w.home]) expect(exported).not.toContain(privateText);
+    return pathToFileURL(file).href;
+  };
+  try {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.context().setOffline(false);
+      await page.setViewportSize(viewport);
+      await page.goto(server.url + '#view=compare');
+      await check();
+      expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+      await page.locator('#line-comparison').screenshot({ path: test.info().outputPath(`inline-comparison-${viewport.width}.png`) });
+      const first = await exportReport(`inline-comparison-${viewport.width}.html`);
+      await page.context().setOffline(true);
+      await page.goto(first);
+      await check();
+      await page.reload();
+      await check();
+      const second = await exportReport(`reshared-inline-comparison-${viewport.width}.html`);
+      await page.goto(second);
+      await check();
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('line comparison keeps complete rows when character alignment is bounded or unavailable', async ({ page }) => {
+  const w = await workspace({ 'AGENTS.md': 'Use API v1.\nKeep context.', 'CLAUDE.md': 'Use API v2.\nKeep context.' });
+  const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+  try {
+    await page.goto(server.url + '#view=compare');
+    await expect(page.locator('.comparison-character-change')).toHaveCount(2);
+    await page.evaluate(() => { (window as any).Diff.diffArrays = () => undefined; });
+    await page.locator('#line-left').selectOption('claude');
+    await expect(page.locator('#line-comparison-result')).toContainText('Line-level highlighting');
+    await expect(page.locator('.comparison-character-change')).toHaveCount(0);
+    await expect(page.locator('.comparison-line.removed .comparison-line-text')).toHaveText('Use API v2.');
+    await expect(page.locator('.comparison-line.added .comparison-line-text')).toHaveText('Use API v1.');
+    const report = await scan({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
+    const file = test.info().outputPath('character-comparison.html');
+    await writeFile(file, html(report));
+    await page.context().setOffline(true);
+    await page.goto(pathToFileURL(file).href + '#view=compare');
+    await expect(page.locator('.comparison-character-change')).toHaveCount(2);
+    const large = structuredClone(report);
+    large.clients[0].instructions = 'Left ' + 'a'.repeat(17000);
+    large.clients[1].instructions = 'Right ' + 'b'.repeat(17000);
+    const largeFile = test.info().outputPath('large-character-comparison.html');
+    await writeFile(largeFile, html(large));
+    await page.goto(pathToFileURL(largeFile).href + '#view=compare');
+    await expect(page.locator('#line-comparison-result')).toContainText('Line-level highlighting');
+    expect(await page.locator('.comparison-line.removed .comparison-line-text').evaluate(code => code.firstChild?.textContent)).toBe(large.clients[0].instructions);
+    expect(await page.locator('.comparison-line.added .comparison-line-text').evaluate(code => code.firstChild?.textContent)).toBe(large.clients[1].instructions);
+    await page.addInitScript(() => { (Intl as any).Segmenter = undefined; });
+    await page.goto(pathToFileURL(file).href + '#view=compare');
+    await expect(page.locator('#line-comparison-result')).toContainText('Line-level highlighting');
+    await expect(page.locator('.comparison-character-change')).toHaveCount(0);
+    await expect(page.locator('.comparison-line.removed .comparison-line-text')).toHaveText('Use API v1.');
+    await expect(page.locator('.comparison-line.added .comparison-line-text')).toHaveText('Use API v2.');
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
 test('line comparison locates a changed instruction and retains context and source navigation online and offline', async ({ page }) => {
   const w = await workspace({
     'AGENTS.md': '# Project\nRun npm test.\nKeep changes focused.',

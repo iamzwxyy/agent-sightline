@@ -1,5 +1,16 @@
 # Release validation
 
+## v0.3.43
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
+
+* Two browser regressions failed before implementation because effective-text replacements had no character highlights. Adjacent replacement blocks now align words and refine similar single-word replacements by Unicode grapheme clusters. Whole-word grouping keeps unrelated text replacements readable, while complete line text is preserved.
+* Desktop and phone journeys verify command prefixes, path versions, combining accents, skin-tone modifiers, joined emoji, Chinese text, tabs, spaces, trailing whitespace, HTML-like text and copied private values. Complete left/right redacted texts are reconstructed from the rendered rows. Live, standalone, reloaded and re-exported reports retain the same markers and text.
+* Bounded and unavailable character alignment retains complete rows. The cases cover a calculation fallback, large replacements and an absent Intl.Segmenter. Existing legacy-report, repeated-line, final-newline, stale-result and pagination flows passed.
+* All 115 Chromium browser cases and four focused WebKit flows passed. Desktop and phone comparison views passed WCAG AA checks and visual review. The 603-case core suite completed with 601 passes and two platform-gated skips. Lint and strict TypeScript passed.
+* Build and empty-cache offline package installation passed. Production dependency audit reported zero vulnerabilities. The standalone example and product captures were regenerated from the application.
+* Local Firefox exited before navigation with a profile-folder startup error. Linux CI exercises Firefox.
+
 ## v0.3.42
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

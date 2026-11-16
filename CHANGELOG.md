@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.43 — 2026-11-16
+
+* Highlight word replacements and fine-grained character changes within similar words to locate command, path and text differences.
+* Keep Unicode grapheme clusters together, including combining accents, skin-tone modifiers and joined emoji. Preserve whitespace, punctuation and redacted text.
+* Render the same character highlights in live, standalone and re-exported reports, including earlier reports with captured effective text.
+* Bound character alignment work and retain complete line-level replacements when the calculation or browser capability limit is reached.
+
 ## 0.3.42 — 2026-11-16
 
 * Preserve the selected target when an unchanged, redacted path is submitted with Inspect or Enter. Retain its starting directory, instruction chain and original whitespace or alias spelling.
