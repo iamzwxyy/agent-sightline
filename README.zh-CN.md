@@ -6,6 +6,8 @@
 
 同一个仓库，Codex、Claude Code 和 GitHub Copilot 可能读取不同的指令、设置与扩展。Sightline 展示配置的加载顺序、生效原因、覆盖关系和来源行，帮助定位配置错误、无效引用与内容截断。
 
+中文官网和完整使用指南涵盖安装、指令溯源、客户端对比与报告分享。[中文官网](https://iamzwxyy.github.io/agent-sightline/zh-CN/) · [中文指南](https://iamzwxyy.github.io/agent-sightline/zh-CN/guide.html)
+
 ## 在项目中直接使用
 
 需要 Node.js 22 或更高版本。在项目目录打开终端，运行下面的命令。

@@ -1,5 +1,15 @@
 # Release validation
 
+## Multilingual website
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
+
+* English, Simplified Chinese and Japanese have independent homepage and complete guide URLs, language switching, canonical metadata, alternate-language links and sitemap entries. Language switching retains the selected guide section when JavaScript is available.
+* Each additional language supplies 216 static messages and 24 runtime messages. The build rejects missing template translations. Commands and inline code match the English guide exactly. The inspector and original diagnostic explanations use English, with that scope stated before opening the demo.
+* Real bundled-example client selection updates localized status and byte-count text, then opens the selected source in the inspector. Cases cover desktop, 390 px and 320 px layouts, keyboard language selection, clipboard denial, focus restoration, paused/reduced motion and JavaScript-disabled navigation.
+* All 128 Chromium flows and six focused WebKit flows passed. Homepage, guide and open language-selector states passed WCAG AA checks. Localized typography, guide spacing and 1200 × 630 sharing images were reviewed from browser captures. Lint and strict TypeScript passed.
+* The project-hosted fixture includes the locale catalogs and verifies both translated routes under `/agent-sightline/`, including assets, language links, installation commands and canonical URLs. Translated downloads match the English page's archive. Production builds select the recorded GitHub release bytes.
+
 ## v0.3.47
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

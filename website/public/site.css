@@ -296,3 +296,29 @@ html.lenis, html.lenis body { height: auto; }
 .lenis.lenis-smooth { scroll-behavior: auto !important; }
 .lenis.lenis-stopped { overflow: clip; }
 .hero a:focus-visible, .hero button:focus-visible, .landing .site-header a:focus-visible { outline-color: #bbd8f2; }
+
+.language-menu { position: relative; flex-shrink: 0; font-size: 13px; }
+.language-menu summary { display: flex; align-items: center; gap: 7px; padding: 8px 4px; cursor: pointer; list-style: none; }
+.language-menu summary::-webkit-details-marker { display: none; }
+.language-menu summary:focus-visible { outline: 2px solid #45687f; outline-offset: 3px; border-radius: 3px; }
+.landing .language-menu summary:focus-visible { outline-color: #c8e4f9; }
+.language-arrow { transform: rotate(90deg); }
+.site-header .language-menu .language-options { position: absolute; right: 0; top: 100%; display: block; min-width: 145px; padding: 6px; border: 1px solid #c4d1da; border-radius: 6px; background: #fff; color: #203d52; box-shadow: 0 8px 24px #153c541c; z-index: 10; }
+.site-header .language-menu .language-options a { display: block; padding: 9px 12px; border-radius: 3px; white-space: nowrap; font-size: 13px; }
+.site-header .language-menu .language-options a:hover, .site-header .language-menu .language-options a[aria-current] { background: #e8f0f5; color: #203d52; }
+.site-header .language-menu .language-options a[aria-current] { font-weight: 600; }
+.site-header .language-menu .language-options a:focus-visible { outline-color: #45687f; }
+html:lang(zh-CN) { --sans: 'Instrument Sans', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }
+html:lang(ja) { --sans: 'Instrument Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, sans-serif; }
+html:lang(zh-CN) h1, html:lang(zh-CN) h2, html:lang(ja) h1, html:lang(ja) h2 { font-family: var(--sans); letter-spacing: -.025em; line-height: 1.35; }
+html:lang(zh-CN) .hero h1, html:lang(ja) .hero h1 { font-size: clamp(28px, 6vw, 80px); font-weight: 500; }
+html:lang(zh-CN) .landing h2, html:lang(ja) .landing h2 { font-size: clamp(29px, 3.2vw, 48px); }
+html:lang(zh-CN) h1 em, html:lang(ja) h1 em { font-family: inherit; font-style: normal; font-weight: inherit; letter-spacing: inherit; }
+.guide-content .button + p { margin-top: 16px; }
+@media (max-width: 700px) {
+  .site-header .nav-download { display: none; }
+  .site-header .language-menu .language-options a { display: block; }
+  .site-header .language-menu { margin-left: 0; }
+  html:lang(zh-CN) .hero h1, html:lang(ja) .hero h1 { font-size: clamp(26px, 7.6vw, 52px); }
+  html:lang(zh-CN) .guide-content h1, html:lang(ja) .guide-content h1 { font-size: 36px; }
+}

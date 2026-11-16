@@ -6,6 +6,8 @@
 
 同じリポジトリでも、Codex、Claude Code、GitHub Copilot が読み込む指示、設定、拡張機能は異なります。Sightline は読み込み順序、適用理由、上書きの関係、元ファイルの行を表示し、設定ミス、参照切れ、指示の切り詰めを調べるためのツールです。
 
+日本語の製品紹介とガイドで、インストール、指示の追跡、クライアントの比較、レポートの共有を確認できます。[公式サイト](https://iamzwxyy.github.io/agent-sightline/ja/) · [日本語ガイド](https://iamzwxyy.github.io/agent-sightline/ja/guide.html)
+
 ## プロジェクトで使う
 
 Node.js 22 以降が必要です。プロジェクトのディレクトリでターミナルを開き、次のコマンドを実行します。

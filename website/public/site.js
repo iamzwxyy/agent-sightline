@@ -1,5 +1,7 @@
 (() => {
   const $ = id => document.getElementById(id);
+  const translations = JSON.parse($('site-translations')?.textContent ?? '{}');
+  const translate = (text, values = {}) => (translations[text] ?? text).replace(/\{(\w+)\}/g, (match, key) => values[key] ?? match);
   const basePath = new URL('.', document.currentScript.src).pathname;
   let report;
   let clientId = 'codex';
@@ -7,7 +9,7 @@
   let toastTimer;
   let copyTrigger;
   const basename = value => value.replace(/\\/g, '/').split('/').pop();
-  const statusNames = { active: 'Loaded', conditional: 'Conditional', shadowed: 'Shadowed', ignored: 'Not loaded', truncated: 'Truncated', invalid: 'Invalid' };
+  const statusNames = Object.fromEntries(Object.entries({ active: 'Loaded', conditional: 'Conditional', shadowed: 'Shadowed', ignored: 'Not loaded', truncated: 'Truncated', invalid: 'Invalid' }).map(([status, label]) => [status, translate(label)]));
   const node = (tag, text, className) => {
     const element = document.createElement(tag);
     if (text !== undefined) element.textContent = text;
@@ -34,6 +36,7 @@
     const sourceButtons = sources.map(source => {
       const button = node('button', undefined, `demo-source${source.path === selected.path ? ' selected' : ''}`);
       button.type = 'button';
+      button.lang = 'en';
       button.dataset.demoSource = source.path;
       button.setAttribute('aria-pressed', String(source.path === selected.path));
       button.title = source.path + ' — ' + source.reason;
@@ -51,25 +54,29 @@
     $('demo-file').textContent = basename(selected.path);
     $('demo-status').textContent = statusNames[selected.status];
     $('demo-status').className = `demo-status${['truncated', 'conditional'].includes(selected.status) ? ' warn' : ''}`;
-    const text = selected.content || report.sources.find(source => source.id === selected.sourceId)?.preview || 'This source contributes no instruction content to this client.';
+    const sourceText = selected.content || report.sources.find(source => source.id === selected.sourceId)?.preview;
+    const text = sourceText || translate('This source contributes no instruction content to this client.');
+    $('demo-code').lang = sourceText ? 'en' : document.documentElement.lang;
     $('demo-code').replaceChildren(...text.split('\n').slice(0, 7).map((line, index) => {
       const row = node('div', undefined, 'demo-code-line');
       row.append(node('span', String(selected.line + index)), node('span', line || ' '));
       return row;
     }));
     const clientNames = { codex: 'Codex', claude: 'Claude Code', copilot: 'Copilot' };
-    $('demo-reason-title').textContent = selected.status === 'truncated' ? `Only ${selected.loadedBytes} of ${selected.bytes} bytes reach ${clientNames[clientId]}.` : selected.status === 'active' ? `This source reaches ${clientNames[clientId]}.` : `This source is ${statusNames[selected.status].toLowerCase()} for ${clientNames[clientId]}.`;
+    const details = { loaded: selected.loadedBytes, total: selected.bytes, client: clientNames[clientId], status: statusNames[selected.status].toLowerCase() };
+    $('demo-reason-title').textContent = selected.status === 'truncated' ? translate('Only {loaded} of {total} bytes reach {client}.', details) : selected.status === 'active' ? translate('This source reaches {client}.', details) : translate('This source is {status} for {client}.', details);
     $('demo-reason').textContent = selected.reason;
+    $('demo-reason').lang = 'en';
     if ($('hero-source')) {
       $('hero-source').textContent = basename(selected.path);
       $('hero-verdict').textContent = selected.status === 'truncated'
-        ? `${selected.loadedBytes} of ${selected.bytes} bytes reach ${clientNames[clientId]}`
-        : `${statusNames[selected.status]} for ${clientNames[clientId]}`;
+        ? translate('{loaded} of {total} bytes reach {client}', details)
+        : translate('{status} for {client}', { ...details, status: statusNames[selected.status] });
     }
     document.dispatchEvent(new window.CustomEvent('sightline:client-change', { detail: { client: clientId } }));
   }
   if ($('demo-sources')) fetch(basePath + 'demo-report.json').then(response => response.json()).then(data => { report = data; renderDemo(); }).catch(() => {
-    $('demo-reason').textContent = 'Open the full bundled demo to inspect source loading and configuration findings.';
+    $('demo-reason').textContent = translate('Open the full bundled demo to inspect source loading and configuration findings.');
   });
   document.querySelectorAll('[data-demo-client], [data-hero-client]').forEach(button => {
     button.onclick = () => {
@@ -94,8 +101,8 @@
       });
       $('workflow-panel').setAttribute('aria-labelledby', button.id);
       $('workflow-image').src = selected.image;
-      $('workflow-image').alt = selected.alt;
-      $('workflow-caption').textContent = selected.caption;
+      $('workflow-image').alt = translate(selected.alt);
+      $('workflow-caption').textContent = translate(selected.caption);
       $('workflow-link').href = selected.link;
     };
   });
@@ -103,7 +110,7 @@
     button.onclick = async () => {
       try {
         await navigator.clipboard.writeText(button.dataset.copy);
-        $('site-toast').textContent = 'Copied to clipboard'; $('site-toast').hidden = false;
+        $('site-toast').textContent = translate('Copied to clipboard'); $('site-toast').hidden = false;
         clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('site-toast').hidden = true; }, 2000);
       } catch {
         copyTrigger = button;
@@ -116,6 +123,12 @@
   });
   $('close-copy-command').onclick = () => $('copy-command-dialog').close();
   $('copy-command-dialog').addEventListener('close', () => copyTrigger?.focus({ preventScroll: true }));
+  function updateLanguageLinks() {
+    const fragment = document.getElementById(location.hash.slice(1)) ? location.hash : '';
+    document.querySelectorAll('[data-language]').forEach(link => { link.hash = fragment; });
+  }
+  updateLanguageLinks();
+  window.addEventListener('hashchange', updateLanguageLinks);
   document.querySelectorAll('[role="tablist"]').forEach(list => {
     list.addEventListener('keydown', event => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;

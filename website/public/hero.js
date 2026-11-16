@@ -4,6 +4,8 @@ import Lenis from 'lenis';
 
 const hero = document.querySelector('.hero');
 if (hero) {
+  const translations = JSON.parse(document.getElementById('site-translations')?.textContent ?? '{}');
+  const translate = text => translations[text] ?? text;
   gsap.registerPlugin(ScrollTrigger);
   const toggle = document.getElementById('motion-toggle');
   const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -32,8 +34,8 @@ if (hero) {
     hero.dataset.rendering = field && visible && focused && !document.hidden && !paused && !reduced ? 'running' : 'suspended';
     toggle.hidden = !field || reduced;
     toggle.setAttribute('aria-pressed', String(paused));
-    toggle.setAttribute('aria-label', paused ? 'Play animation' : 'Pause animation');
-    toggle.querySelector('.motion-label').textContent = paused ? 'Play motion' : 'Pause motion';
+    toggle.setAttribute('aria-label', translate(paused ? 'Play animation' : 'Pause animation'));
+    toggle.querySelector('.motion-label').textContent = translate(paused ? 'Play motion' : 'Pause motion');
     toggle.querySelector('img').src = new URL(paused ? 'play-linear.svg' : 'pause-linear.svg', iconBase).href;
     lastFrame = 0;
   }

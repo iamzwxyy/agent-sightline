@@ -18,7 +18,7 @@ test('project-hosted website loads assets, demo, guide and the exact released pa
     // Keep the published package fixture independent of the development version.
     await mkdir(path.join(directory, 'website'), { recursive: true });
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ name: 'agent-sightline', version: '0.1.2' }));
-    for (const name of ['website/public', 'website/.openai', 'examples/broken-agent-config', 'LICENSE']) await cp(name, path.join(directory, name), { recursive: true });
+    for (const name of ['website/public', 'website/locales', 'website/.openai', 'examples/broken-agent-config', 'LICENSE']) await cp(name, path.join(directory, name), { recursive: true });
     const releases = JSON.parse(await readFile('website/releases.json', 'utf8'));
     await writeFile(path.join(directory, 'website/releases.json'), JSON.stringify(releases.filter((release: { filename: string }) => release.filename === 'agent-sightline-0.1.2.tgz')));
     execFileSync(process.execPath, [path.resolve('scripts/build-website.mjs'), '--site-url', publicUrl, '--released-package'], { cwd: directory, stdio: 'pipe' });
@@ -67,6 +67,19 @@ test('project-hosted website loads assets, demo, guide and the exact released pa
     await expect(page.locator('#mode-label')).toHaveText('Report snapshot');
     await page.locator('#compare-tab').click();
     await expect(page.locator('#comparison-matrix')).toContainText('AGENTS.override.md');
+    for (const language of ['zh-CN', 'ja']) {
+      await page.goto(server.url + prefix + language + '/#product');
+      await expect(page.locator('html')).toHaveAttribute('lang', language);
+      await expect(page.locator('#demo-sources button').first()).toBeVisible();
+      await expect(page.locator('.demo-bottom [data-inspector-link]')).toHaveAttribute('href', new RegExp('^' + prefix + 'demo/#'));
+      await page.goto(server.url + prefix + language + '/guide.html#reports');
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', publicUrl + language + '/guide.html');
+      await expect(page.locator('#install button[data-copy]').first()).toHaveAttribute('data-copy', command);
+      await page.locator('.language-menu summary').click();
+      await expect(page.locator('.language-menu a[hreflang="en"]')).toHaveAttribute('href', server.url + prefix + 'guide.html#reports');
+      await page.locator('.language-menu a[hreflang="en"]').click();
+      await expect(page).toHaveURL(server.url + prefix + 'guide.html#reports');
+    }
     const robots = await page.request.get(server.url + prefix + 'robots.txt');
     expect(await robots.text()).toContain('Sitemap: ' + publicUrl + 'sitemap.xml');
     const sitemap = await page.request.get(server.url + prefix + 'sitemap.xml');
