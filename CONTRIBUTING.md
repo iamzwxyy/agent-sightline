@@ -14,7 +14,7 @@ npm run typecheck
 
 Choose a bounded proposal with code entry points and acceptance checks. [Starter work](docs/good-first-issues.md)
 
-The Chinese quick start explains installation, inspection and sharing. [简体中文](README.zh-CN.md)
+The Chinese and Japanese quick starts explain installation, inspection and sharing. [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
 ## Verify the area you change
 

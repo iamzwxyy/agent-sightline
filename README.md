@@ -1,6 +1,6 @@
 # Agent Sightline
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
 
 **See what your coding agent actually sees.**
 

@@ -9,10 +9,13 @@ test('homepage and guide copy the published one-command repository inspection', 
   const server = await serveStatic('website/dist');
   const command = `npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v${VERSION}/agent-sightline-${VERSION}.tgz ui`;
   try {
-    const readmes = await Promise.all(['README.md', 'README.zh-CN.md'].map(filename => readFile(filename, 'utf8')));
+    const readmeFiles = ['README.md', 'README.zh-CN.md', 'README.ja.md'];
+    const readmes = await Promise.all(readmeFiles.map(filename => readFile(filename, 'utf8')));
     for (const readme of readmes) {
       expect(readme).toContain(command);
       expect(readme).toContain(command.replace('npx --yes', 'npm install -g').replace(/ ui$/, ''));
+      expect(readme).toContain(`npm install -g --offline ./agent-sightline-${VERSION}.tgz`);
+      for (const filename of readmeFiles) expect(readme).toContain(`](${filename})`);
     }
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'clipboard', { value: {
