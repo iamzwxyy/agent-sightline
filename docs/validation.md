@@ -12,6 +12,8 @@ Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
 * Build and empty-cache offline package installation passed. Production dependency audit reported zero vulnerabilities. The standalone example and product captures were regenerated from the application.
 * Local Firefox exited before navigation with a profile-folder startup error. Linux CI exercises Firefox.
 
+* Linux, macOS and Windows verification passed for the released source, including Linux Firefox. Anonymous download matched SHA-256 `a535c7719394d9169785aa1556a883f865b2d298dc015d7fcc7798ae9732a2c7` and its 1,584,463-byte size. The exact public archive passed empty-cache offline installation, desktop/phone word and grapheme highlights, complete text reconstruction, redacted target/profile submissions, trust changes, validation recovery and offline export/re-export with zero page errors. Fresh-cache public execution returned 0.3.43. [Verified release source](https://github.com/iamzwxyy/agent-sightline/actions/runs/43793839637)
+
 ## v0.3.42
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
