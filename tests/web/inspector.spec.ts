@@ -346,8 +346,9 @@ test('line comparison highlights complete graphemes and preserves redacted text 
     await expect(page.locator('#line-comparison-summary')).toContainText('removed');
     const removed = await page.locator('.comparison-line.removed .comparison-character-change').allTextContents();
     const added = await page.locator('.comparison-line.added .comparison-character-change').allTextContents();
-    for (const text of ['Payment', 'override', '1', 'e\u0301', '👩🏽‍💻', '额']) expect(removed).toContain(text);
-    for (const text of ['Claude', 'project guidance', 'p', '2', 'e\u0300', '👨🏽‍💻', '額']) expect(added).toContain(text);
+    const alignmentNotes = (await page.locator('#line-comparison-result .code-note').allTextContents()).join(' ');
+    for (const text of ['Payment', 'override', '1', 'e\u0301', '👩🏽‍💻', '额']) expect(removed, alignmentNotes).toContain(text);
+    for (const text of ['Claude', 'project guidance', 'p', '2', 'e\u0300', '👨🏽‍💻', '額']) expect(added, alignmentNotes).toContain(text);
     await page.locator('#show-unchanged-lines').check();
     const reconstructed = await page.locator('.comparison-line').evaluateAll(rows => {
       let left = '', right = '';
@@ -398,6 +399,10 @@ test('line comparison keeps complete rows when character alignment is bounded or
   const w = await workspace({ 'AGENTS.md': 'Use API v1.\nKeep context.', 'CLAUDE.md': 'Use API v2.\nKeep context.' });
   const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
   try {
+    await page.addInitScript(() => {
+      let elapsed = 0;
+      Object.defineProperty(performance, 'now', { configurable: true, value: () => elapsed += 1000 });
+    });
     await page.goto(server.url + '#view=compare');
     await expect(page.locator('.comparison-character-change')).toHaveCount(2);
     await page.evaluate(() => { (window as any).Diff.diffArrays = () => undefined; });
@@ -412,15 +417,20 @@ test('line comparison keeps complete rows when character alignment is bounded or
     await page.context().setOffline(true);
     await page.goto(pathToFileURL(file).href + '#view=compare');
     await expect(page.locator('.comparison-character-change')).toHaveCount(2);
-    const large = structuredClone(report);
-    large.clients[0].instructions = 'Left ' + 'a'.repeat(17000);
-    large.clients[1].instructions = 'Right ' + 'b'.repeat(17000);
-    const largeFile = test.info().outputPath('large-character-comparison.html');
-    await writeFile(largeFile, html(large));
-    await page.goto(pathToFileURL(largeFile).href + '#view=compare');
-    await expect(page.locator('#line-comparison-result')).toContainText('Line-level highlighting');
-    expect(await page.locator('.comparison-line.removed .comparison-line-text').evaluate(code => code.firstChild?.textContent)).toBe(large.clients[0].instructions);
-    expect(await page.locator('.comparison-line.added .comparison-line-text').evaluate(code => code.firstChild?.textContent)).toBe(large.clients[1].instructions);
+    for (const [label, left, right] of [
+      ['large', 'Left ' + 'a'.repeat(17000), 'Right ' + 'b'.repeat(17000)],
+      ['complex', Array.from({ length: 300 }, (_, index) => `left${index}`).join(' '), Array.from({ length: 300 }, (_, index) => `right${index}`).join(' ')],
+    ]) {
+      const bounded = structuredClone(report);
+      bounded.clients[0].instructions = left;
+      bounded.clients[1].instructions = right;
+      const boundedFile = test.info().outputPath(`${label}-character-comparison.html`);
+      await writeFile(boundedFile, html(bounded));
+      await page.goto(pathToFileURL(boundedFile).href + '#view=compare');
+      await expect(page.locator('#line-comparison-result')).toContainText('Line-level highlighting');
+      expect(await page.locator('.comparison-line.removed .comparison-line-text').evaluate(code => code.firstChild?.textContent)).toBe(left);
+      expect(await page.locator('.comparison-line.added .comparison-line-text').evaluate(code => code.firstChild?.textContent)).toBe(right);
+    }
     await page.addInitScript(() => { (Intl as any).Segmenter = undefined; });
     await page.goto(pathToFileURL(file).href + '#view=compare');
     await expect(page.locator('#line-comparison-result')).toContainText('Line-level highlighting');

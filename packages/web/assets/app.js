@@ -763,27 +763,27 @@
     if (!text) return 0;
     return text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
   }
-  function alignReplacement(removed, added, budget) {
+  function alignReplacement(removed, added, work) {
     if (removed.inlineLines !== undefined) return removed.inlineLines !== null;
     removed.inlineLines = null;
     added.inlineLines = null;
-    if (!graphemes || removed.value.length + added.value.length > 16000 || budget <= 0) return false;
-    const deadline = window.performance.now() + budget;
+    const codeUnits = removed.value.length + added.value.length;
+    if (!graphemes || codeUnits > work.remainingCodeUnits) return false;
+    work.remainingCodeUnits -= codeUnits;
     const changes = window.Diff.diffArrays(
       Array.from(words.segment(removed.value), part => part.segment),
       Array.from(words.segment(added.value), part => part.segment),
-      { timeout: budget },
+      { maxEditLength: 200 },
     );
     if (!changes) return false;
     const refined = [];
     for (let index = 0; index < changes.length; index++) {
       const part = changes[index];
       const next = changes[index + 1];
-      const remaining = deadline - window.performance.now();
-      if (part.removed && next?.added && part.value.length === 1 && next.value.length === 1 && remaining > 0) {
+      if (part.removed && next?.added && part.value.length === 1 && next.value.length === 1) {
         const left = Array.from(graphemes.segment(part.value[0]), part => part.segment);
         const right = Array.from(graphemes.segment(next.value[0]), part => part.segment);
-        const detail = window.Diff.diffArrays(left, right, { timeout: remaining });
+        const detail = window.Diff.diffArrays(left, right, { maxEditLength: 200 });
         const shared = detail?.filter(part => !part.added && !part.removed).reduce((count, part) => count + part.count, 0) ?? 0;
         if (detail && shared >= Math.max(left.length, right.length) / 2) {
           refined.push(...detail);
@@ -817,11 +817,11 @@
     let leftLine = 1;
     let rightLine = 1;
     let coarseCharacters = false;
-    const characterDeadline = window.performance.now() + 40;
+    const characterWork = { remainingCodeUnits: 16000 };
     for (const [index, change] of changes.entries()) {
       const next = changes[index + 1];
       if (!comparison.coarse && change.removed && next?.added) {
-        if (!alignReplacement(change, next, characterDeadline - window.performance.now())) coarseCharacters = true;
+        if (!alignReplacement(change, next, characterWork)) coarseCharacters = true;
       }
       const unchanged = !change.added && !change.removed;
       if (unchanged && !showUnchanged) { leftLine += change.count; rightLine += change.count; continue; }
