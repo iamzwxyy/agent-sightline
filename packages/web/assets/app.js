@@ -6,6 +6,7 @@
   let exportDocument = live ? JSON.parse(document.getElementById('export-data').textContent) : '<!doctype html>\n' + originalDocument;
   const names = { codex: 'Codex', claude: 'Claude Code', copilot: 'GitHub Copilot', gemini: 'Gemini CLI', cursor: 'Cursor', opencode: 'OpenCode' };
   const viewLabels = { overview: 'Overview', effective: 'Instructions', configuration: 'Settings', compare: 'Compare clients', extensions: 'Extensions', findings: 'Findings' };
+  const shortcutPrefix = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgentData?.platform || navigator.platform) ? '⌘' : 'Ctrl+';
   const state = {
     view: 'overview',
     client: report.clients.find(client => client.detected)?.client ?? report.clients[0]?.client,
@@ -82,13 +83,23 @@
     if (action) element.append(action);
     return element;
   }
-  function toast(message) {
+  function clearToast() {
     clearTimeout(toastTimer);
-    $('toast').textContent = message;
-    $('toast').hidden = false;
-    toastTimer = setTimeout(() => { $('toast').hidden = true; }, 2400);
+    $('toast').hidden = true;
+    document.querySelectorAll('.dialog-feedback').forEach(status => { status.textContent = ''; });
+  }
+  function toast(message, dialog = document.querySelector('dialog[open]')) {
+    clearToast();
+    const status = dialog?.querySelector('.dialog-feedback') ?? $('toast');
+    status.textContent = message;
+    status.hidden = false;
+    toastTimer = setTimeout(() => {
+      if (status.id === 'toast') status.hidden = true;
+      else status.textContent = '';
+    }, 2400);
   }
   async function copy(text, label) {
+    clearToast();
     try {
       await navigator.clipboard.writeText(text);
       toast(label ?? 'Copied to clipboard');
@@ -98,7 +109,7 @@
       const field = node('textarea', undefined, 'copy-text');
       field.value = text; field.readOnly = true; field.rows = Math.min(12, Math.max(3, text.split('\n').length + 1));
       field.setAttribute('aria-label', 'Text to copy');
-      content.append(title, node('p', 'Press ⌘C or Ctrl+C to copy the selected text.'), field);
+      content.append(title, node('p', `Press ${shortcutPrefix}C to copy the selected text. On a phone, press and hold the text and choose Copy.`), field);
       $('detail-category').textContent = 'Clipboard';
       $('detail-body').replaceChildren(content);
       if (!$('detail-dialog').open) $('detail-dialog').showModal();
@@ -372,6 +383,7 @@
       const hash = inspectionHash();
       if (location.hash !== hash) history.pushState({ sightlineFinding: true }, '', hash);
     }
+    if ($('detail-dialog').dataset.finding !== state.findingId) clearToast();
     $('detail-dialog').dataset.finding = state.findingId;
     $('detail-category').textContent = finding.ruleId;
     const content = node('div', undefined, 'dialog-content');
@@ -683,6 +695,7 @@
     $('instructions').querySelector('.code-line.highlight')?.scrollIntoView({ block: 'center', inline: 'nearest' });
   }
   function showSetting(setting, client) {
+    clearToast();
     $('detail-category').textContent = `${names[client]} / setting`;
     const content = node('div', undefined, 'dialog-content');
     const title = node('h2', setting.key); title.id = 'detail-title';
@@ -1136,6 +1149,7 @@
     return extension.config.description ?? 'No description';
   }
   function showExtension(extension, client) {
+    clearToast();
     $('detail-category').textContent = `${names[client]} / ${extension.kind}`;
     const content = node('div', undefined, 'dialog-content');
     const title = node('h2', extension.name); title.id = 'detail-title';
@@ -1362,7 +1376,10 @@
     if ($('detail-dialog').open || !$('detail-dialog').dataset.finding) return;
     closeDialog($('detail-dialog'));
   });
-  document.querySelectorAll('dialog').forEach(dialog => { dialog.onclick = event => { if (event.target === dialog) { const bounds = dialog.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientY < bounds.top || event.clientX > bounds.right || event.clientY > bounds.bottom) closeDialog(dialog); } }; });
+  document.querySelectorAll('dialog').forEach(dialog => {
+    dialog.addEventListener('close', () => { if (!dialog.open) dialog.querySelector('.dialog-feedback').textContent = ''; });
+    dialog.onclick = event => { if (event.target === dialog) { const bounds = dialog.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientY < bounds.top || event.clientX > bounds.right || event.clientY > bounds.bottom) closeDialog(dialog); } };
+  });
   $('mobile-menu').onclick = () => setNavigationOpen(!document.body.classList.contains('nav-open'));
   $('navigation-scrim').onclick = () => setNavigationOpen(false);
   $('close-navigation').onclick = () => setNavigationOpen(false);
@@ -1530,11 +1547,13 @@
     state.findingId = groupFindings().some(finding => finding.originals.some(item => item.id === findingId)) ? findingId : null;
     if (findingId && !state.findingId) {
       history.replaceState(null, '', inspectionHash());
-      toast('This finding is unavailable in this report.');
+      toast('This finding is unavailable in this report.', null);
     }
   }
   const snapshotLocation = document.querySelector('meta[name="sightline-view"]')?.content;
   if (!live && !location.hash && snapshotLocation?.startsWith('#')) history.replaceState(null, '', snapshotLocation);
+  $('target-shortcut').textContent = shortcutPrefix + 'K';
+  $('target-shortcut-help').textContent = shortcutPrefix + 'K';
   readLocation();
   window.addEventListener('pageshow', event => {
     // Scroll restoration during document loading can overwrite the initial source jump.

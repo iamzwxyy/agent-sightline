@@ -11,7 +11,7 @@
 需要 Node.js 22 或更高版本。在项目目录打开终端，运行下面的命令。
 
 ```sh
-npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.45/agent-sightline-0.3.45.tgz ui
+npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.46/agent-sightline-0.3.46.tgz ui
 ```
 
 浏览器会打开本地检查界面。先进入 Findings 查看诊断，选择一条问题阅读原因与修复建议，再点击 Inspect source 跳到来源行。目标文件选择器可以检查仓库内其他文件。界面与诊断正文目前使用英文。
@@ -25,14 +25,14 @@ npx --yes https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.45/
 重复使用时，可以全局安装，再打开内置示例。
 
 ```sh
-npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.45/agent-sightline-0.3.45.tgz
+npm install -g https://github.com/iamzwxyy/agent-sightline/releases/download/v0.3.46/agent-sightline-0.3.46.tgz
 agent-sightline demo --ui
 ```
 
 当前公开安装包通过 GitHub Releases 分发，并包含运行时依赖。下载后可以离线安装。
 
 ```sh
-npm install -g --offline ./agent-sightline-0.3.45.tgz
+npm install -g --offline ./agent-sightline-0.3.46.tgz
 ```
 
 npm registry 的首次发布待认证。[发布记录与下载](https://github.com/iamzwxyy/agent-sightline/releases)

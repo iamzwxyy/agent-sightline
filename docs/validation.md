@@ -1,5 +1,17 @@
 # Release validation
 
+## v0.3.46
+
+Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.
+
+* Reproduced copy feedback behind the native modal backdrop and Command-key hints under a simulated Windows browser. Both browser regressions failed before implementation.
+* Copy feedback now uses a persistent, polite status region in the active dialog's sticky header. Desktop and phone checks cover finding and setting copies, keyboard focus, repeated-copy timing, clearing on close, page-level feedback and accessible contrast in live and offline reports.
+* Keyboard hints follow modern browser platform information with a legacy fallback. Cases cover modern macOS and Windows, legacy Linux and macOS, working target shortcuts, selected-text copying and offline scope/help feedback while scrolling long mobile dialogs.
+* All 121 Chromium cases and five focused WebKit flows passed. The WebKit navigation check uses macOS Option+Tab to include links and buttons, verified against both the previous public report and the current report. The 605-case core suite completed with 603 passes and two platform-gated skips. Lint, strict TypeScript, build and empty-cache offline package smoke passed. Production dependency audit reported zero vulnerabilities.
+* Regenerated the standalone example and product captures from the working application. Linux CI exercises Firefox because the local Firefox profile cannot start.
+
+* The candidate archive passed empty-cache offline installation, installed CLI diagnostics, desktop/phone platform hints and visible modal copy feedback, selected-finding routes, history, source navigation, portable export/re-export and clipboard denial with zero page errors.
+
 ## v0.3.45
 
 Verified locally on macOS ARM64 with Node 26.4.0 on 2026-11-16.

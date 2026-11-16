@@ -1905,7 +1905,9 @@ test('source lists have one keyboard entry and retain a filtered entry when sele
   } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 
-test('mobile navigation contains keyboard focus and closes into its destination and native dialogs live and offline', async ({ page }) => {
+test('mobile navigation contains keyboard focus and closes into its destination and native dialogs live and offline', async ({ page, browserName }) => {
+  // macOS WebKit uses Option+Tab to include links and buttons in keyboard navigation.
+  const tabKey = browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab';
   const w = await workspace({ 'AGENTS.md': 'Codex instructions.', 'CLAUDE.md': 'Claude instructions.' });
   const server = await serve({ ...w, user: false, clients: ['codex', 'claude'], trust: 'trusted' });
   try {
@@ -1920,16 +1922,17 @@ test('mobile navigation contains keyboard focus and closes into its destination 
       await page.goto('about:blank');
       await page.goto(url);
       const menu = page.locator('#mobile-menu');
-      await page.keyboard.press('Tab');
+      await expect(menu).toBeEnabled();
+      await page.keyboard.press(tabKey);
       await expect(page.locator('.skip-link')).toBeFocused();
-      await page.keyboard.press('Tab');
+      await page.keyboard.press(tabKey);
       await expect(menu).toBeFocused();
       await page.keyboard.press('Enter');
       await expect(page.locator('#overview-tab')).toBeFocused();
       await page.locator('.sidebar .brand').focus();
-      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Shift+' + tabKey);
       await expect(page.locator('#scope-button')).toBeFocused();
-      await page.keyboard.press('Tab');
+      await page.keyboard.press(tabKey);
       await expect(page.locator('.sidebar .brand')).toBeFocused();
       expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
       await page.keyboard.press('Escape');
@@ -1943,7 +1946,7 @@ test('mobile navigation contains keyboard focus and closes into its destination 
       await page.keyboard.press('Enter');
       await expect(page.locator('#configuration h1')).toBeFocused();
       await expect(menu).toHaveAttribute('aria-expanded', 'false');
-      await page.keyboard.press('Tab');
+      await page.keyboard.press(tabKey);
       await expect(page.locator('#setting-search')).toBeFocused();
       await menu.focus();
       await page.keyboard.press('Enter');
@@ -2555,6 +2558,132 @@ test('legacy ambiguous findings retain separate errors and offer a source choice
       }
     }
   } finally { await page.context().setOffline(false); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('clipboard success stays visible in its dialog and page context live and offline', async ({ page }) => {
+  const w = await workspace({
+    'CLAUDE.md': '@./missing-feedback-policy.md',
+    '.claude/settings.json': '{"model":"feedback-model"}',
+  });
+  const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+    writeText: async (text: string) => { (window as any).feedbackCopy = text; },
+  } }));
+  await page.clock.install();
+  try {
+    await page.goto(server.url);
+    const downloading = page.waitForEvent('download');
+    await page.locator('#export').click();
+    const file = test.info().outputPath('clipboard-feedback.html');
+    await (await downloading).saveAs(file);
+    for (const url of [server.url, pathToFileURL(file).href]) {
+      await page.context().setOffline(url.startsWith('file:'));
+      for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto(url + '#view=findings');
+        await page.locator('#findings-list .finding').filter({ hasText: 'Imported instruction file does not exist' }).click();
+        const dialog = page.locator('#detail-dialog');
+        const status = dialog.getByRole('status');
+        const copyDiagnosis = dialog.getByRole('button', { name: 'Copy diagnosis', exact: true });
+        await copyDiagnosis.focus();
+        await copyDiagnosis.press('Enter');
+        await expect(status).toHaveText('Diagnosis copied');
+        await expect(status).toHaveAttribute('aria-live', 'polite');
+        await expect(status).toHaveAttribute('aria-atomic', 'true');
+        await expect(status).toBeInViewport({ ratio: 1 });
+        await expect(copyDiagnosis).toBeFocused();
+        await expect(page.locator('#toast')).toBeHidden();
+        await page.clock.runFor(1800);
+        await dialog.getByRole('button', { name: 'Copy location', exact: true }).click();
+        await expect(status).toHaveText('Copied to clipboard');
+        await page.clock.runFor(1000);
+        await expect(status).toHaveText('Copied to clipboard');
+        await page.screenshot({ path: test.info().outputPath(`clipboard-feedback-${url.startsWith('file:')}-${viewport.width}.png`), fullPage: true });
+        expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+        await page.keyboard.press('Escape');
+        await expect(dialog).not.toBeVisible();
+        await expect(dialog.locator('.dialog-feedback')).toBeEmpty();
+        await page.locator('#findings-list .finding').filter({ hasText: 'Imported instruction file does not exist' }).click();
+        await expect(status).toBeEmpty();
+        await dialog.getByRole('button', { name: 'Inspect source →', exact: true }).click();
+        await page.locator('#copy-source').click();
+        await expect(page.locator('#toast')).toHaveText('Source content copied');
+        await expect(page.locator('#toast')).toBeVisible();
+        await page.clock.runFor(2500);
+        await expect(page.locator('#toast')).toBeHidden();
+        await page.goto(url + '#view=configuration');
+        await page.getByRole('button', { name: 'model', exact: true }).click();
+        const copyValue = dialog.getByRole('button', { name: 'Copy value', exact: true });
+        await copyValue.focus();
+        await copyValue.press('Enter');
+        await expect(status).toHaveText('Copied to clipboard');
+        await expect(copyValue).toBeFocused();
+        await expect(status).toBeInViewport({ ratio: 1 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.getByRole('button', { name: 'Close details', exact: true }).click();
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.context().setOffline(false); await server.close(); await rm(w.root, { recursive: true, force: true }); }
+});
+
+test('keyboard hints follow the browser platform through live inspection and offline reports', async ({ browser }) => {
+  const w = await workspace({ 'CLAUDE.md': 'Keyboard instructions.' });
+  const server = await serve({ ...w, user: false, clients: ['claude'], trust: 'trusted' });
+  try {
+    for (const { name, platform, modernPlatform, prefix, key } of [
+      { name: 'macos', platform: 'MacIntel', modernPlatform: 'macOS', prefix: '⌘', key: 'Meta+K' },
+      { name: 'windows', platform: 'MacIntel', modernPlatform: 'Windows', prefix: 'Ctrl+', key: 'Control+K' },
+      { name: 'linux', platform: 'Linux x86_64', modernPlatform: undefined, prefix: 'Ctrl+', key: 'Control+K' },
+      { name: 'macos-legacy', platform: 'MacIntel', modernPlatform: undefined, prefix: '⌘', key: 'Meta+K' },
+    ]) {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      await context.addInitScript(({ platform, modernPlatform }) => {
+        Object.defineProperty(navigator, 'platform', { configurable: true, get: () => platform });
+        Object.defineProperty(navigator, 'userAgentData', { configurable: true, value: modernPlatform ? { platform: modernPlatform } : undefined });
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Clipboard denied.'); } } });
+      }, { platform, modernPlatform });
+      const page = await context.newPage();
+      try {
+        await page.goto(server.url);
+        await expect(page.locator('#target-shortcut')).toHaveText(prefix + 'K');
+        await page.getByRole('button', { name: 'Keyboard shortcuts', exact: false }).click();
+        await expect(page.locator('#target-shortcut-help')).toHaveText(prefix + 'K');
+        await page.keyboard.press('Escape');
+        await page.keyboard.press(key);
+        await expect(page.locator('#target')).toBeFocused();
+        await page.getByRole('button', { name: 'Inspect Claude Code instructions', exact: true }).click();
+        await page.getByRole('button', { name: 'Copy effective text', exact: true }).click();
+        await expect(page.locator('#detail-body')).toContainText(`Press ${prefix}C to copy the selected text.`);
+        await expect(page.getByRole('textbox', { name: 'Text to copy', exact: true })).toBeFocused();
+        await page.keyboard.press('Escape');
+        const downloading = page.waitForEvent('download');
+        await page.locator('#export').click();
+        const file = test.info().outputPath(`keyboard-${name}.html`);
+        await (await downloading).saveAs(file);
+        await context.setOffline(true);
+        await page.goto(pathToFileURL(file).href);
+        await expect(page.locator('#target-shortcut')).toBeHidden();
+        await expect(page.locator('#target-shortcut-help')).toHaveText(prefix + 'K');
+        await page.getByRole('button', { name: 'Keyboard shortcuts', exact: false }).click();
+        await page.keyboard.press(key);
+        await expect(page.locator('#help-dialog').getByRole('status')).toHaveText('This report is a snapshot. Open the local CLI to inspect another file.');
+        await expect(page.locator('#help-dialog').getByRole('status')).toBeInViewport({ ratio: 1 });
+        await page.keyboard.press('Escape');
+        await page.setViewportSize({ width: 390, height: 640 });
+        await page.locator('#session-button').click();
+        const scope = page.locator('#scope-dialog');
+        await scope.evaluate(dialog => { dialog.scrollTop = dialog.scrollHeight; });
+        await page.keyboard.press(key);
+        await expect(scope.getByRole('status')).toHaveText('This report is a snapshot. Open the local CLI to inspect another file.');
+        await expect(scope.getByRole('status')).toBeInViewport({ ratio: 1 });
+        await expect(page.getByRole('button', { name: 'Close scan details', exact: true })).toBeInViewport({ ratio: 1 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      } finally { await context.close(); }
+    }
+  } finally { await server.close(); await rm(w.root, { recursive: true, force: true }); }
 });
 
 test('finding routes and exported diagnosis reports retain the selected issue and portable copy', async ({ page }) => {

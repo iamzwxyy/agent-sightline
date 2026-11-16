@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.46 — 2026-11-16
+
+* Show and announce clipboard success inside the active dialog, with feedback retained in its visible header while scrolling long details. Page-level copy actions retain their existing feedback.
+* Clear old feedback when copying again, changing details or closing the dialog. Repeated copying restarts the feedback lifetime and retains keyboard focus.
+* Match target-search, keyboard-help and selected-text copy hints to the recipient browser's platform, including in offline reports. Clipboard fallback also explains phone text selection.
+
 ## 0.3.45 — 2026-11-16
 
 * Link directly to a selected finding and retain its details through reload, browser Back/Forward, portable export and offline re-export. Source inspection returns to that diagnosis through browser history.
