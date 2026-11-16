@@ -2612,7 +2612,7 @@ test('finding routes and exported diagnosis reports retain the selected issue an
         await page.getByRole('button', { name: 'Copy diagnosis', exact: true }).click();
         const copied = await page.evaluate(() => (window as any).copiedDiagnosis);
         expect(copied).toContain(index === 0 ? '@./[REDACTED].md' : '@./another-missing.md');
-        for (const value of [finding.ruleId, finding.message, finding.why, finding.suggestion, 'Claude Code', '<repo>/src/[REDACTED].ts', '<repo>/CLAUDE.md']) expect(copied).toContain(value);
+        for (const value of [finding.ruleId, finding.message, finding.why, finding.suggestion, 'Claude Code', path.join('<repo>', 'src', '[REDACTED].ts'), path.join('<repo>', 'CLAUDE.md')]) expect(copied).toContain(value);
         for (const value of [secret, 'browser-private-target', w.repo, w.home]) expect(copied).not.toContain(value);
         expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
         expect(await page.locator('#detail-dialog').evaluate(dialog => dialog.scrollWidth <= dialog.clientWidth)).toBe(true);
@@ -2660,7 +2660,7 @@ test('finding links resolve grouped client IDs, unavailable issues and clipboard
       const field = page.getByRole('textbox', { name: 'Text to copy', exact: true });
       await expect(field).toBeFocused();
       const text = await field.inputValue();
-      for (const value of ['Claude Code', 'GitHub Copilot', finding.ruleId, '<repo>/.mcp.json']) expect(text).toContain(value);
+      for (const value of ['Claude Code', 'GitHub Copilot', finding.ruleId, path.join('<repo>', '.mcp.json')]) expect(text).toContain(value);
       expect(text).not.toContain(w.repo);
       expect(await field.evaluate(input => (input as HTMLTextAreaElement).selectionEnd)).toBe(text.length);
       await page.keyboard.press('Escape');
